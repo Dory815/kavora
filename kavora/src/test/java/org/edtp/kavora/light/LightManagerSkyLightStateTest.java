@@ -9,6 +9,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LightManagerSkyLightStateTest {
 
@@ -87,7 +89,20 @@ class LightManagerSkyLightStateTest {
                 moonSource,
                 new float[3],
                 new float[3],
+                new float[3],
+                new float[3],
                 0.0f,
                 0.0f);
+    }
+
+    @Test
+    void cloudIncidenceUsesClearAirAtTheCloudLayer() {
+        var clear = LightManager.evaluateSkyLightState(0f, .5f, 0, 0f, 0f, 64f, 320f);
+        var rainy = LightManager.evaluateSkyLightState(0f, .5f, 0, 1f, 0f, 64f, 320f);
+        var higherCamera = LightManager.evaluateSkyLightState(0f, .5f, 0, 1f, 0f, 192f, 320f);
+        assertTrue(clear.sunCloudRadiance()[0] > clear.sunDirectRadiance()[0]);
+        assertEquals(clear.sunDirectRadiance()[0] * .0025f, rainy.sunDirectRadiance()[0], 1e-5f);
+        assertArrayEquals(clear.sunCloudRadiance(), rainy.sunCloudRadiance());
+        assertArrayEquals(clear.sunCloudRadiance(), higherCamera.sunCloudRadiance());
     }
 }

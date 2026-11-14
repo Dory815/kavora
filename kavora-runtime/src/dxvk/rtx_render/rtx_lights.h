@@ -434,6 +434,12 @@ struct RtDistantLight {
     return m_radiance;
   }
 
+  Vector3 getCloudIncidentRadiance() const {
+    return m_cloudIncidentRadiance;
+  }
+
+  bool setCloudIncidentRadiance(const Vector3& radiance);
+
   float getVolumetricRadianceScale() const {
     return m_volumetricRadianceScale;
   }
@@ -449,6 +455,7 @@ private:
   Vector3 m_direction;
   float m_halfAngle;
   Vector3 m_radiance;
+  Vector3 m_cloudIncidentRadiance;
   float m_volumetricRadianceScale;
 
   // Note: Computed from direction, not meant to be modified directly

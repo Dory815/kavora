@@ -210,21 +210,34 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
       weatherSampler, baseSampler, detailSampler);
     const float cosine = dot(direction, light.directionToLight);
     const float phase = 0.85f * cloudPhase(cosine, args.anisotropy) + 0.15f * cloudPhase(cosine, -0.25f);
-    float scattering = phase * exp(-opticalDepth);
+    // The effective optical depths of successive orders differ by powers of two.
+    const float transmission5 = exp(-opticalDepth * (1.0f / 16.0f));
+    const float transmission4 = transmission5 * transmission5;
+    const float transmission3 = transmission4 * transmission4;
+    const float transmission2 = transmission3 * transmission3;
+    const float singleScattering = phase * transmission2 * transmission2;
+    float multipleScattering = 0;
     float orderWeight = args.multipleScattering;
     const float meanCosine = 0.85f * args.anisotropy - 0.15f * 0.25f;
     float orderG = meanCosine;
-    float orderDepth = opticalDepth;
     // Approximate diffuse incident light while preserving physical view extinction.
     // Successive phases retain the first moment of the full dual-lobe distribution.
-    for (uint order = 2; order <= 5; order++)
+    const float4 orderTransmission = float4(transmission2, transmission3, transmission4, transmission5);
+    [unroll]
+    for (uint order = 0; order < 4; order++)
     {
       orderG *= meanCosine;
-      orderDepth *= 0.5f;
-      scattering += orderWeight * cloudPhase(cosine, orderG) * exp(-orderDepth);
+      multipleScattering += orderWeight * cloudPhase(cosine, orderG) * orderTransmission[order];
       orderWeight *= args.multipleScattering * args.albedo;
     }
-    source += light.irradiance * scattering;
+    // Eddington's conservative two-stream limit approximates the diffuse flux
+    // through a thick droplet layer. Use it as the asymptote of the higher orders.
+    const float lightCosine = saturate(dot(light.directionToLight, args.up));
+    const float transportDepth = (1.0f - meanCosine) * opticalDepth * lightCosine;
+    const float diffuseTransmission = rcp(1.0f + 0.75f * transportDepth);
+    const float diffuseScattering = args.multipleScattering * lightCosine * (1.0f - exp(-transportDepth))
+      * diffuseTransmission * (1.0f / 3.14159265359f);
+    source += light.irradiance * (singleScattering + max(multipleScattering, diffuseScattering));
   }
   return source;
 }

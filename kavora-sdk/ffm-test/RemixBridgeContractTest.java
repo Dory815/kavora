@@ -185,7 +185,7 @@ public final class RemixBridgeContractTest {
         equal(0, RemixBridge.sceneInstanceUpdate(HANDLE, HANDLE, transform, 3, 1, 0));
         equal(0, RemixBridge.sceneInstanceRemove(HANDLE));
         equal(HANDLE, RemixBridge.createLight(123, 1, 2, 3, 0));
-        long distant = RemixBridge.allocDistantExt(0, -1, 0, .5f, 1, 0);
+        long distant = RemixBridge.allocDistantLightChain(0, -1, 0, .5f, 1, 0, new Float3D(7, 8, 9));
         try {
             equal(0, RemixBridge.updateLight(HANDLE, 123, 4, 5, 6, distant));
             equal(ErrorCode.INVALID_ARGUMENTS, RemixBridge.updateLight(0, 123, 4, 5, 6, distant));

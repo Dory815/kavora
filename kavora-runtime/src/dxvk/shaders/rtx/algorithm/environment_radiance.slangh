@@ -16,6 +16,8 @@ float3 sampleEnvironmentRadiance(DomeLightArgs dome, float brightness, SamplerCu
 
 float3 sampleIndirectEnvironmentRadiance(float3 direction, SamplerCube<float3> probe, SamplerState sampler)
 {
+  // The sky map carries the cloud-scattered radiance for an escaped path.
+  // World-space cloud transport has already integrated it in resolveAtmosphere.
   return applyCloudSky(cb.volumeArgs.clouds, CloudSkySampler, direction,
     sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness, probe, sampler, direction));
 }

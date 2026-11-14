@@ -171,6 +171,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_CAMERA_INFO_SCENE_ORIGIN_EXT           = 52,
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_GLINT_EXT               = 53,
     REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_WATER_EXT               = 54,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT         = 56,
     // NOTE: always leave ',' after the number, so the git diff is cleaner!
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
@@ -988,6 +989,15 @@ extern "C" {
     float                           angularDiameterDegrees;
     float                           volumetricRadianceScale;
   } remixapi_LightInfoDistantEXT;
+
+  // Attachable to remixapi_LightInfo alongside remixapi_LightInfoDistantEXT.
+  // RGB incident radiance after clear-air transport, before weather and cloud extinction.
+  // Uses the same radiometric scale as remixapi_LightInfo::radiance.
+  typedef struct remixapi_LightInfoCloudRadianceEXT {
+    remixapi_StructType             sType;
+    void*                          pNext;
+    remixapi_Float3D               incidentRadiance;
+  } remixapi_LightInfoCloudRadianceEXT;
 
   typedef struct remixapi_LightInfoDomeEXT {
     remixapi_StructType             sType;

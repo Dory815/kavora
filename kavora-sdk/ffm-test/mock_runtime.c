@@ -69,6 +69,9 @@ REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_UpdateLight(remixapi_LightHan
     CHECK(distant && distant->sType == REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT);
     CHECK(distant->direction.x == 0 && distant->direction.y == -1 && distant->direction.z == 0);
     CHECK(distant->angularDiameterDegrees == 0.5f && distant->volumetricRadianceScale == 1);
+    const remixapi_LightInfoCloudRadianceEXT* cloud = distant->pNext;
+    CHECK(cloud && cloud->sType == REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT);
+    CHECK(cloud->incidentRadiance.x == 7 && cloud->incidentRadiance.y == 8 && cloud->incidentRadiance.z == 9);
     return REMIXAPI_ERROR_CODE_SUCCESS;
 }
 static remixapi_ErrorCode REMIXAPI_CALL mock_DestroyLight(

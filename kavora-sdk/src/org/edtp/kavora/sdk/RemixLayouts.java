@@ -428,6 +428,10 @@ final class RemixLayouts {
                 layout("Float3D").withName("direction"),
                 JAVA_FLOAT.withName("angularDiameterDegrees"),
                 JAVA_FLOAT.withName("volumetricRadianceScale"));
+        define("LightInfoCloudRadianceEXT",
+                JAVA_INT.withName("sType"),
+                ADDRESS.withName("pNext"),
+                layout("Float3D").withName("incidentRadiance"));
         define("LightInfoDomeEXT",
                 JAVA_INT.withName("sType"),
                 ADDRESS.withName("pNext"),

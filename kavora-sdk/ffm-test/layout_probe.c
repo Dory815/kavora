@@ -470,6 +470,11 @@ printf("LightInfoDistantEXT pNext %zu\n", offsetof(remixapi_LightInfoDistantEXT,
 printf("LightInfoDistantEXT direction %zu\n", offsetof(remixapi_LightInfoDistantEXT, direction));
 printf("LightInfoDistantEXT angularDiameterDegrees %zu\n", offsetof(remixapi_LightInfoDistantEXT, angularDiameterDegrees));
 printf("LightInfoDistantEXT volumetricRadianceScale %zu\n", offsetof(remixapi_LightInfoDistantEXT, volumetricRadianceScale));
+printf("LightInfoCloudRadianceEXT sizeof %zu\n", sizeof(remixapi_LightInfoCloudRadianceEXT));
+printf("LightInfoCloudRadianceEXT alignof %zu\n", __alignof(remixapi_LightInfoCloudRadianceEXT));
+printf("LightInfoCloudRadianceEXT sType %zu\n", offsetof(remixapi_LightInfoCloudRadianceEXT, sType));
+printf("LightInfoCloudRadianceEXT pNext %zu\n", offsetof(remixapi_LightInfoCloudRadianceEXT, pNext));
+printf("LightInfoCloudRadianceEXT incidentRadiance %zu\n", offsetof(remixapi_LightInfoCloudRadianceEXT, incidentRadiance));
 printf("LightInfoDomeEXT sizeof %zu\n", sizeof(remixapi_LightInfoDomeEXT));
 printf("LightInfoDomeEXT alignof %zu\n", __alignof(remixapi_LightInfoDomeEXT));
 printf("LightInfoDomeEXT sType %zu\n", offsetof(remixapi_LightInfoDomeEXT, sType));

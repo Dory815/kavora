@@ -807,6 +807,7 @@ RtDistantLight::RtDistantLight(
   : m_direction(direction)
   , m_halfAngle(halfAngle)
   , m_radiance(radiance)
+  , m_cloudIncidentRadiance(radiance)
   , m_volumetricRadianceScale(volumetricRadianceScale) {
   // assert(validateParameters(direction, halfAngle, radiance, volumetricRadianceScale, forceHash));
 
@@ -884,6 +885,16 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
 
 Vector4 RtDistantLight::getColorAndIntensity() const {
   return safeColorAndIntensity(m_radiance);
+}
+
+bool RtDistantLight::setCloudIncidentRadiance(const Vector3& radiance) {
+  for (float channel : { radiance.x, radiance.y, radiance.z }) {
+    if (!std::isfinite(channel) || channel < 0.0f) {
+      return false;
+    }
+  }
+  m_cloudIncidentRadiance = radiance;
+  return true;
 }
 
 bool RtDistantLight::validateParameters(

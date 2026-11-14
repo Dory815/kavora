@@ -187,9 +187,10 @@ public class LightManager {
     /**
      * Updates sky light and draws entity + sky lights.
      */
-    public void updateLights(ClientLevel world, Camera camera, float tickDelta) {
+    public void updateLights(ClientLevel world, Camera camera, float tickDelta, boolean proceduralClouds,
+                             float cloudHeightOffset) {
         if (world == null || api == null) return;
-        updateSkyLight(world, camera, tickDelta);
+        updateSkyLight(world, camera, tickDelta, proceduralClouds, cloudHeightOffset);
         drawActiveLights();
     }
 
@@ -1041,8 +1042,15 @@ public class LightManager {
     //  Sky light
     // ================================================================
 
-    private void updateSkyLight(ClientLevel world, Camera camera, float tickDelta) {
+    private void updateSkyLight(ClientLevel world, Camera camera, float tickDelta, boolean proceduralClouds,
+                                float cloudHeightOffset) {
         var attributes = camera.attributeProbe();
+        int seaLevel = world.getSeaLevel();
+        float observerHeight = SkyAtmosphere.observerHeight(camera.position().y - seaLevel);
+        // Use the host cloud base as the reference elevation for clear-air transport.
+        float cloudHeight = proceduralClouds
+                ? attributes.getValue(EnvironmentAttributes.CLOUD_HEIGHT, tickDelta) + cloudHeightOffset - seaLevel
+                : Float.NaN;
         // Only a NORMAL sky has a sun and a moon. The End and the Nether pin their time, so
         // evaluating them would light a permanent noon or midnight that vanilla never draws.
         skyLightState = world.dimensionType().skybox() == DimensionType.Skybox.OVERWORLD
@@ -1052,34 +1060,37 @@ public class LightManager {
                         attributes.getValue(EnvironmentAttributes.MOON_PHASE, tickDelta).index(),
                         world.getRainLevel(tickDelta),
                         world.getThunderLevel(tickDelta),
-                        SkyAtmosphere.observerHeight(camera.position().y - world.getSeaLevel()))
+                        observerHeight,
+                        cloudHeight)
                 : SkyLightState.empty();
 
         try {
             sunLight = updateDistantLight(sunLight, skyLightState.sunPosition(), skyLightState.sunDirectRadiance(),
-                    SUN_ANGULAR_DIAMETER_DEGREES);
+                    skyLightState.sunCloudRadiance(), SUN_ANGULAR_DIAMETER_DEGREES);
             moonLight = updateDistantLight(moonLight, skyLightState.moonPosition(), skyLightState.moonDirectRadiance(),
-                    MOON_ANGULAR_DIAMETER_DEGREES);
+                    skyLightState.moonCloudRadiance(), MOON_ANGULAR_DIAMETER_DEGREES);
         } catch (RemixException e) {
             LOGGER.error("Failed to update sky light: {}", e.getMessage());
         }
     }
 
     private KavoraLight updateDistantLight(KavoraLight light, float[] positionDirection, float[] radiance,
-                                          float angularDiameterDegrees) throws RemixException {
+                                          float[] cloudRadiance, float angularDiameterDegrees) throws RemixException {
         float[] incomingDirection = {
                 -positionDirection[0],
                 -positionDirection[1],
                 -positionDirection[2]
         };
 
+        var distant = LightInfoDistantEXT.builder()
+                .direction(incomingDirection[0], incomingDirection[1], incomingDirection[2])
+                .angularDiameterDegrees(angularDiameterDegrees);
+        if (cloudRadiance != null) {
+            distant.cloudIncidentRadiance(cloudRadiance[0], cloudRadiance[1], cloudRadiance[2]);
+        }
         LightInfo info = LightInfo.builder()
                 .radiance(radiance[0], radiance[1], radiance[2])
-                .distantExt(LightInfoDistantEXT.builder()
-                        .direction(incomingDirection[0], incomingDirection[1], incomingDirection[2])
-                        .angularDiameterDegrees(angularDiameterDegrees)
-                        .volumetricRadianceScale(1.0f)
-                        .build())
+                .distantExt(distant.build())
                 .build();
 
         if (light != null && light.isAlive()) {
@@ -1095,13 +1106,14 @@ public class LightManager {
         return created;
     }
 
-    private static SkyLightState evaluateSkyLightState(
+    static SkyLightState evaluateSkyLightState(
             float skyAngle,
             float moonAngle,
             int moonPhase,
             float rainGradient,
             float thunderGradient,
-            float observerHeight) {
+            float observerHeight,
+            float cloudHeightAboveSeaLevel) {
         float[] sunPosition = computeSunDirection(skyAngle);
         float[] moonPosition = computeSunDirection(moonAngle);
 
@@ -1115,11 +1127,20 @@ public class LightManager {
                 SkyAtmosphere.transmittanceToLight(observerHeight, moonPosition[1], MOON_ANGULAR_RADIUS));
         sunDirect = scaleRadiance(sunDirect, weatherSunDirectScale(rainGradient, thunderGradient));
         moonDirect = scaleRadiance(moonDirect, weatherMoonDirectScale(rainGradient, thunderGradient));
+        float[] sunCloud = null;
+        float[] moonCloud = null;
+        if (Float.isFinite(cloudHeightAboveSeaLevel)) {
+            sunCloud = thresholdDirectRadiance(applyTransmittance(sunSource,
+                    SkyAtmosphere.transmittanceToLight(cloudHeightAboveSeaLevel, sunPosition[1], SUN_ANGULAR_RADIUS)));
+            moonCloud = thresholdDirectRadiance(applyTransmittance(moonSource,
+                    SkyAtmosphere.transmittanceToLight(cloudHeightAboveSeaLevel, moonPosition[1], MOON_ANGULAR_RADIUS)));
+        }
 
         return new SkyLightState(
                 sunPosition, moonPosition,
                 sunSource, moonSource,
                 thresholdDirectRadiance(sunDirect), thresholdDirectRadiance(moonDirect),
+                sunCloud, moonCloud,
                 SUN_ANGULAR_RADIUS, MOON_ANGULAR_RADIUS);
     }
 
@@ -1251,6 +1272,8 @@ public class LightManager {
             float[] moonSourceRadiance,
             float[] sunDirectRadiance,
             float[] moonDirectRadiance,
+            float[] sunCloudRadiance,
+            float[] moonCloudRadiance,
             float sunAngularRadius,
             float moonAngularRadius) {
         public float weatherDomeRadiance() {
@@ -1273,6 +1296,7 @@ public class LightManager {
                     new float[]{0.0f, 0.0f, 0.0f},
                     new float[]{0.0f, 0.0f, 0.0f},
                     new float[]{0.0f, 0.0f, 0.0f},
+                    null, null,
                     SUN_ANGULAR_RADIUS,
                     MOON_ANGULAR_RADIUS);
         }

@@ -869,15 +869,15 @@ namespace dxvk {
 
   void LightManager::setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const
   {
-    if (raytraceArgs.volumeArgs.clouds.enable || raytraceArgs.volumeArgs.enable) {
+    if (raytraceArgs.volumeArgs.clouds.enable) {
       float powers[2] = {};
       auto& cloudLights = raytraceArgs.volumeArgs.clouds.lights;
       for (const RtLight* light : m_linearizedLights) {
-        if (light->getType() != RtLightType::Distant || light->getBufferIdx() == kNewLightIdx) {
+        if (light->getType() != RtLightType::Distant) {
           continue;
         }
         const auto& distant = light->getDistantLight();
-        const Vector3 radiance = distant.getRadiance();
+        const Vector3 radiance = distant.getCloudIncidentRadiance();
         const float power = radiance.x + radiance.y + radiance.z;
         if (power > powers[1]) {
           const uint index = power > powers[0] ? 0 : 1;

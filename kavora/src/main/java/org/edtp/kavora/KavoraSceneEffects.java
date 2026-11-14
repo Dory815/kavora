@@ -59,7 +59,7 @@ final class KavoraSceneEffects {
         try (ProfileScope ignored = ProfileScope.begin("Lights")) {
             // updateLights publishes the analytic lights at their current entity positions.
             lights.updateEntityLights(world, camera, partialTick);
-            lights.updateLights(world, camera, partialTick);
+            lights.updateLights(world, camera, partialTick, clouds.isProceduralClouds(), clouds.getCloudsHeight());
         } finally {
             metrics.end(metrics.perfLights);
         }

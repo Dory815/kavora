@@ -1359,11 +1359,22 @@ public final class RemixBridge {
     public static long allocDistantExt(float dirX, float dirY, float dirZ,
             float angularDiameter, float volumetricRadianceScale,
             long chainNext) {
+        return allocDistantLightChain(dirX, dirY, dirZ, angularDiameter, volumetricRadianceScale, chainNext, null);
+    }
+
+    static long allocDistantLightChain(float dirX, float dirY, float dirZ,
+            float angularDiameter, float volumetricRadianceScale,
+            long chainNext, Float3D cloudIncidentRadiance) {
         Arena arena = Arena.ofShared();
         try {
-            MemorySegment ext = arena.allocate(RemixLayouts.layout("LightInfoDistantEXT"));
-            put(ext, "LightInfoDistantEXT", "sType", StructType.LIGHT_INFO_DISTANT_EXT);
-            put(ext, "LightInfoDistantEXT", "pNext", chainNext);
+            if (cloudIncidentRadiance != null) {
+                String type = "LightInfoCloudRadianceEXT";
+                MemorySegment clouds = info(arena, type, StructType.LIGHT_INFO_CLOUD_RADIANCE_EXT, chainNext);
+                vector3(clouds, type, "incidentRadiance",
+                        cloudIncidentRadiance.x, cloudIncidentRadiance.y, cloudIncidentRadiance.z);
+                chainNext = clouds.address();
+            }
+            MemorySegment ext = info(arena, "LightInfoDistantEXT", StructType.LIGHT_INFO_DISTANT_EXT, chainNext);
             vector3(ext, "LightInfoDistantEXT", "direction", dirX, dirY, dirZ);
             put(ext, "LightInfoDistantEXT", "angularDiameterDegrees", angularDiameter);
             put(ext, "LightInfoDistantEXT", "volumetricRadianceScale", volumetricRadianceScale);

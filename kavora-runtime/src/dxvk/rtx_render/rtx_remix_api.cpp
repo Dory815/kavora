@@ -692,6 +692,13 @@ namespace {
           tovec3(info.radiance),
           src->volumetricRadianceScale
         );
+        if (light.has_value()) {
+          const auto* cloud = pnext::find<remixapi_LightInfoCloudRadianceEXT>(&info);
+          if (cloud != nullptr && !light->setCloudIncidentRadiance(tovec3(cloud->incidentRadiance))) {
+            return {};
+          }
+        }
+        return light;
       }
 
       // Note: Return an empty optional if the LightInfo struct does not contain a supported
