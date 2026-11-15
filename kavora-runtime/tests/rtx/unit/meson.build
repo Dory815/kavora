@@ -228,4 +228,10 @@ exe = executable('test_volume_transport', files('test_volume_transport.cpp'),
 test('test_volume_transport', exe, env: test_env)
 tests += exe
 
+# Explicitly opt in to shader readback tests on a hardware or software Vulkan device.
+run_target('test_cloud_transport',
+  command: [python_interpreter, files('test_cloud_transport.py')])
+run_target('test_atmosphere_moments',
+  command: [python_interpreter, files('test_atmosphere_moments.py')])
+
 alias_target('unit_tests', tests)
