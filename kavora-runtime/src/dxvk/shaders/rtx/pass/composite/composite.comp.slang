@@ -59,6 +59,22 @@ float3 sampleDomeLightTexture(Sampler2D<float3> DomeLight, float3 worldDirection
   return DomeLight.SampleLevel(sampleUV, 0).xyz;
 }
 
+float3 sampleCloudAmbientRadiance()
+{
+  const CloudAmbientQuadrature quadrature = createCloudAmbientQuadrature(cb.volumeArgs.clouds);
+  float3 radiance = 0;
+  [unroll]
+  for (uint index = 0; index < 16; index++)
+  {
+    const float4 sample = quadrature.sample(index);
+    const float3 incident = cb.domeLightArgs.active
+      ? cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, sample.xyz, cb.domeLightArgs.worldToLightTransform)
+      : cb.skyBrightness * SkyProbe.SampleLevel(sample.xyz, 0);
+    radiance += incident * sample.w;
+  }
+  return radiance;
+}
+
 void preCompositeDebugView(uint2 pixelCoordinate, uint2 compactedCoordinate, bool pixelIsActive)
 {
   // Debug views that need to run before the active early-out so they cover every pixel.
@@ -438,12 +454,12 @@ void applyAlphaBlendForeground(
 
       if (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable)
       {
-        float3 ambient = cb.domeLightArgs.active
-          ? cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, cb.volumeArgs.sceneUpDirection, cb.domeLightArgs.worldToLightTransform) * 0.5f
-          : cb.skyBrightness * SkyProbe.SampleLevel(cb.volumeArgs.sceneUpDirection, 0) * 0.5f;
-        AtmosphereSegment atmosphere = integrateAtmosphereSegment<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
+        const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs,
+          cameraPosition, primaryRayDirections.worldDirection);
+        const float3 ambient = ray.hasCloud ? sampleCloudAmbientRadiance() : float3(0);
+        AtmosphereSegment atmosphere = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
           VolumeFilteredRadianceCoCg,
-          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, cameraPosition, primaryRayDirections.worldDirection, surface.hitT, ambient);
+          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, surface.hitT, ambient);
         alphaBlendOutput = (alphaBlendOutput * atmosphere.transmittance + atmosphere.radiance) * (1 - backgroundAlpha);
       }
       else
