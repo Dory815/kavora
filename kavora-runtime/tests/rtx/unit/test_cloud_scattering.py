@@ -38,6 +38,31 @@ class Probe:
         return output.to_numpy().view(np.float32).reshape(-1, 4)
 
 
+def check_hemisphere(probe):
+    up = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, -1, 0], [1, 2, 3]], dtype=np.float32)
+    up /= np.linalg.norm(up, axis=1)[:, None]
+    samples = np.zeros((len(up), 8192, 4), dtype=np.float32)
+    samples[:, :, :3] = up[:, None, :]
+    result = probe.run("hemisphereQuadrature", samples).astype(np.float64).reshape(len(up), -1, 4)
+    direction, weight = result[:, :, :3], result[:, :, 3]
+    assert np.isfinite(result).all() and np.all(weight > 0)
+    assert np.all(np.sum(direction * up[:, None, :], axis=-1) > 0)
+    np.testing.assert_allclose(np.linalg.norm(direction, axis=-1), 1, atol=3e-7, rtol=0)
+    np.testing.assert_allclose(weight.sum(axis=1), 0.5, atol=1e-8, rtol=0)
+    np.testing.assert_allclose(np.sum(direction * weight[:, :, None], axis=1), 0.25 * up, atol=7e-5, rtol=0)
+    moment = np.einsum("bni,bnj,bn->bij", direction, direction, weight)
+    np.testing.assert_allclose(moment, np.broadcast_to(np.eye(3) / 6, moment.shape), atol=5e-5, rtol=0)
+    # HG times 4*pi has unit spherical average; its polar hemisphere integrals
+    # are analytic and resolve the narrow g=0.9 Mie lobe used by the sky.
+    g = 0.9
+    cosine = np.sum(direction * up[:, None, :], axis=-1)
+    polar = (1 - g * g) / (2 * g) * (1 / (1 - g) - 1 / np.sqrt(1 + g * g))
+    for sign, expected in ((1, polar), (-1, 1 - polar)):
+        radiance = (1 - g * g) / (1 + g * g - 2 * g * sign * cosine) ** 1.5
+        np.testing.assert_allclose(np.sum(radiance * weight, axis=1), expected, rtol=5e-5, atol=1e-8)
+    print("PASS sky quadrature: 8192 production nodes in 5 frames, normalization, angular moments and HG polar integrals")
+
+
 def check_boundaries(probe):
     samples = np.array([(above, below, g, 0)
                         for above in (0, 1e-8, 0.001, 0.1, 1, 10, 10000)
@@ -186,6 +211,7 @@ def main():
         "include_paths": [str(HERE), str(SHADERS)], "defines": {"__SLANG__": "1"},
     })
     probe = Probe(device)
+    check_hemisphere(probe)
     check_boundaries(probe)
     check_beam(probe)
     check_column_support(probe)

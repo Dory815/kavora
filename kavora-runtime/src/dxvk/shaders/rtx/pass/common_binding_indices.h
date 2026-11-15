@@ -53,6 +53,7 @@
 #define BINDING_VOXEL_COVERAGE_BUFFER            21
 #define BINDING_CLOUD_BASE_SAMPLER              22
 #define BINDING_CLOUD_DETAIL_SAMPLER              23
+#define BINDING_CLOUD_AMBIENT_INPUT              24
 #define BINDING_CLOUD_WEATHER_SAMPLER            25
 #define BINDING_CLOUD_SKY_SAMPLER                26
 
@@ -100,6 +101,7 @@
   SAMPLER3D(BINDING_VALUE_NOISE_SAMPLER)                            \
   SAMPLER3D(BINDING_CLOUD_BASE_SAMPLER)                            \
   SAMPLER3D(BINDING_CLOUD_DETAIL_SAMPLER)                            \
+  TEXTURE2D(BINDING_CLOUD_AMBIENT_INPUT)                            \
   SAMPLER2D(BINDING_CLOUD_WEATHER_SAMPLER)                      \
   SAMPLER2D(BINDING_CLOUD_SKY_SAMPLER)                              \
   RW_STRUCTURED_BUFFER(BINDING_SAMPLER_READBACK_BUFFER)             \

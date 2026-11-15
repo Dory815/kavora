@@ -23,11 +23,15 @@
 
 #include "rtx/utility/shader_types.h"
 #ifdef __cplusplus
+#include "rtx/concept/camera/camera.h"
+#include "rtx/concept/ray_portal/ray_portal.h"
 #include "rtx/pass/volume_args.h"
 #else
+import "rtx/concept/camera/camera.slang";
+#include "rtx/concept/ray_portal/ray_portal.slangh"
 import "rtx/pass/volume_parameters.slang";
 #endif
-#include "rtx/pass/raytrace_args.h"
+#include "rtx/pass/sparse_rendering/sparse_rendering.h"
 #include "rtx/algorithm/accumulate.h"
 
 #define DENOISER_MODE_OFF 0
@@ -36,7 +40,6 @@ import "rtx/pass/volume_parameters.slang";
 
 struct CompositeArgs {
   Camera camera;
-  DomeLightArgs domeLightArgs;
   RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
   VolumeArgs volumeArgs;
   AccumulationArgs accumulationArgs;
@@ -104,7 +107,6 @@ struct CompositeArgs {
   float stochasticAlphaBlendRadianceVolumeMultiplier;
   uint stochasticAlphaBlendDiscardBlackPixel;
   uint enhanceAlbedo;
-  float skyBrightness;
 
   float alphaBlendSurfacePackMult; // for packing/unpacking hitT into Float16 in AlphaBlendSurface
   float postFilterThreshold;

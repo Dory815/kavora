@@ -16,18 +16,13 @@ float3 sampleEnvironmentRadiance(DomeLightArgs dome, float brightness, SamplerCu
 }
 
 // The diffuse cloud source is the upper-hemisphere radiance integral divided by 4 pi.
-float3 sampleCloudAmbientRadiance(CloudArgs clouds, DomeLightArgs dome, float brightness,
-  SamplerCube<float3> probe, SamplerState sampler)
+float3 sampleCloudAmbientRadiance(CloudArgs clouds)
 {
-  const CloudAmbientQuadrature quadrature = createCloudAmbientQuadrature(clouds);
-  float3 radiance = 0;
-  [unroll]
-  for (uint index = 0; index < 16; index++)
+  if (!clouds.enable)
   {
-    const float4 sample = quadrature.sample(index);
-    radiance += sampleEnvironmentRadiance(dome, brightness, probe, sampler, sample.xyz) * sample.w;
+    return 0;
   }
-  return radiance;
+  return CloudAmbientInput.Load(int3(0, 0, 0)).rgb;
 }
 
 float3 sampleIndirectEnvironmentRadiance(float3 direction, SamplerCube<float3> probe, SamplerState sampler)

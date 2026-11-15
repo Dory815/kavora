@@ -29,7 +29,7 @@ void main(inout AtmosphereCallData data)
   const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs, data.origin, data.direction,
     data.volumeHint, data.mediumExtinction);
   const float3 ambient = ray.hasCloud
-    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds, cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler)
+    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds)
     : float3(0);
   const AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,

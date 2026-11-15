@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 GBwater
 // SPDX-License-Identifier: MIT
 import "rtx/algorithm/clouds.slang";
+import "rtx/algorithm/cloud_sky.slang";
 import "rtx/pass/cloud_parameters.slang";
 import "rtx/pass/clouds/cloud_sky_transport.slang";
+import "rtx/utility/lat_long_projection.slang";
 
 ConstantBuffer<CloudArgs> Clouds;
 Sampler2D<float4>.Handle Weather;
@@ -16,9 +18,62 @@ float3 Right;
 float3 CameraUp;
 float TanHalfFov;
 float TopSpan;
+#if defined(CLOUD_PREVIEW_ATMOSPHERE)
+Sampler2D<float4>.Handle Atmosphere;
+RWStructuredBuffer<float4> EnvironmentResults;
+float AtmosphereVerticalScale;
+float AmbientScale;
+#else
 float3 Ambient;
+#endif
 uint Projection;
 uint Radiance;
+
+#if defined(CLOUD_PREVIEW_ATMOSPHERE)
+float3 sampleAtmosphere(float3 direction)
+{
+  // Inverts the Y/Z-swapped, vertically scaled dome transform used by SkyRenderer.
+  const float3 domeDirection = normalize(float3(direction.x, direction.z, direction.y * AtmosphereVerticalScale));
+  return Sampler2D<float4>(Atmosphere).SampleLevel(cartesianDirectionToLatLongSphere(domeDirection), 0).rgb;
+}
+
+groupshared float3 PreviewAmbientSum[256];
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void mainAmbient(uint lane : SV_GroupIndex)
+{
+#if defined(CLOUD_PREVIEW_HAS_AMBIENT_SAMPLE_COUNT)
+  const uint sampleCount = kCloudAmbientSampleCount;
+#else
+  const uint sampleCount = 16;
+#endif
+  const CloudAmbientQuadrature quadrature = createCloudAmbientQuadrature(Clouds);
+  float3 radiance = 0;
+  if (AmbientScale > 0)
+  {
+    for (uint index = lane; index < sampleCount; index += 256)
+    {
+      const float4 sample = quadrature.sample(index);
+      radiance += sampleAtmosphere(sample.xyz) * sample.w * AmbientScale;
+    }
+  }
+  PreviewAmbientSum[lane] = radiance;
+  GroupMemoryBarrierWithGroupSync();
+  for (uint offset = 128; offset > 0; offset /= 2)
+  {
+    if (lane < offset)
+    {
+      PreviewAmbientSum[lane] += PreviewAmbientSum[lane + offset];
+    }
+    GroupMemoryBarrierWithGroupSync();
+  }
+  if (lane == 0)
+  {
+    EnvironmentResults[Size.x * Size.y] = float4(PreviewAmbientSum[0], 1);
+  }
+}
+#endif
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -38,6 +93,12 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const Sampler2D<float4> weather = Sampler2D<float4>(Weather);
   const Sampler3D<float4> base = Sampler3D<float4>(Base);
   const Sampler3D<float4> detail = Sampler3D<float4>(Detail);
+#if defined(CLOUD_PREVIEW_ATMOSPHERE)
+  const float3 ambient = EnvironmentResults[Size.x * Size.y].rgb;
+  EnvironmentResults[pixel.y * Size.x + pixel.x] = float4(sampleAtmosphere(direction), 1);
+#else
+  const float3 ambient = Ambient;
+#endif
 
   if (Projection == 0 && Radiance == 0)
   {
@@ -91,7 +152,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       if (Radiance != 0 && extinction > 0)
       {
         accumulateCloudSkyStep(extinction, next - previous, Clouds.albedo,
-          cloudIncidentRadiance(Clouds, position, direction, Ambient, weather, base, detail), radiance, transmission);
+          cloudIncidentRadiance(Clouds, position, direction, ambient, weather, base, detail), radiance, transmission);
       }
       previous = next;
     }

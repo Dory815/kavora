@@ -136,8 +136,7 @@ namespace dxvk {
         SAMPLER3D(COMPOSITE_CLOUD_DETAIL_SAMPLER)
         SAMPLER2D(COMPOSITE_CLOUD_WEATHER_SAMPLER)
         SAMPLER2D(COMPOSITE_CLOUD_SKY_SAMPLER)
-        SAMPLER2D(COMPOSITE_SKY_LIGHT_TEXTURE)
-        SAMPLERCUBE(COMPOSITE_SKY_PROBE_TEXTURE)
+        TEXTURE2D(COMPOSITE_CLOUD_AMBIENT_INPUT)
 
         RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT)
@@ -411,21 +410,7 @@ namespace dxvk {
       ctx->useRayReconstruction() ? resources.get<&RaytracingFrame::m_primaryScreenSpaceMotionVector>().view : nullptr, nullptr);
     ctx->bindResourceView(COMPOSITE_RR_SPECULAR_MOTION_INPUT_OUTPUT, resources.get<&RaytracingFrame::m_rayReconstructionSpecularMotion>().view, nullptr);
     ctx->bindResourceView(COMPOSITE_DLSS_NR_CONTROL_MASK_OUTPUT, resources.get<&RaytracingFrame::m_controlMask>().view, nullptr);
-    const DomeLightArgs& domeLightArgs = sceneManager.getLightManager().getDomeLightArgs();
-    ctx->bindResourceSampler(COMPOSITE_SKY_LIGHT_TEXTURE, linearSampler);
-    if (domeLightArgs.active && domeLightArgs.textureIndex != BINDING_INDEX_INVALID) {
-      ctx->bindResourceSampler(COMPOSITE_SKY_LIGHT_TEXTURE, ctx->getResourceManager().getSampler(
-        VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE));
-      RtxTextureManager& texManager = ctx->getCommonObjects()->getTextureManager();
-      const TextureRef& domeLightTex = texManager.getTextureTable()[domeLightArgs.textureIndex];
-      
-      ctx->bindResourceView(COMPOSITE_SKY_LIGHT_TEXTURE, domeLightTex.getImageView(), nullptr);
-    } else {
-      ctx->bindResourceView(COMPOSITE_SKY_LIGHT_TEXTURE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
-    }
-    ctx->bindResourceView(COMPOSITE_SKY_PROBE_TEXTURE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
-    ctx->bindResourceSampler(COMPOSITE_SKY_PROBE_TEXTURE, linearSampler);
+    ctx->bindResourceView(COMPOSITE_CLOUD_AMBIENT_INPUT, ctx->getCommonObjects()->metaGlobalVolumetrics().getCloudAmbient(), nullptr);
 
     compositeArgs.camera = sceneManager.getCamera().getShaderConstants();
     compositeArgs.frameIdx = frameIdx;
@@ -527,9 +512,6 @@ namespace dxvk {
     compositeArgs.numActiveRayPortals = portalData.numActiveRayPortals;
     memcpy(&compositeArgs.rayPortalHitInfos[0], &portalData.rayPortalHitInfos, sizeof(portalData.rayPortalHitInfos));
     memcpy(&compositeArgs.rayPortalHitInfos[maxRayPortalCount], &portalData.previousRayPortalHitInfos, sizeof(portalData.previousRayPortalHitInfos));
-
-    compositeArgs.domeLightArgs = domeLightArgs;
-    compositeArgs.skyBrightness = RtxOptions::skyBrightness();
 
     const bool sparseRenderingEnabled = resources.get<&RaytracingFrame::m_raytraceArgs>().sparseRenderingArgs.mode != SparseRenderingMode::Off;
 

@@ -47,7 +47,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
     return;
   }
   const float3 ambient = ray.hasCloud
-    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds, cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler)
+    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds)
     : float3(0);
   if (cb.volumeArgs.fogIntegrationMode == 1)
   {

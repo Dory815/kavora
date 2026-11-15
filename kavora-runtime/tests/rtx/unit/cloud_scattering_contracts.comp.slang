@@ -1,11 +1,27 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 GBwater
 // SPDX-License-Identifier: MIT
 import "rtx/algorithm/cloud_scattering.slang";
+import "rtx/algorithm/cloud_sky.slang";
+import "rtx/pass/cloud_parameters.slang";
 import "rtx/utility/cloud_density.slang";
 
 StructuredBuffer<float4> Inputs;
 RWStructuredBuffer<float4> Results;
 uint Count;
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void hemisphereQuadrature(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  CloudArgs args = {};
+  args.up = Inputs[index].xyz;
+  const CloudAmbientQuadrature quadrature = createCloudAmbientQuadrature(args);
+  Results[index] = quadrature.sample(index % kCloudAmbientSampleCount);
+}
 
 [shader("compute")]
 [numthreads(64, 1, 1)]

@@ -337,6 +337,7 @@ namespace dxvk {
     void dispatch(class RtxContext* ctx, uint32_t numActiveFroxelVolumes);
     // Publishes radiance, transmittance and the first opacity moment of each sky ray.
     void dispatchCloudSky(class RtxContext* ctx, const VolumeArgs& volume);
+    Rc<DxvkImageView> getCloudAmbient() const { return m_cloudAmbient.view; }
     Rc<DxvkImageView> getCloudSky() const { return m_cloudSky.view; }
     Rc<DxvkImageView> getCloudSkyDistanceMoment() const { return m_cloudSkyDistanceMoment.view; }
     
@@ -364,6 +365,7 @@ namespace dxvk {
     virtual void releaseDownscaledResource() override;
 
   private:
+    Resources::Resource m_cloudAmbient;
     Resources::Resource m_cloudSky;
     Resources::Resource m_cloudSkyDistanceMoment;
     Vector3 m_previousCloudWindOffset = Vector3(0.f);

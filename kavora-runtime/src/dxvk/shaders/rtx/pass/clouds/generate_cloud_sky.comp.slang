@@ -10,10 +10,6 @@ import "rtx/pass/cloud_parameters.slang";
 import "rtx/algorithm/cloud_sky.slang";
 #include "rtx/algorithm/environment_radiance.slangh"
 
-layout(binding = CLOUD_SKY_BINDING_PROBE)
-SamplerCube<float3> SkyProbe;
-layout(binding = CLOUD_SKY_BINDING_SAMPLER)
-SamplerState SkySampler;
 layout(binding = CLOUD_SKY_BINDING_OUTPUT)
 RWTexture2D<float4> CloudSky;
 layout(binding = CLOUD_SKY_BINDING_DISTANCE_MOMENT_OUTPUT)
@@ -45,7 +41,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
     CloudSkyDistanceMoment[pixel] = 0;
     return;
   }
-  const float3 ambient = sampleCloudAmbientRadiance(args, cb.domeLightArgs, cb.skyBrightness, SkyProbe, SkySampler);
+  const float3 ambient = sampleCloudAmbientRadiance(args);
   float3 radiance = 0;
   float transmittance = 1;
   float distanceMoment = 0;

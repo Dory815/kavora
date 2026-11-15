@@ -29,11 +29,13 @@
 #include "../util/util_global_time.h"
 
 #include "rtx/pass/common_binding_indices.h"
+#include "rtx/pass/clouds/cloud_ambient_binding_indices.h"
 #include "rtx/pass/clouds/cloud_sky_binding_indices.h"
 #include "rtx/pass/volumetrics/volume_integrate_binding_indices.h"
 #include "rtx/pass/volumetrics/volume_filter_binding_indices.h"
 
 #include <rtx_shaders/volume_integrate_rayquery_raygen.h>
+#include <rtx_shaders/generate_cloud_ambient.h>
 #include <rtx_shaders/generate_cloud_sky.h>
 #include <rtx_shaders/volume_filter.h>
 #include <rtx_shaders/volume_restir_initial.h>
@@ -50,13 +52,24 @@ namespace dxvk {
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
+    class GenerateCloudAmbientShader : public ManagedShader {
+      SHADER_SOURCE(GenerateCloudAmbientShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_ambient)
+      BINDLESS_ENABLED()
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+        SAMPLERCUBE(CLOUD_AMBIENT_BINDING_PROBE)
+        SAMPLER(CLOUD_AMBIENT_BINDING_SAMPLER)
+        RW_TEXTURE2D(CLOUD_AMBIENT_BINDING_OUTPUT)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(GenerateCloudAmbientShader);
+
     class GenerateCloudSkyShader : public ManagedShader {
       SHADER_SOURCE(GenerateCloudSkyShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_sky)
       BINDLESS_ENABLED()
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
-        SAMPLERCUBE(CLOUD_SKY_BINDING_PROBE)
-        SAMPLER(CLOUD_SKY_BINDING_SAMPLER)
         RW_TEXTURE2D(CLOUD_SKY_BINDING_OUTPUT)
         RW_TEXTURE2D(CLOUD_SKY_BINDING_DISTANCE_MOMENT_OUTPUT)
       END_PARAMETER()
@@ -767,7 +780,33 @@ namespace dxvk {
 
   void RtxGlobalVolumetrics::dispatchCloudSky(RtxContext* ctx, const VolumeArgs& volume) {
     const auto& clouds = volume.clouds;
-    if (!clouds.enable || (clouds.transportMode != 1 && !volume.enable)) {
+    if (!clouds.enable) {
+      m_cloudAmbient.reset();
+      m_cloudSky.reset();
+      m_cloudSkyDistanceMoment.reset();
+      return;
+    }
+    const auto clampSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    const auto wrapSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+      VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    {
+      ScopedGpuProfileZone(ctx, "Cloud Ambient Integration");
+      if (!m_cloudAmbient.isValid()) {
+        Rc<DxvkContext> resourceContext = ctx;
+        m_cloudAmbient = Resources::createImageResource(resourceContext, "cloud ambient radiance", { 1, 1, 1 },
+          VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D);
+      }
+      ctx->bindCommonRayTracingResources();
+      ctx->bindResourceView(BINDING_CLOUD_AMBIENT_INPUT, nullptr, nullptr);
+      ctx->bindResourceView(CLOUD_AMBIENT_BINDING_PROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
+      ctx->bindResourceSampler(CLOUD_AMBIENT_BINDING_PROBE, clampSampler);
+      ctx->bindResourceSampler(CLOUD_AMBIENT_BINDING_SAMPLER, wrapSampler);
+      ctx->bindResourceView(CLOUD_AMBIENT_BINDING_OUTPUT, m_cloudAmbient.view, nullptr);
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateCloudAmbientShader::getShader());
+      ctx->dispatch(1, 1, 1);
+      ctx->bindResourceView(BINDING_CLOUD_AMBIENT_INPUT, m_cloudAmbient.view, nullptr);
+    }
+    if (clouds.transportMode != 1 && !volume.enable) {
       m_cloudSky.reset();
       m_cloudSkyDistanceMoment.reset();
       return;
@@ -782,12 +821,6 @@ namespace dxvk {
         VK_FORMAT_R16_SFLOAT, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D);
     }
     ctx->bindCommonRayTracingResources();
-    const auto clampSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-    const auto wrapSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
-      VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-    ctx->bindResourceView(CLOUD_SKY_BINDING_PROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
-    ctx->bindResourceSampler(CLOUD_SKY_BINDING_PROBE, clampSampler);
-    ctx->bindResourceSampler(CLOUD_SKY_BINDING_SAMPLER, wrapSampler);
     ctx->bindResourceView(CLOUD_SKY_BINDING_OUTPUT, m_cloudSky.view, nullptr);
     ctx->bindResourceView(CLOUD_SKY_BINDING_DISTANCE_MOMENT_OUTPUT, m_cloudSkyDistanceMoment.view, nullptr);
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateCloudSkyShader::getShader());

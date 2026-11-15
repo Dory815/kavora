@@ -53,7 +53,7 @@ void main(uint2 column : SV_DispatchThreadID)
   const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs, cameraRay.origin, cameraRay.direction,
     0, translucentMediumExtinction(cb.startInMediumMaterialIndex, surfaceMaterials));
   const float3 ambient = ray.hasCloud
-    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds, cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler)
+    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds)
     : float3(0);
   AtmosphereSegment accumulated = emptyAtmosphereSegment();
   float previous = 0;

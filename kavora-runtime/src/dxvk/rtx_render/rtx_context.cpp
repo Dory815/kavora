@@ -1561,6 +1561,7 @@ namespace dxvk {
     bindResourceSampler(BINDING_CLOUD_WEATHER_SAMPLER, cloudSampler);
     bindResourceView(BINDING_CLOUD_SKY_SAMPLER, m_common->metaGlobalVolumetrics().getCloudSky(), nullptr);
     bindResourceSampler(BINDING_CLOUD_SKY_SAMPLER, linearSampler);
+    bindResourceView(BINDING_CLOUD_AMBIENT_INPUT, m_common->metaGlobalVolumetrics().getCloudAmbient(), nullptr);
     bindResourceBuffer(BINDING_SAMPLER_READBACK_BUFFER, DxvkBufferSlice(samplerFeedbackBuffer, 0, samplerFeedbackBuffer.ptr() ? samplerFeedbackBuffer->info().size : 0));
   }
 

@@ -52,27 +52,13 @@ import "rtx/algorithm/cloud_sky.slang";
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
-float3 sampleDomeLightTexture(Sampler2D<float3> DomeLight, float3 worldDirection, float4x4 worldToDomeLightTransform)
-{
-  float3 domeSampleDirection = normalize(mul(worldToDomeLightTransform, float4(worldDirection, 0.0f)).xyz);
-  float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
-  return DomeLight.SampleLevel(sampleUV, 0).xyz;
-}
-
 float3 sampleCloudAmbientRadiance()
 {
-  const CloudAmbientQuadrature quadrature = createCloudAmbientQuadrature(cb.volumeArgs.clouds);
-  float3 radiance = 0;
-  [unroll]
-  for (uint index = 0; index < 16; index++)
+  if (!cb.volumeArgs.clouds.enable)
   {
-    const float4 sample = quadrature.sample(index);
-    const float3 incident = cb.domeLightArgs.active
-      ? cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, sample.xyz, cb.domeLightArgs.worldToLightTransform)
-      : cb.skyBrightness * SkyProbe.SampleLevel(sample.xyz, 0);
-    radiance += incident * sample.w;
+    return 0;
   }
-  return radiance;
+  return CloudAmbientInput.Load(int3(0, 0, 0)).rgb;
 }
 
 void preCompositeDebugView(uint2 pixelCoordinate, uint2 compactedCoordinate, bool pixelIsActive)

@@ -4,9 +4,10 @@ module cloud_sky;
 import "rtx/pass/cloud_parameters.slang";
 
 static const float kCloudSkyPi = 3.141592653589793f;
+public static const uint kCloudAmbientSampleCount = 8192;
 
-// Integrates the upper-hemisphere radiance divided by 4 pi. Sampling stays with
-// each pass so direct textures and bindless environment textures share the rule.
+// Equal-area Hammersley nodes integrate upper-hemisphere radiance divided by 4 pi.
+// The world-frame pattern stays fixed as the light directions change.
 public struct CloudAmbientQuadrature
 {
   public float3 up;
@@ -15,15 +16,12 @@ public struct CloudAmbientQuadrature
 
   public float4 sample(uint index)
   {
-    const float4 cosines = float4(0.0694318442f, 0.3300094782f, 0.6699905218f, 0.9305681558f);
-    const float4 weights = float4(0.1739274226f, 0.3260725774f, 0.3260725774f, 0.1739274226f);
-    const float2 azimuths[4] = { float2(1, 0), float2(0, 1), float2(-1, 0), float2(0, -1) };
-    const uint ring = index / 4;
-    const float cosine = cosines[ring];
+    const float cosine = (float(index) + 0.5f) / float(kCloudAmbientSampleCount);
     const float sine = sqrt(1.0f - cosine * cosine);
-    const float2 azimuth = azimuths[index % 4];
+    const float longitude = float(reversebits(index)) * (2.0f * kCloudSkyPi / 4294967296.0f);
+    const float2 azimuth = float2(cos(longitude), sin(longitude));
     const float3 direction = cosine * up + sine * (azimuth.x * tangent + azimuth.y * bitangent);
-    return float4(direction, weights[ring] * 0.125f);
+    return float4(direction, 0.5f / float(kCloudAmbientSampleCount));
   }
 };
 
@@ -31,10 +29,9 @@ public CloudAmbientQuadrature createCloudAmbientQuadrature(CloudArgs clouds)
 {
   CloudAmbientQuadrature result;
   result.up = clouds.up;
-  const float3 light = clouds.lights[0].directionToLight;
-  const float3 horizontal = light - dot(light, result.up) * result.up;
-  result.tangent = dot(horizontal, horizontal) > 1e-6f ? normalize(horizontal) : float3(1, 0, 0);
-  result.bitangent = cross(result.up, result.tangent);
+  const float3 reference = abs(result.up.x) < 0.9f ? float3(1, 0, 0) : float3(0, 1, 0);
+  result.tangent = normalize(reference - dot(reference, result.up) * result.up);
+  result.bitangent = cross(result.tangent, result.up);
   return result;
 }
 

@@ -105,9 +105,6 @@ Sampler2D<float4> CloudWeatherSampler;
 layout(binding = COMPOSITE_CLOUD_SKY_SAMPLER)
 Sampler2D<float4> CloudSkySampler;
 
-layout(binding = COMPOSITE_SKY_LIGHT_TEXTURE)
-Sampler2D<float3> SkyLight;
-
 layout(r8ui, binding = COMPOSITE_ACTIVE_PIXEL_MASK_INPUT)
 Texture2D<uint> SparseRenderingActivePixelMask;
 
@@ -123,8 +120,8 @@ Texture2D<uint2> TileActiveCounts;
 layout(r8ui, binding = COMPOSITE_PRIMARY_SURFACE_FLAGS_INPUT)
 Texture2D<uint> PrimarySurfaceFlags;
 
-layout(binding = COMPOSITE_SKY_PROBE_TEXTURE)
-SamplerCube<float3> SkyProbe;
+layout(binding = COMPOSITE_CLOUD_AMBIENT_INPUT)
+Texture2D<float4> CloudAmbientInput;
 
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
