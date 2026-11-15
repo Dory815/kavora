@@ -97,6 +97,7 @@
 // Note: Use thin film in the GBuffer pass for its usage in PSR on mirrorlike surfaces.
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
 #define OPAQUE_MATERIAL_USE_POM 1
+#define RAIN_GROUND_SAMPLE 1
 
 #define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
 

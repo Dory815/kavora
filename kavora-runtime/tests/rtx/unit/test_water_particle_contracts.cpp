@@ -18,7 +18,7 @@ static_assert(sizeof(WaterSimImpulse) == 16);
 static_assert(sizeof(WaterSimStep) == 40);
 static_assert(sizeof(WaterImpactStep) == 40);
 static_assert(offsetof(WaterImpactStep, firstImpulse) == 24);
-static_assert(sizeof(WaterDetailStep) == 4);
+static_assert(sizeof(WaterDetailStep) == 8);
 
 bool checkAreaTable() {
   using namespace dxvk;

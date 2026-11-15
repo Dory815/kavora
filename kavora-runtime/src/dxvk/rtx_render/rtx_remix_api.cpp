@@ -1085,6 +1085,7 @@ namespace {
     dst.vertexCount = src.vertices_count;
     dst.immutablePositions = !src.skinning_hasvalue;
     dst.hasWaterContact = (src.flags & REMIXAPI_MESH_INFO_SURFACE_TRIANGLES_BIT_WATER_CONTACT) != 0;
+    dst.receivesGroundRain = (src.flags & REMIXAPI_MESH_INFO_SURFACE_TRIANGLES_BIT_RAIN_GROUND) != 0;
     dst.isMatchedIorBoundary = (src.flags & REMIXAPI_MESH_INFO_SURFACE_TRIANGLES_BIT_MATCHED_IOR_BOUNDARY) != 0;
     if (src.flags & REMIXAPI_MESH_INFO_SURFACE_TRIANGLES_BIT_PREVIOUS_POSITIONS) {
       dst.previousPositionOffset = offsetof(remixapi_HardcodedVertex, previousPosition);
@@ -2162,11 +2163,14 @@ namespace {
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_Submit(const remixapi_SubmitInfo* info) {
     const uint32_t flags = info ? info->interopFlags : 0;
-    const auto* water = info && info->pNext
-      ? static_cast<const remixapi_SubmitInfoWaterSimEXT*>(info->pNext) : nullptr;
+    const auto* next = info ? static_cast<const remixapi_SubmitInfoRainGroundEXT*>(info->pNext) : nullptr;
+    const auto* rainGround = next && next->sType == REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_RAIN_GROUND_EXT ? next : nullptr;
+    const auto* water = static_cast<const remixapi_SubmitInfoWaterSimEXT*>(
+      rainGround ? rainGround->pNext : info ? info->pNext : nullptr);
     const auto* weather = water && water->sType == REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_WATER_SIM_EXT
       ? static_cast<const remixapi_SubmitInfoWaterRainEXT*>(water->pNext) : nullptr;
     if ((info && info->sType != REMIXAPI_STRUCT_TYPE_SUBMIT_INFO) ||
+        (rainGround && !(rainGround->rain >= 0.0f && rainGround->rain <= 1.0f)) ||
         (water && (water->sType != REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_WATER_SIM_EXT ||
           water->impulseCount > kWaterSimMaxImpulses || (water->impulseCount && !water->impulses) || water->reset > 1)) ||
         (weather && (weather->sType != REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_WATER_RAIN_EXT || weather->pNext ||
@@ -2211,7 +2215,18 @@ namespace {
         }
       });
     }
-    device->EmitCs([](dxvk::DxvkContext* ctx) { replayRetainedSceneInstances(ctx); });
+    static_assert(kRainGroundGridSize == REMIXAPI_RAIN_GROUND_GRID_SIZE);
+    if (rainGround && rainGround->columns) {
+      std::vector<int32_t> columns(rainGround->columns, rainGround->columns + kRainGroundGridSize * kRainGroundGridSize);
+      device->EmitCs([columns = std::move(columns)](dxvk::DxvkContext* ctx) {
+        ctx->getCommonObjects()->getSceneManager().uploadRainGround(ctx, columns.data());
+      });
+    }
+    device->EmitCs([origin = rainGround ? ivec2(rainGround->originX, rainGround->originZ) : ivec2{},
+        rain = rainGround ? rainGround->rain : 0.0f](dxvk::DxvkContext* ctx) {
+      ctx->getCommonObjects()->getSceneManager().setRainGround(origin, rain);
+      replayRetainedSceneInstances(ctx);
+    });
     if (FAILED(device->Present(nullptr, nullptr, nullptr, nullptr))) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }

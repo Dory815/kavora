@@ -22,6 +22,7 @@ public class MeshInfoSurfaceTriangles {
     public static final int WATER_CONTACT = 1 << 3;
     /** The two sides of a thick translucent boundary share an IOR. See remix_c.h for the vertex layout. */
     public static final int MATCHED_IOR_BOUNDARY = 1 << 4;
+    public static final int RAIN_GROUND = 1 << 5;
 
     /** Direct, native-order records starting at offset zero; capacity must cover vertexCount times the stride. */
     public ByteBuffer vertexBuffer;

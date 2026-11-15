@@ -1438,6 +1438,7 @@ namespace dxvk {
     constants.setLogValueForDisocclusionMaskForDLSSRR = DxvkRayReconstruction::enableDisocclusionMaskBlur();
     constants.invalidateHistoryForAnimatedWater = DxvkRayReconstruction::invalidateHistoryForAnimatedWater();
     constants.water = m_common->waterSimulation().shaderArgs(sceneOrigin.x, RtxOptions::zUp() ? 0 : sceneOrigin.y);
+    constants.rainGround = getSceneManager().rainGroundArgs();
     constants.sludgeWaterMaterialIndex = getSceneManager().getSludgeWaterMaterialIndex();
 
     // The denoising normals are consumed only by NRD. dispatchDenoise reads these back rather than

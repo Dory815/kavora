@@ -92,12 +92,12 @@ that boundary. If the change needs new per-frame shader parameters, follow
 the shared [shader buffer contract](../kavora-runtime/src/dxvk/shaders/rtx/README.md#ray-tracing-constant-buffer).
 See the [effect entry points](../kavora-runtime/src/dxvk/shaders/rtx/README.md#visual-effect-boundaries).
 
-A rain-driven material effect, for example, can consume weather in a Java
-scene-stage handler and modify roughness in Slang's opaque parameter stage.
-Use the existing weather input when its meaning matches the effect. If the
-effect simulates or retains its own GPU data, declare the producer and its
-resources in the native preparation stage and give the material stage a
-typed view of the result. Each layer can declare its own inputs and ordering.
+Rain-wet terrain follows this boundary. The scene schedule registers the
+exposure snapshot before Submit and acknowledges it after Submit succeeds.
+Java sends world-column heights only when they change. The G-buffer owns the
+exposure buffer binding and adapts the existing rain ring texture to the
+opaque material stage. The Slang effect reads those inputs and modifies
+albedo, roughness and the shading normal before BSDF construction.
 
 Water already uses this boundary. Java submits a `WaterSimulationFrame`
 through the public FFM contract, and the native simulation produces the

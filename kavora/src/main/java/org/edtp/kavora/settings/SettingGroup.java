@@ -31,6 +31,7 @@ public enum SettingGroup {
     END_SKY(SettingCategory.SKY, "kavora.settings.group.endSky"),
     CLOUDS(SettingCategory.WEATHER, "kavora.settings.group.clouds"),
     CLOUD_QUALITY(CLOUDS, "kavora.settings.group.cloudQuality"),
+    RAIN_GROUND(SettingCategory.WEATHER, "kavora.settings.group.rainGround"),
     FOG(SettingCategory.WEATHER, "kavora.settings.group.fog"),
     FOG_OVERWORLD(FOG, "kavora.settings.group.overworld"),
     GROUND_MIST(FOG_OVERWORLD, "kavora.settings.group.groundMist"),

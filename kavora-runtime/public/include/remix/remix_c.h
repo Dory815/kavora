@@ -171,6 +171,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_CAMERA_INFO_SCENE_ORIGIN_EXT           = 52,
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_GLINT_EXT               = 53,
     REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_WATER_EXT               = 54,
+    REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_RAIN_GROUND_EXT           = 55,
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT         = 56,
     REMIXAPI_STRUCT_TYPE_MESH_INFO_QUAD_SUBSET_EXT             = 57,
     // NOTE: always leave ',' after the number, so the git diff is cleaner!
@@ -556,6 +557,7 @@ extern "C" {
     // The material and ordinary UVs define the medium entered against the outward
     // normal. The appended attributes describe the other side.
     REMIXAPI_MESH_INFO_SURFACE_TRIANGLES_BIT_MATCHED_IOR_BOUNDARY = 1 << 4,
+    REMIXAPI_MESH_INFO_SURFACE_TRIANGLES_BIT_RAIN_GROUND = 1 << 5,
   } remixapi_MeshInfoSurfaceTrianglesFlagBit;
 
   typedef struct remixapi_MatchedIorBackMedium {
@@ -1240,6 +1242,19 @@ extern "C" {
     void* pNext;
     float rain;
   } remixapi_SubmitInfoWaterRainEXT;
+
+  enum { REMIXAPI_RAIN_GROUND_GRID_SIZE = 256 };
+
+  /** The first rain-exposed height in each column, indexed by wrapped world X/Z. INT32_MAX marks a dry column. */
+  typedef struct remixapi_SubmitInfoRainGroundEXT {
+    remixapi_StructType sType;
+    void* pNext;
+    const int32_t* columns; // Optional full grid update. Null reuses the previous upload.
+    int32_t originX;
+    int32_t originZ;
+    float rain;
+  } remixapi_SubmitInfoRainGroundEXT;
+
   REMIXAPI_HELPER remixapi_SubmitInfo remixapi_SubmitInfo_init() {
     remixapi_SubmitInfo info = { (remixapi_StructType)0 };
     info.sType = REMIXAPI_STRUCT_TYPE_SUBMIT_INFO;

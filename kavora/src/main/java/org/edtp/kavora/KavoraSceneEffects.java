@@ -13,9 +13,11 @@ import org.edtp.kavora.light.LightManager;
 import org.edtp.kavora.logic.ConfLayerDriver;
 import org.edtp.kavora.particle.ParticleFramePipeline;
 import org.edtp.kavora.profiling.ProfileScope;
+import org.edtp.kavora.sdk.SubmitInfo;
 import org.edtp.kavora.sky.EnvironmentSnapshot;
 import org.edtp.kavora.sky.SkyRenderer;
 import org.edtp.kavora.texture.ParticleAtlasManager;
+import org.edtp.kavora.weather.KavoraRainGround;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +35,7 @@ final class KavoraSceneEffects {
     private final KavoraBlockDamagePass blockDamage;
     private final KavoraBlockOutlinePass blockOutline;
     private final EnvironmentSnapshot environment = new EnvironmentSnapshot();
+    private final KavoraRainGround rainGround = new KavoraRainGround();
     private boolean environmentCaptured;
 
     KavoraSceneEffects(SkyRenderer sky, CloudRenderer clouds, ConfLayerDriver layers, KavoraFrameMetrics metrics,
@@ -121,5 +124,20 @@ final class KavoraSceneEffects {
 
     void finishParticles(ClientLevel world) {
         particles.finishAfterSubmit(world);
+    }
+
+    void recordRainGround(SubmitInfo scene, ClientLevel world, Vec3 position, float partialTick) {
+        scene.rainGround = rainGround.capture(world, position, partialTick);
+    }
+
+    void finishRainGround(SubmitInfo scene) {
+        if (scene.rainGround != null) {
+            rainGround.submitted();
+            scene.rainGround = null;
+        }
+    }
+
+    void resetRainGround() {
+        rainGround.reset();
     }
 }

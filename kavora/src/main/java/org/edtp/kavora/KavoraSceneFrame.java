@@ -26,6 +26,7 @@ import org.edtp.kavora.render.KavoraFramePresentation;
 import org.edtp.kavora.render.KavoraInterop;
 import org.edtp.kavora.sdk.RemixAPI;
 import org.edtp.kavora.sdk.RemixException;
+import org.edtp.kavora.sdk.SubmitInfo;
 import org.edtp.kavora.terrain.ChunkManager;
 import org.edtp.kavora.texture.BlockTextureManager;
 import org.slf4j.Logger;
@@ -48,6 +49,7 @@ final class KavoraSceneFrame {
     private final ParticleFramePipeline particles;
     private final KavoraFrameMetrics perfTimer;
     private final BenchmarkController benchmarkController;
+    private final SubmitInfo scene = new SubmitInfo();
     private boolean renderThreadNamed;
 
     KavoraSceneFrame(
@@ -176,13 +178,13 @@ final class KavoraSceneFrame {
 
             perfTimer.begin(perfTimer.perfSubmit);
             try (ProfileScope submitScope = ProfileScope.begin("Submit")) {
-                SceneEffectSchedule.beforeSubmit(world, cameraPos, tickDelta);
-                presentation.submitScene();
+                SceneEffectSchedule.beforeSubmit(effects, scene, world, cameraPos, tickDelta);
+                presentation.submitScene(scene);
             } finally {
                 perfTimer.end(perfTimer.perfSubmit);
             }
 
-            SceneEffectSchedule.afterSubmit(effects, world);
+            SceneEffectSchedule.afterSubmit(effects, scene, world);
 
         } catch (RemixException e) {
             LOGGER.error("Remix error during frame render: {} (code: {})",
@@ -208,6 +210,10 @@ final class KavoraSceneFrame {
             perfTimer.finishFrame();
             benchmarkController.onFrameEnd(perfTimer);
         }
+    }
+
+    void resetRainGround() {
+        effects.resetRainGround();
     }
 
     /**

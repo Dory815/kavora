@@ -26,7 +26,7 @@ public final class KavoraFramePresentation implements AutoCloseable {
     private final RemixAPI api;
     private final KavoraInterop images;
     private final long window;
-    private final SubmitInfo submit = new SubmitInfo();
+    private final SubmitInfo emptyScene = new SubmitInfo();
     private final PresentInfo present = new PresentInfo();
     private final NativeMenuOverlay menu = new NativeMenuOverlay();
     private boolean submitted;
@@ -39,18 +39,21 @@ public final class KavoraFramePresentation implements AutoCloseable {
     }
 
     /** Seals the scene after capture and makes its producer signal available to the host. */
-    public void submitScene() {
+    public void submitScene(SubmitInfo submit) {
         submit.waterSimulation = KavoraWaterRipples.pendingFrame();
-        api.submit(submit);
-        if (submit.waterSimulation != null) {
-            KavoraWaterRipples.submitted();
+        try {
+            api.submit(submit);
+            if (submit.waterSimulation != null) {
+                KavoraWaterRipples.submitted();
+            }
+        } finally {
             submit.waterSimulation = null;
         }
         submitted = true;
     }
 
     public void acquireImages() {
-        if (!submitted) submitScene();
+        if (!submitted) submitScene(emptyScene);
         images.refreshImages();
         images.acquireImages();
     }

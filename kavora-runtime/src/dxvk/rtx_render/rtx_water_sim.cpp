@@ -149,7 +149,7 @@ namespace dxvk {
       m_impulses[i].position = m_impulses[i].position + planar;
   }
 
-  void RtxWaterSimulation::prepare(RtxContext* ctx, bool hasWater, bool hasSludge) {
+  void RtxWaterSimulation::prepare(RtxContext* ctx, bool hasWater, bool hasSludge, bool rainGroundRings) {
     m_shaderArgs.simulationClip = vec4(0.0f);
     m_shaderArgs.impactClip = {};
     m_shaderArgs.effects = 0;
@@ -158,6 +158,7 @@ namespace dxvk {
     const float rippleScale = std::clamp(rippleStrength(), 0.0f, 2.0f);
     const float windScale = std::clamp(windStrength(), 0.0f, 2.0f);
     const float ringScale = std::clamp(ringStrength(), 0.0f, 2.0f);
+    m_shaderArgs.ringStrength = ringScale;
     const bool ripples = surface && enable() && rippleScale > 0.0f;
     const bool wind = surface && windEnabled() && windScale > 0.0f;
     const bool rings = surface && ringsEnabled() && ringScale > 0.0f;
@@ -183,14 +184,17 @@ namespace dxvk {
       m_resetImpacts = true;
       m_appliedImpactImpulses = 0;
     }
-    if (!rings) {
+    if (!rings && !rainGroundRings) {
       m_rings = {};
     }
     const bool active = m_count || m_activity > 0.0f;
     const bool runRipples = ripples && active;
     const bool runImpacts = impactEffects && active;
-    if (rings && (m_shaderArgs.rain > 0.0f || runImpacts)) {
-      prepareRings(ctx, float(timeMs % 4096000u) * 0.001f, ringScale);
+    const bool waterRings = rings && (m_shaderArgs.rain > 0.0f || runImpacts);
+    if (waterRings || rainGroundRings) {
+      prepareRings(ctx, float(timeMs % 4096000u) * 0.001f, 1.0f);
+    }
+    if (waterRings) {
       m_shaderArgs.effects |= WATER_EFFECT_RINGS;
     }
     if (!runRipples && !runImpacts) {

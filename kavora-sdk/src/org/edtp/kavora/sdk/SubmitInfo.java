@@ -15,6 +15,7 @@ public class SubmitInfo {
 
     public int interopFlags; // see remixapi_SubmitInteropFlagBit
     public WaterSimulationFrame waterSimulation;
+    public RainGroundFrame rainGround;
 
     public SubmitInfo() {}
 }

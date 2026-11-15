@@ -76,6 +76,15 @@ public final class RemixBridgeContractTest {
         waves.setRain(0.0f);
         check(!waves.isEmpty(), "Stopping rain must be submitted without any impulses");
         equal(0, RemixBridge.submit(5, waves));
+        RainGroundFrame ground = new RainGroundFrame();
+        ground.originX = -128;
+        ground.originZ = 256;
+        ground.rain = 0.5f;
+        ground.columns = ByteBuffer.allocateDirect(RainGroundFrame.GRID_BYTES).order(ByteOrder.nativeOrder());
+        ground.columns.putInt(0, 64).putInt(RainGroundFrame.GRID_BYTES - Integer.BYTES, Integer.MAX_VALUE);
+        equal(0, RemixBridge.submit(5, waves, ground));
+        ground.columns = null;
+        equal(0, RemixBridge.submit(5, null, ground));
         SharedBufferInfo shared = new SharedBufferInfo();
         equal(0, RemixBridge.createSharedBuffer(4096, shared));
         equal(0x7777, shared.buffer); equal(0x8888, shared.memoryHandle);

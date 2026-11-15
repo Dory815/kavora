@@ -667,6 +667,7 @@ public class KavoraRenderer {
         Minecraft.getInstance().execute(() -> {
             if (initialized) {
                 org.edtp.kavora.render.KavoraWaterRipples.reset();
+                sceneFrame.resetRainGround();
                 doClearWorld();
             }
         });

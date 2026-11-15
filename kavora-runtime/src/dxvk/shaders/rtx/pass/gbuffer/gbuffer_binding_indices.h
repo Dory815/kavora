@@ -39,6 +39,7 @@
 #define GBUFFER_BINDING_WATER_IMPACTS                                          45
 #define GBUFFER_BINDING_WATER_TILE_SAMPLER                                     46
 #define GBUFFER_BINDING_CLOUD_SKY_DISTANCE_MOMENT                              47
+#define GBUFFER_BINDING_RAIN_GROUND_COLUMNS                                    48
 // Maps a pixel to its slot in the compacted GBuffer, if the pixel has one.
 #define GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT                           51
 // The GBuffer seeds radiance cache update paths from this resolved query-pixel map.

@@ -7,6 +7,7 @@ package org.edtp.kavora.settings;
 import java.util.List;
 import org.edtp.kavora.render.KavoraWaterRipples;
 import org.edtp.kavora.sdk.RemixAPI;
+import org.edtp.kavora.weather.KavoraRainGround;
 
 /** Native visual controls, separated from display reconstruction and CPU/GPU scheduling. */
 final class KavoraEffectOptions {
@@ -148,6 +149,9 @@ final class KavoraEffectOptions {
         decimal("water.ringStrength", SettingGroup.WATER_WAVES, "rtx.waterSim.ringStrength", 0, 2),
         toggle("water.floatingSludge", SettingGroup.WATER_WAVES, "rtx.waterSim.sludgeEnabled",
                 KavoraWaterRipples::setFloatingSludgeEnabled),
+        toggle("rainGround.enabled", SettingGroup.RAIN_GROUND, "rtx.rainGround.enabled",
+                KavoraRainGround::setEnabled),
+        decimal("rainGround.ripples", SettingGroup.RAIN_GROUND, "rtx.rainGround.rippleStrength", 0, 1),
         toggle("particles.spawnBySurfaceArea", SettingGroup.SIMULATED_PARTICLES, "rtx.particles.globalPreset.spawnBySurfaceArea"),
         decimal("particles.minScreenSize", SettingGroup.SIMULATED_PARTICLES, "rtx.particles.globalPreset.minScreenSize", 0, 64),
         decimal("particles.maxScreenSize", SettingGroup.SIMULATED_PARTICLES, "rtx.particles.globalPreset.maxScreenSize", 0, 512),

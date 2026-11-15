@@ -45,6 +45,7 @@ import "rtx/pass/volume_parameters.slang";
 #else
 import "rtx/pass/water_sim/water_surface_args.slang";
 #endif
+#include "rtx/concept/surface_material/rain_ground_args.h"
 #include "rtx/concept/light/light_types.h"
 #include "rtx/concept/surface/surface_shared.h"
 #include "rtx/algorithm/nee_cache_data.h"
@@ -477,6 +478,7 @@ struct RaytraceArgs {
   uint ignoreSkyIfCameraInMedium;
   uint pomSilhouettesBehindTranslucency;
   WaterSurfaceArgs water;
+  RainGroundArgs rainGround;
   uint renderTargetHistoryValid;
   uint sludgeWaterMaterialIndex;
   uint hasAlphaCoverage;

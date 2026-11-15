@@ -522,6 +522,11 @@ struct Surface
     get { return packedFlagGet(data13.z, 1 << 20); }
   }
 
+  property bool receivesGroundRain
+  {
+    get { return packedFlagGet(data13.z, 1 << 21); }
+  }
+
   property uint tFactor
   {
     get { return data13.y; }

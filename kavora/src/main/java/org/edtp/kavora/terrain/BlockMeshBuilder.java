@@ -335,6 +335,7 @@ public final class BlockMeshBuilder {
             }
             putCanonicalQuadIndices(im, totalVerts);
             int flags = MeshInfoSurfaceTriangles.TEXCOORD_BOUNDS | MeshInfoSurfaceTriangles.COMPACT_VERTICES;
+            if (bucket.category == ChunkManager.CAT_SOLID) flags |= MeshInfoSurfaceTriangles.RAIN_GROUND;
             int layer = BlockTextureManager.layerType(bucket.key);
             if (layer == BlockTextureManager.L_GLASS_MEDIUM_BOUNDARY) {
                 flags |= MeshInfoSurfaceTriangles.MATCHED_IOR_BOUNDARY;

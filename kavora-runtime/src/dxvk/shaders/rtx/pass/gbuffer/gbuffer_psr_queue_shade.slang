@@ -56,6 +56,7 @@
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #define WATER_SIM_SAMPLE 1
+#define RAIN_GROUND_SAMPLE 1
 #include "rtx/pass/gbuffer/gbuffer_bindings.slangh"
 import "rtx/concept/camera/camera.slang";
 #include "rtx/pass/gbuffer/psr_queue.slangh"

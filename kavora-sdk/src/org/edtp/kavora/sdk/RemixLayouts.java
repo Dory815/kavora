@@ -504,6 +504,13 @@ final class RemixLayouts {
                 JAVA_INT.withName("sType"),
                 ADDRESS.withName("pNext"),
                 JAVA_FLOAT.withName("rain"));
+        define("SubmitInfoRainGroundEXT",
+                JAVA_INT.withName("sType"),
+                ADDRESS.withName("pNext"),
+                ADDRESS.withName("columns"),
+                JAVA_INT.withName("originX"),
+                JAVA_INT.withName("originZ"),
+                JAVA_FLOAT.withName("rain"));
         define("PresentInfo",
                 JAVA_INT.withName("sType"),
                 ADDRESS.withName("pNext"),

@@ -29,7 +29,7 @@ namespace dxvk {
 
     void addImpulses(const WaterSimImpulse* impulses, uint32_t count, bool reset);
     void setRain(float amount) { m_shaderArgs.rain = amount; }
-    void prepare(RtxContext* ctx, bool hasWater, bool hasSludge);
+    void prepare(RtxContext* ctx, bool hasWater, bool hasSludge, bool rainGroundRings);
     __forceinline WaterSurfaceArgs shaderArgs(int32_t originX, int32_t originZ) const {
       auto args = m_shaderArgs;
       // Both FFT cascades and the rain tiles repeat at this interval.

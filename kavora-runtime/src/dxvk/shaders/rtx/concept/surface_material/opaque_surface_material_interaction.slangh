@@ -31,6 +31,9 @@ import "rtx/concept/surface_material/material_effects.slang";
 import "rtx/concept/surface_material/end_portal_emission_effect.slang";
 import "rtx/concept/surface_material/surface_glint_effect.slang";
 import "rtx/concept/surface_material/material_parameter_adjustment.slang";
+#ifdef RAIN_GROUND_SAMPLE
+import "rtx/concept/surface_material/rain_ground_effect.slang";
+#endif
 
 #include "opaque_surface_material_blending.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
@@ -493,7 +496,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreatePrepared(
 {
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
   opaqueSurfaceMaterialInteraction.flags = sample.flags;
-  const vec3 albedo = sample.albedo;
+  vec3 albedo = sample.albedo;
   const float opacity = sample.opacity;
   const float emissiveBlendOverrideInfluence = sample.emissiveBlendOverrideInfluence;
   const float thinFilmThickness = sample.thinFilmThickness;
@@ -618,6 +621,40 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreatePrepared(
   OpaqueShadingParameters shadingParameters = { roughness, metallic };
   applyMaterialEffects<OpaqueParameterSettings, OpaqueShadingParameters,
     MaterialParameterAdjustment>(parameterSettings, shadingParameters);
+
+#ifdef RAIN_GROUND_SAMPLE
+  const RainGroundSettings rainSettings = BoundRainGround.settings();
+  if (rainSettings.rain > 0.0f && surface.receivesGroundRain && shadingParameters.metallic < 1.0f &&
+      surfaceInteraction.triangleNormal.y > 0.7f)
+  {
+    const float3 position = surfaceInteraction.position;
+    const float rain = exposedGroundRain<BoundRainGround>(position, rainSettings);
+    if (rain > 0.0f)
+    {
+      RainGroundInputs inputs = { rain, shadingParameters.metallic, 0.0f, surfaceInteraction.triangleNormal };
+      const float relief = max(normalDetail, 1.0f - float(normal.y));
+      if (relief < kMaxGroundPuddleRelief)
+      {
+        float cavity = 0.0f;
+        if (opaqueSurfaceMaterial.hasValidDisplacement())
+        {
+          vec4 heightSample;
+          if (surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.heightTextureIndex,
+              opaqueSurfaceMaterial.reliefSamplerIndex, surfaceInteraction, heightSample, materialLodBias))
+          {
+            cavity = (1.0f - heightSample.x) * 0.35f;
+          }
+        }
+        inputs = groundPuddleInputs<BoundRainGround>(inputs, position, rainSettings, relief, cavity);
+      }
+      RainGroundMaterial wetMaterial = { albedo, normal, shadingParameters.roughness };
+      applyMaterialEffects<RainGroundInputs, RainGroundMaterial, RainGroundEffect>(inputs, wetMaterial);
+      albedo = wetMaterial.albedo;
+      normal = wetMaterial.normal;
+      shadingParameters.roughness = wetMaterial.roughness;
+    }
+  }
+#endif
 
   // Transform to desired Opaque Material Interaction values
 

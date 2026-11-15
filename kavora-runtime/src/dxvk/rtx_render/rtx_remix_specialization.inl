@@ -119,7 +119,8 @@ namespace pnext::detail {
     remixapi_VoxelCoverageInfo,
     remixapi_MaterialInfoVertexColorMaskEXT,
     remixapi_MaterialInfoGlintEXT,
-    remixapi_CameraMediumWaterEXT
+    remixapi_CameraMediumWaterEXT,
+    remixapi_SubmitInfoRainGroundEXT
   >;
 
   template< typename T > constexpr remixapi_StructType ToEnum                 = REMIXAPI_STRUCT_TYPE_NONE;
@@ -215,6 +216,8 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum<remixapi_SubmitInfoWaterSimEXT> = REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_WATER_SIM_EXT;
   template<> constexpr auto ToEnum<remixapi_SubmitInfoWaterRainEXT> = REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_WATER_RAIN_EXT;
   template<> struct Root<remixapi_SubmitInfoWaterSimEXT> { using Type = remixapi_SubmitInfo; };
+  template<> constexpr auto ToEnum<remixapi_SubmitInfoRainGroundEXT> = REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_RAIN_GROUND_EXT;
+  template<> struct Root<remixapi_SubmitInfoRainGroundEXT> { using Type = remixapi_SubmitInfo; };
   template<> constexpr auto ToEnum<remixapi_HostVulkanDeviceInfo> = REMIXAPI_STRUCT_TYPE_HOST_VULKAN_DEVICE_INFO;
   // clang-format on
 }

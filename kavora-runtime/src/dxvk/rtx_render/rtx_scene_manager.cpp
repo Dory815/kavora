@@ -195,6 +195,27 @@ namespace dxvk {
     ctx->writeToBuffer(m_voxelCoverageBuffer, 0, info.size, data.data());
   }
 
+  void SceneManager::uploadRainGround(DxvkContext* ctx, const int32_t* columns) {
+    constexpr auto bytes = kRainGroundGridSize * kRainGroundGridSize * sizeof(int32_t);
+    if (m_rainGroundBuffer == nullptr) {
+      DxvkBufferCreateInfo info{};
+      info.size = bytes;
+      info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+      info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+      info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+      m_rainGroundBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        DxvkMemoryStats::Category::RTXBuffer, "Rain exposure columns");
+    }
+    ctx->writeToBuffer(m_rainGroundBuffer, 0, bytes, columns);
+  }
+
+  RainGroundArgs SceneManager::rainGroundArgs() const {
+    auto args = m_rainGround;
+    args.rain = m_rainGroundBuffer != nullptr && RainGroundOptions::enabled() ? args.rain : 0.0f;
+    args.rippleStrength = std::clamp(RainGroundOptions::rippleStrength(), 0.0f, 1.0f);
+    return args;
+  }
+
   void SceneManager::logStatistics() {
     if (m_opacityMicromapManager.get()) {
       m_opacityMicromapManager->logStatistics();

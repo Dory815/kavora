@@ -1,0 +1,29 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 Kavora contributors
+// SPDX-License-Identifier: MIT
+#pragma once
+
+#include "rtx/pass/water_sim/water_sim_args.h"
+
+import "rtx/concept/camera/camera.slang";
+import "rtx/concept/surface_material/rain_ground_effect.slang";
+
+struct BoundRainGround : IRainGroundResources
+{
+  [ForceInline]
+  static RainGroundSettings settings()
+  {
+    return { int2(cb.sceneOriginX, cb.sceneOriginZ), cb.rainGround.origin, kRainGroundGridSize,
+      cb.rainGround.rain, cb.rainGround.rippleStrength, kWaterRingTile };
+  }
+
+  [ForceInline]
+  static float3 cameraPosition() { return cameraGetWorldPosition(cb.camera); }
+  [ForceInline]
+  static StructuredBuffer<int> columns() { return RainGroundColumns; }
+  [ForceInline]
+  static Sampler3D<float4> patchNoise() { return ValueNoiseSampler; }
+  [ForceInline]
+  static Texture2D<float2> rings() { return WaterRings; }
+  [ForceInline]
+  static SamplerState ringSampler() { return WaterTileSampler; }
+};

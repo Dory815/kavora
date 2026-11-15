@@ -17,5 +17,7 @@ WATER_SURFACE_PUBLIC struct WaterSurfaceArgs {
   WATER_SURFACE_PUBLIC vec2 tileOrigin;
   WATER_SURFACE_PUBLIC float gustPhase;
   WATER_SURFACE_PUBLIC float rain;
+  WATER_SURFACE_PUBLIC float ringStrength;
+  WATER_SURFACE_PUBLIC vec3 padding;
 };
 #undef WATER_SURFACE_PUBLIC

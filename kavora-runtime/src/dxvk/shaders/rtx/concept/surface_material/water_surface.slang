@@ -66,7 +66,7 @@ float3 sampleWaterSimulation<let Detail : bool>(float3 position, float footprint
     const float spray = (settings.water.effects & WATER_EFFECT_IMPACTS) ? sampleWaterImpacts(planar, settings.water.impactClip, impacts, clipSampler).y : 0.0f;
     const float intensity = max(settings.water.rain, spray) * (1.0f - smoothstep(0.055f, 0.24f, footprint));
     if (intensity > 0.0f) {
-      wave.yz += rings.SampleLevel(tileSampler, tilePosition / kWaterRingTile, 0.0f) * intensity;
+      wave.yz += rings.SampleLevel(tileSampler, tilePosition / kWaterRingTile, 0.0f) * (intensity * settings.water.ringStrength);
     }
   }
   return wave;

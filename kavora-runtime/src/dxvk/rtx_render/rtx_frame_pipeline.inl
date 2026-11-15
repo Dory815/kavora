@@ -103,7 +103,9 @@ namespace dxvk {
   }
 
   __forceinline void RtxFramePipeline::prepareWater(RtxContext& ctx, FrameResources&, const Preparation& preparation) {
-    ctx.m_common->waterSimulation().prepare(&ctx, ctx.getSceneManager().hasSimulatedWater(), preparation.hasSludge);
+    const auto rainGround = ctx.getSceneManager().rainGroundArgs();
+    ctx.m_common->waterSimulation().prepare(&ctx, ctx.getSceneManager().hasSimulatedWater(), preparation.hasSludge,
+                                            rainGround.rain > 0.0f && rainGround.rippleStrength > 0.0f);
   }
 
   __forceinline void RtxFramePipeline::prepareRayTracing(RtxContext& ctx, FrameResources& frame, const Preparation& preparation) {

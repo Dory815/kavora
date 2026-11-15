@@ -34,13 +34,22 @@
 layout(binding = GBUFFER_BINDING_LINEAR_WRAP_SAMPLER)
 SamplerState LinearWrapSampler;
 
-#ifdef WATER_SIM_SAMPLE
+#if defined(WATER_SIM_SAMPLE) || defined(RAIN_GROUND_SAMPLE)
 #define GBUFFER_WATER_SLANG_BINDING(slot, descriptor, type, name, view) [[vk::binding(slot)]] type name;
 GBUFFER_WATER_IMAGES(GBUFFER_WATER_SLANG_BINDING)
 #undef GBUFFER_WATER_SLANG_BINDING
 [[vk::binding(GBUFFER_BINDING_WATER_TILE_SAMPLER)]]
 SamplerState WaterTileSampler;
+#endif
+
+#ifdef WATER_SIM_SAMPLE
 #include "rtx/pass/gbuffer/gbuffer_water.slangh"
+#endif
+
+#ifdef RAIN_GROUND_SAMPLE
+[[vk::binding(GBUFFER_BINDING_RAIN_GROUND_COLUMNS)]]
+StructuredBuffer<int> RainGroundColumns;
+#include "rtx/pass/gbuffer/gbuffer_rain_ground.slangh"
 #endif
 
 layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT)

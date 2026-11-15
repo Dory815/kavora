@@ -8,15 +8,16 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import org.edtp.kavora.gametest.KavoraFrameProbe;
 import org.edtp.kavora.render.KavoraFramePresentation;
+import org.edtp.kavora.sdk.SubmitInfo;
 import org.edtp.kavora.sdk.VulkanClientFrameInfo;
 import org.spongepowered.asm.mixin.Mixin;
 
 @Mixin(value = KavoraFramePresentation.class, remap = false)
 public abstract class KavoraPresentationProbeMixin {
     @WrapMethod(method = "submitScene")
-    private void submitted(Operation<Void> original) {
+    private void submitted(SubmitInfo scene, Operation<Void> original) {
         try {
-            original.call();
+            original.call(scene);
             KavoraFrameProbe.submits++;
         } catch (RuntimeException | Error failure) {
             KavoraFrameProbe.failures++;

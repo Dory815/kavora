@@ -36,6 +36,7 @@
 #include "../util/util_hashtable.h"
 
 #include "rtx_globals.h"
+#include "rtx/concept/surface_material/rain_ground_args.h"
 #include "rtx_retained_buffer_table.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
@@ -158,6 +159,14 @@ public:
 
   Rc<DxvkBuffer> getVoxelCoverageBuffer() { return m_voxelCoverageBuffer; }
   void setVoxelCoverage(Rc<DxvkContext> ctx, const std::vector<uint32_t>& data);
+  void setRainGround(ivec2 origin, float rain) { m_rainGround.origin = origin; m_rainGround.rain = rain; }
+  void uploadRainGround(DxvkContext* ctx, const int32_t* columns);
+  struct RainGroundOptions {
+    RTX_OPTION("rtx.rainGround", bool, enabled, true, "Apply a water film to exposed terrain when it rains.");
+    RTX_OPTION("rtx.rainGround", float, rippleStrength, 0.35f, "Scale droplet ripples in shallow ground puddles.");
+  };
+  RainGroundArgs rainGroundArgs() const;
+  const Rc<DxvkBuffer>& rainGroundBuffer() const { return m_rainGroundBuffer; }
   Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
   Rc<DxvkBuffer> getSurfaceMaterialExtensionBuffer() { return m_surfaceMaterialExtensionBuffer; }
   Rc<DxvkBuffer> getVolumeMaterialBuffer() { return m_volumeMaterialBuffer; }
@@ -428,6 +437,8 @@ private:
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_voxelCoverageBuffer;
+  Rc<DxvkBuffer> m_rainGroundBuffer;
+  RainGroundArgs m_rainGround{};
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
   Rc<DxvkBuffer> m_surfaceMaterialExtensionBuffer;
   Rc<DxvkBuffer> m_volumeMaterialBuffer;

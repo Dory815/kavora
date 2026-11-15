@@ -98,6 +98,7 @@ namespace dxvk {
         GBUFFER_WATER_IMAGES(GBUFFER_WATER_LAYOUT)
 #undef GBUFFER_WATER_LAYOUT
         SAMPLER(GBUFFER_BINDING_WATER_TILE_SAMPLER)
+        STRUCTURED_BUFFER(GBUFFER_BINDING_RAIN_GROUND_COLUMNS)
 
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT)
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
@@ -827,10 +828,14 @@ namespace dxvk {
 #define GBUFFER_BIND_WATER_IMAGE(binding, descriptor, type, name, view) ctx->bindResourceView(binding, water.view(), nullptr);
     GBUFFER_WATER_IMAGES(GBUFFER_BIND_WATER_IMAGE)
 #undef GBUFFER_BIND_WATER_IMAGE
-    if (water.effects() & (WATER_EFFECT_WIND | WATER_EFFECT_RINGS)) {
+    if ((water.effects() & WATER_EFFECT_WIND) || water.ringView() != nullptr) {
       ctx->bindResourceSampler(GBUFFER_BINDING_WATER_TILE_SAMPLER, ctx->getResourceManager().getSampler(
         VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT));
     }
+
+    const auto& rainGround = ctx->getSceneManager().rainGroundBuffer();
+    ctx->bindResourceBuffer(GBUFFER_BINDING_RAIN_GROUND_COLUMNS,
+      rainGround != nullptr ? DxvkBufferSlice(rainGround) : DxvkBufferSlice());
 
     // These resources give each pixel's slot in the compacted GBuffer. They are null when sparse rendering is inactive,
     // in which case DXVK substitutes a null descriptor.

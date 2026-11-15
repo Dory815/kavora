@@ -363,6 +363,7 @@ struct RtSurface {
     textureFlags |= ((static_cast<uint32_t>(texgenMode) & 0x3) << 17);
     textureFlags |= hasWaterContact ? (1 << 19) : 0;
     textureFlags |= isMatchedIorBoundary ? (1 << 20) : 0;
+    textureFlags |= receivesGroundRain ? (1 << 21) : 0;
 
     writeGPUHelper(data, offset, textureFlags);
 
@@ -433,6 +434,7 @@ struct RtSurface {
   bool isSelfLit = false;
   bool alphaCoverage = false;
   bool hasWaterContact = false;
+  bool receivesGroundRain = false;
   bool isMatchedIorBoundary = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
