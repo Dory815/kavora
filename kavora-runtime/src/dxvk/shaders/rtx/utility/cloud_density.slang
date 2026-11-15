@@ -121,6 +121,20 @@ public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D
 }
 
 [ForceInline]
+float cloudOvercastThickness(CloudDensityArgs args, float cloudType)
+{
+  return args.thickness * lerp(0.20f, 0.35f, args.thunder) * lerp(1.0f, 1.35f, cloudType);
+}
+
+[ForceInline]
+public float cloudColumnThickness(CloudDensityArgs args, CloudColumn column)
+{
+  const float overcastThickness = max(args.weather, args.thunder) > 0
+    ? cloudOvercastThickness(args, column.type) : 0.0f;
+  return max(column.thickness, overcastThickness);
+}
+
+[ForceInline]
 float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudType, float heightFootprint)
 {
   const float precipitation = max(args.weather, args.thunder);
@@ -130,7 +144,7 @@ float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudT
   }
 
   // A continuous, stratiform layer forms beneath the taller cloud cells as rain sets in.
-  const float layerThickness = args.thickness * lerp(0.20f, 0.35f, args.thunder) * lerp(1.0f, 1.35f, cloudType);
+  const float layerThickness = cloudOvercastThickness(args, cloudType);
   const float height = heightAboveBase / layerThickness;
   const float profile = cloudHeightProfile(height, 0.16f, 0.65f, heightFootprint / layerThickness);
   return precipitation * lerp(0.36f, 0.47f, args.thunder) * profile;
@@ -162,21 +176,16 @@ float cirrusDensity(CloudDensityArgs args, float3 p, Sampler2D<float4> weatherSa
 }
 
 [ForceInline]
-public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0, uint layer = 0,
-  float heightFootprint = 0)
+public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, CloudColumn column,
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint, float heightFootprint)
 {
-  const float3 p = cloudCoordinates(args, position);
-  if (layer == 1)
-  {
-    return cirrusDensity(args, p, weatherSampler, footprint, heightFootprint);
-  }
+  // A prepared column fixes local weather while retaining the shared three-dimensional shape.
+  const float3 p = coordinates;
   const float heightAboveBase = p.y * args.shapeScale - args.baseHeight;
   if (heightAboveBase + 0.5f * heightFootprint <= 0 || heightAboveBase - 0.5f * heightFootprint >= args.thickness)
   {
     return 0;
   }
-  const CloudColumn column = cloudColumn(args, p.xz, weatherSampler, footprint);
   const float overcast = overcastDensity(args, heightAboveBase, column.type, heightFootprint);
   const float columnHeight = heightAboveBase / column.thickness;
   const float profileFootprint = heightFootprint / column.thickness;
@@ -209,4 +218,23 @@ public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<floa
   // The polynomial erosion integrates directly from the two coverage moments.
   const float eroded = (1.0f - erosion) * density.x + erosion * density.y;
   return max(overcast, eroded * profile);
+}
+
+[ForceInline]
+public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<float4> weatherSampler,
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0, uint layer = 0,
+  float heightFootprint = 0)
+{
+  const float3 p = cloudCoordinates(args, position);
+  if (layer == 1)
+  {
+    return cirrusDensity(args, p, weatherSampler, footprint, heightFootprint);
+  }
+  const float heightAboveBase = p.y * args.shapeScale - args.baseHeight;
+  if (heightAboveBase + 0.5f * heightFootprint <= 0 || heightAboveBase - 0.5f * heightFootprint >= args.thickness)
+  {
+    return 0;
+  }
+  const CloudColumn column = cloudColumn(args, p.xz, weatherSampler, footprint);
+  return cloudDensityInColumn(args, p, column, baseSampler, detailSampler, footprint, heightFootprint);
 }

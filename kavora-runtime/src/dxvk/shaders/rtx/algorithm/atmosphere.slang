@@ -277,6 +277,9 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       nextCache = max(begin, (depth - originDepth) / directionDepth);
     }
     float previous = begin;
+    float cloudSigma = 0;
+    float3 cloudSource = 0;
+    bool cloudSampleValid = false;
     while (previous < end)
     {
       const float next = max(previous, min(end, min(nextCloud, min(nextFog, nextCache))));
@@ -298,19 +301,23 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
           position, ray.fogProjection, (previous + next) * 0.5f);
         source = fogMedium.scattering * sample.evaluate(ray.projectedPhase, args.multiScatteringEstimate);
       }
-      // Keep each cloud quadrature cell constant when a prefix checkpoint clips it.
-      const float cloudSample = cloudGrid.sampleAt(cloudCell);
-      const float3 cloudPosition = origin + direction * cloudSample;
-      const float cloudFootprint = max(cloudGrid.spacing, args.clouds.viewAngularFootprint * cloudSample);
-      const float cloudSigma = cloudActive ?
-        cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail, cloudFootprint,
+      // Fog cells and prefix checkpoints retain the cloud cell's sample and footprint.
+      if (cloudActive && !cloudSampleValid)
+      {
+        const float cloudSample = cloudGrid.sampleAt(cloudCell);
+        const float3 cloudPosition = origin + direction * cloudSample;
+        const float cloudFootprint = max(cloudGrid.spacing, args.clouds.viewAngularFootprint * cloudSample);
+        cloudSigma = cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail, cloudFootprint,
           cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spanAt(cloudCell),
-            args.clouds.viewAngularFootprint * cloudSample)) : 0;
+            args.clouds.viewAngularFootprint * cloudSample));
+        cloudSource = cloudSigma > 0 ? cloudSigma * args.clouds.albedo
+          * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail) : 0;
+        cloudSampleValid = true;
+      }
       const float3 extinction = fogMedium.extinction + cloudSigma + ray.mediumExtinction;
       if (cloudSigma > 0)
       {
-        source += cloudSigma * args.clouds.albedo
-          * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail);
+        source += cloudSource;
         result.cloudMoments = composeCloudMoments(result.cloudMoments,
           cloudCellMoments(cloudSigma, previous, length, cloudMaxViewDistance(args.clouds)));
       }
@@ -328,6 +335,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       if (next >= nextCloud)
       {
         nextCloud = cloudGrid.boundary(++cloudCell + 1);
+        cloudSampleValid = false;
       }
       if (next >= nextFog)
       {

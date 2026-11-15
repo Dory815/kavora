@@ -3,6 +3,7 @@ module clouds;
 
 import "rtx/pass/cloud_parameters.slang";
 import "rtx/utility/cloud_density.slang";
+import "rtx/algorithm/cloud_scattering.slang";
 
 static const float kFloatMax = 3.402823466e+38f;
 
@@ -353,14 +354,55 @@ public float3 cloudLightIrradiance(CloudLight light, float altitude)
   return lower.rgb;
 }
 
+float2 cloudVerticalOpticalDepth(CloudArgs args, float3 position, Sampler2D<float4> weatherSampler,
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+{
+  const uint layer = cloudLayerAt(args, position);
+  if (!cloudLayerEnabled(args, layer))
+  {
+    return 0;
+  }
+  const CloudDensityArgs densityArgs = cloudDensityParameters(args);
+  const float altitude = cloudAltitude(densityArgs, position);
+  const float3 radialUp = normalize(position - args.groundReference + args.planetRadius * args.up);
+  const uint steps = layer == 0 ? max(2u, (args.lightSteps + 1) / 2) : 2u;
+  const float3 coordinates = cloudCoordinates(densityArgs, position);
+  CloudColumn column = {};
+  float thickness = args.highThickness;
+  if (layer == 0)
+  {
+    // Keep weather and its support fixed across the local plane-parallel column.
+    column = cloudColumn(densityArgs, coordinates.xz, weatherSampler, args.thickness / float(steps));
+    thickness = cloudColumnThickness(densityArgs, column);
+  }
+  const float begin = cloudLayerBase(args, layer) - altitude;
+  const float span = thickness / float(steps);
+  float2 opticalDepth = 0;
+  for (uint cell = 0; cell < steps; cell++)
+  {
+    const float lower = begin + float(cell) * span;
+    const float upper = lower + span;
+    const float3 samplePosition = position + radialUp * (0.5f * (lower + upper));
+    // The isotropic base/detail mip averages a cell-sized neighborhood around the radial column.
+    const float extinction = layer == 0
+      ? args.extinction * cloudDensityInColumn(densityArgs, cloudCoordinates(densityArgs, samplePosition), column,
+          baseSampler, detailSampler, span, span)
+      : cloudExtinction(args, samplePosition, weatherSampler, baseSampler, detailSampler, 0, span);
+    // Split the fixed column cell without moving its density sample with the scattering point.
+    const float below = clamp(min(upper, 0.0f) - lower, 0.0f, span);
+    opticalDepth += extinction * float2(span - below, below);
+  }
+  return opticalDepth;
+}
+
 public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 direction, float3 ambientRadiance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
   float3 source = 0.0f;
-  float skyTransmissionSum = 0;
-  float skyPower = 0;
-  const float precipitation = max(args.weather, args.thunder);
+  const float2 verticalDepth = cloudVerticalOpticalDepth(args, position, weatherSampler, baseSampler, detailSampler);
+  const float meanCosine = 0.85f * args.anisotropy - 0.15f * 0.25f;
   const float altitude = cloudAltitude(cloudDensityParameters(args), position);
+  const float3 radialUp = normalize(position - args.groundReference + args.planetRadius * args.up);
   for (uint lightIndex = 0; lightIndex < 2; lightIndex++)
   {
     const CloudLight light = args.lights[lightIndex];
@@ -373,44 +415,18 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
       weatherSampler, baseSampler, detailSampler);
     const float cosine = dot(direction, light.directionToLight);
     const float phase = 0.85f * cloudPhase(cosine, args.anisotropy) + 0.15f * cloudPhase(cosine, -0.25f);
-    // The effective optical depths of successive orders differ by powers of two.
-    const float transmission5 = exp(-opticalDepth * (1.0f / 16.0f));
-    const float transmission4 = transmission5 * transmission5;
-    const float transmission3 = transmission4 * transmission4;
-    const float transmission2 = transmission3 * transmission3;
-    const float transmission = transmission2 * transmission2;
-    const float singleScattering = phase * transmission;
-    const float scatteringProbability = 1.0f - transmission;
-    float multipleScattering = 0;
-    // Higher orders require another collision and vanish in the optically thin limit.
-    float orderWeight = args.multipleScattering * scatteringProbability;
-    const float meanCosine = 0.85f * args.anisotropy - 0.15f * 0.25f;
-    float orderG = meanCosine;
-    // Approximate diffuse incident light while preserving physical view extinction.
-    // Successive phases retain the first moment of the full dual-lobe distribution.
-    const float4 orderTransmission = float4(transmission2, transmission3, transmission4, transmission5);
-    [unroll]
-    for (uint order = 0; order < 4; order++)
+    const float singleScattering = phase * exp(-opticalDepth);
+    const float lightCosine = dot(light.directionToLight, radialUp);
+    const float2 beamDepth = lightCosine >= 0 ? verticalDepth : verticalDepth.yx;
+    float multipleScattering = cloudDiffuseBeamRadiance(beamDepth, abs(lightCosine));
+    if (lightCosine != 0)
     {
-      orderG *= meanCosine;
-      multipleScattering += orderWeight * cloudPhase(cosine, orderG) * orderTransmission[order];
-      orderWeight *= args.multipleScattering * args.albedo * scatteringProbability;
+      // Additional blockers attenuate the local column's incident beam.
+      const float externalDepth = max(opticalDepth - beamDepth.x / abs(lightCosine), 0.0f);
+      multipleScattering *= exp(-externalDepth);
     }
-    // Eddington's conservative two-stream limit approximates the diffuse flux
-    // through a thick droplet layer. Use it as the asymptote of the higher orders.
-    const float lightCosine = saturate(dot(light.directionToLight, args.up));
-    const float transportDepth = (1.0f - meanCosine) * opticalDepth * lightCosine;
-    const float unscatteredTransmission = exp(-transportDepth);
-    // Weight diffuse-sky attenuation by the light actually reaching this altitude.
-    const float power = irradiance.x + irradiance.y + irradiance.z;
-    skyTransmissionSum += power * unscatteredTransmission;
-    skyPower += power;
-    const float diffuseTransmission = rcp(1.0f + 0.75f * transportDepth);
-    const float diffuseScattering = args.multipleScattering * lightCosine * (1.0f - unscatteredTransmission)
-      * diffuseTransmission * (1.0f / 3.14159265359f);
-    source += irradiance * (singleScattering + max(multipleScattering, diffuseScattering));
+    source += irradiance * (singleScattering + args.multipleScattering * args.albedo * multipleScattering);
   }
-  const float skyTransmission = skyPower > 0
-    ? lerp(1.0f, skyTransmissionSum / skyPower, precipitation) : 1.0f;
-  return source + ambientRadiance * skyTransmission;
+  // The supplied upper-hemisphere integral is normalized by 4 pi.
+  return source + cloudDiffuseBoundaryRadiance(2.0f * ambientRadiance, 0, verticalDepth, meanCosine);
 }

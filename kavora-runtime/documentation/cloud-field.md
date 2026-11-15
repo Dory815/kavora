@@ -148,13 +148,38 @@ cell budget. These choices reduce
 undersampling and temporal jumps without allocating a shadow volume or adding
 a separate shadow history. Real low-sun shadow motion remains in the geometry.
 
-The phase function is a normalized dual-lobe Henyey-Greenstein mixture.
-Higher-order scattering and thick-layer diffuse transmission remain explicit
-approximations. Each higher order includes the probability of another
-scattering event, preserving the optically thin limit. This is deterministic
-volume ray marching with approximate multiple scattering, **not a stochastic
-volumetric path tracer**. The surface path tracer remains the renderer for
-surfaces.
+Single scattering uses a normalized dual-lobe Henyey-Greenstein phase function
+and the measured optical depth toward each light. Diffuse illumination uses a
+local plane-parallel column aligned with the shell's radial direction. The
+column fixes its weather sample and uses the shared density evaluator for its
+three-dimensional shape and erosion. Its support includes both the cumulus
+and rain profiles at that same weather-filter footprint. The resulting optical
+depths above and below the scattering point are reused for sky and celestial
+illumination.
+
+`cloud_scattering.slang` solves a two-stream boundary-lit slab with ordinate
+cosine `1 / sqrt(3)`. Its upper boundary is the measured sky radiance and its lower
+boundary is black. The boundary solution uses transport optical depth
+`(1 - meanCosine) * opticalDepth`. It preserves a uniform environment on both
+boundaries, approaches the hemisphere average as the slab becomes transparent,
+and attenuates the sky reaching a thick cloud base. No ground-reflection source
+is assumed.
+
+The collimated-light solution generates a separate diffuse source from the
+incident beam. Its two vertical streams use unit cosine, a conservative escape
+approximation for the independently resolved single-scattering phase. It
+vanishes continuously at zero thickness and grazing incidence.
+The illuminated boundary follows the sign of the radial light cosine. Cloud
+optical depth beyond that local column attenuates its incident beam. The direct
+source retains the full three-dimensional light ray. This closure approximates
+horizontal diffusion and multiple scattering in an irregular cloud. It does
+not replace their transport with a second density field or a color ramp.
+
+Fog subdivisions reuse a cloud cell's extinction and incident source. A prefix
+checkpoint recomputes the same fixed cell sample, so splitting a ray preserves
+the medium evaluation. This is deterministic volume ray marching with
+approximate multiple scattering, **not a stochastic volumetric path tracer**.
+The surface path tracer remains the renderer for surfaces.
 
 Atmosphere segments also accumulate cloud opacity and the first extinction
 distance moment. The constant-cell moment is analytic and composes across
@@ -190,6 +215,13 @@ so long rays can take more samples than the quality value. Light cells are
 integration intervals; a wide interval uses two density queries. The upper
 layer uses half the light-cell budget with a minimum of four cells.
 
+Diffuse-column sampling uses half the light-cell budget, rounded up with a
+minimum of two. Ultra, High, Medium and Low therefore use 8, 6, 4 and 2 samples
+per occupied low-cloud cell. One shared weather lookup and at most two
+base/detail lookups per sample add at most 17 texture reads at Ultra. The
+high layer uses two density samples. Both celestial lights and the sky reuse
+the same column. No additional volume texture or lighting history is allocated.
+
 The three noise textures and their mip chains occupy about 12.0 MiB before
 driver allocation overhead. They are independent of output resolution. Motion
 guides add one word per primary atmosphere record and one per checkpoint. At
@@ -210,6 +242,7 @@ in the Python environment used by the test, then run from `kavora-runtime`:
 
 ```sh
 python tests/rtx/unit/test_cloud_transport.py
+python tests/rtx/unit/test_cloud_scattering.py --device vulkan
 python tests/rtx/unit/test_atmosphere_moments.py
 ```
 
@@ -219,8 +252,14 @@ quadrature and motion moments with independent analytic or numerical
 references. High-cloud checks also compare analytic noise derivatives with
 finite differences and column transmission at 100-, 200- and 800-meter layer
 thicknesses with the independent height-profile integral. They do not validate
-game presentation, temporal reconstruction
-quality or GPU frame time. The normal Slang compiler and SPIR-V validation
+game presentation, temporal reconstruction quality or GPU frame time.
+The scattering test compares the production boundary and beam solutions with
+independent integrals, exercises the thin and grazing limits, and integrates
+outgoing slab flux with the actual dual-HG single-scattering phase. Its parameter
+grid covers the supported anisotropy range and maximum multiple-scattering
+strength. This checks that grid, not energy conservation for every heterogeneous
+three-dimensional cloud. `--device cpu` also runs these math kernels through
+Slang's CPU backend. The normal Slang compiler and SPIR-V validation
 remain separate build gates.
 
 ## Visual morphology inspection
