@@ -84,7 +84,7 @@ public float2 cloudInterval(CloudArgs args, float3 origin, float3 direction, flo
 public float cloudExtinction(CloudArgs args, float3 position, Sampler2D<float4> weatherSampler,
   Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
-  return args.extinction * cumulusDensity(cloudDensityParameters(args), position, weatherSampler,
+  return args.extinction * cloudDensity(cloudDensityParameters(args), position, weatherSampler,
     baseSampler, detailSampler);
 }
 
@@ -198,7 +198,9 @@ float cloudPhase(float cosine, float g)
 public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 direction, float3 ambientRadiance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
-  float3 source = ambientRadiance;
+  float3 source = 0.0f;
+  float skyTransmission = 1.0f;
+  const float precipitation = max(args.weather, args.thunder);
   for (uint lightIndex = 0; lightIndex < 2; lightIndex++)
   {
     const CloudLight light = args.lights[lightIndex];
@@ -234,10 +236,16 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
     // through a thick droplet layer. Use it as the asymptote of the higher orders.
     const float lightCosine = saturate(dot(light.directionToLight, args.up));
     const float transportDepth = (1.0f - meanCosine) * opticalDepth * lightCosine;
+    const float unscatteredTransmission = exp(-transportDepth);
+    if (lightIndex == 0)
+    {
+      // The strongest sky light's verticalized depth attenuates the clear zenith proxy.
+      skyTransmission = lerp(1.0f, unscatteredTransmission, precipitation);
+    }
     const float diffuseTransmission = rcp(1.0f + 0.75f * transportDepth);
-    const float diffuseScattering = args.multipleScattering * lightCosine * (1.0f - exp(-transportDepth))
+    const float diffuseScattering = args.multipleScattering * lightCosine * (1.0f - unscatteredTransmission)
       * diffuseTransmission * (1.0f / 3.14159265359f);
     source += light.irradiance * (singleScattering + max(multipleScattering, diffuseScattering));
   }
-  return source;
+  return source + ambientRadiance * skyTransmission;
 }

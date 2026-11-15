@@ -34,13 +34,6 @@ import static org.junit.jupiter.api.Assertions.fail;
 class ConfLayerDriverTest {
 
     @Test
-    void weatherStrengthsBeginAtZero() {
-        ConfLayerDriver.WeatherStrengths weather = new ConfLayerDriver().weatherStrengths();
-        assertEquals(0.0f, weather.rain());
-        assertEquals(0.0f, weather.thunder());
-    }
-
-    @Test
     void twoHalfStepsEqualOneFullStep() {
         float full = ConfLayerDriver.smoothStep(0.0f, 1.0f, 0.5f);
         float halved = ConfLayerDriver.smoothStep(

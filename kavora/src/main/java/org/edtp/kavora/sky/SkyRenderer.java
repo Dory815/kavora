@@ -21,7 +21,6 @@ import org.edtp.kavora.asset.KavoraLightStore;
 import org.edtp.kavora.asset.KavoraTexture;
 import org.edtp.kavora.asset.KavoraTextureStore;
 import org.edtp.kavora.light.LightManager;
-import org.edtp.kavora.logic.ConfLayerDriver;
 import org.edtp.kavora.profiling.ProfileScope;
 import org.edtp.kavora.util.DirectBufferPool;
 import org.slf4j.Logger;
@@ -128,6 +127,7 @@ public class SkyRenderer {
     private final float[] atmosphericMean = new float[3];
     private float lastWeatherOpacity = -1f;
     private float lastWeatherIntensity = -1f;
+    private boolean lastWeatherBackgroundOnly;
     private float lastSkyDomeMultiplier = Float.NaN;
     private float atmosphericMeanR;
     private float atmosphericMeanG;
@@ -175,8 +175,8 @@ public class SkyRenderer {
     //  Main render entry
     // ====================================================================
 
-    /** Publishes the sky after the frame's celestial lights and weather layers have been resolved. */
-    public void render(ClientLevel world, Vec3 cameraPos, EnvironmentSnapshot environment, ConfLayerDriver confLayers,
+    /** Publishes the sky from the same weather snapshot used by the cloud renderer. */
+    public void render(ClientLevel world, Vec3 cameraPos, EnvironmentSnapshot environment,
                        boolean volumetricClouds) {
         if (world == null || !enabled) {
             nightSky.disable();
@@ -192,7 +192,7 @@ public class SkyRenderer {
 
         float[] fixedRadiance = fixedSkyRadiance(environment.skybox);
         if (fixedRadiance == null) {
-            renderAtmosphericSky(world, cameraPos, environment, confLayers, volumetricClouds);
+            renderAtmosphericSky(world, cameraPos, environment, volumetricClouds);
         } else {
             if (environment.skybox == DimensionType.Skybox.END) {
                 nightSky.updateEnd(clock.animationGameTime(environment.gameTime) * 0.05);
@@ -220,26 +220,19 @@ public class SkyRenderer {
             ClientLevel world,
             Vec3 cameraPos,
             EnvironmentSnapshot environment,
-            ConfLayerDriver confLayers,
             boolean volumetricClouds) {
         float skyAngle;
         LightManager.SkyLightState lightState;
         float[] sunDirection;
-        WeatherDomeState weather = WeatherDomeState.CLEAR;
+        WeatherDomeState weather;
         try (ProfileScope ignored = ProfileScope.begin("Sky.Prepare")) {
             skyAngle = environment.sunAngle;
             lightState = lights.getSkyLightState();
             sunDirection = LightManager.computeSunDirection(skyAngle);
-            // The procedural cloud layer scatters the atmospheric sky and celestial light itself.
-            if (!volumetricClouds) {
-                ConfLayerDriver.WeatherStrengths strengths = confLayers != null && confLayers.isActive()
-                        ? confLayers.weatherStrengths()
-                        : new ConfLayerDriver.WeatherStrengths(environment.rain, environment.thunder);
-                float celestialIntensity = lightState.weatherDomeRadiance();
-                weather = weatherDomeState(strengths.rain(), strengths.thunder(),
-                        Math.max(celestialIntensity, RAIN_DOME_MIN_INTENSITY),
-                        celestialIntensity * LightManager.THUNDER_SKY_INTENSITY);
-            }
+            float celestialIntensity = lightState.weatherDomeRadiance();
+            weather = weatherDomeState(environment.rain, environment.thunder,
+                    Math.max(celestialIntensity, RAIN_DOME_MIN_INTENSITY),
+                    celestialIntensity * LightManager.THUNDER_SKY_INTENSITY);
         }
 
         try (ProfileScope ignored = ProfileScope.begin("Sky.Celestial")) {
@@ -252,13 +245,14 @@ public class SkyRenderer {
         }
         boolean weatherRendered;
         try (ProfileScope ignored = ProfileScope.begin("Sky.Weather")) {
-            weatherRendered = updateWeatherDomeLight(api, weather);
+            // The weather panorama replaces the visible sky behind the cloud volume in every direction.
+            weatherRendered = updateWeatherDomeLight(api, weather, volumetricClouds);
         }
         try (ProfileScope ignored = ProfileScope.begin("Sky.Ambient")) {
             publishCombinedSkyAmbient(
                     api,
                     sunDirection[1],
-                    weatherRendered
+                    weatherRendered && !volumetricClouds
                             ? weather
                             : WeatherDomeState.CLEAR);
         }
@@ -348,13 +342,14 @@ public class SkyRenderer {
         }
     }
 
-    private boolean updateWeatherDomeLight(RemixAPI api, WeatherDomeState weather) {
+    private boolean updateWeatherDomeLight(RemixAPI api, WeatherDomeState weather, boolean backgroundOnly) {
         if (weather.opacity() <= 0.0f) {
             return false;
         }
 
         float domeIntensity = weather.intensity() * skyDomeMultiplier;
         boolean needsUpdate = overcastDomeLightAsset == null
+                || lastWeatherBackgroundOnly != backgroundOnly
                 || Math.abs(weather.opacity() - lastWeatherOpacity) > WEATHER_UPDATE_DELTA
                 || Math.abs(domeIntensity - lastWeatherIntensity) > WEATHER_UPDATE_DELTA;
 
@@ -367,6 +362,7 @@ public class SkyRenderer {
             domeExt.setColorTexture(overcastTextureHandle);
             domeExt.setOpacity(weather.opacity());
             domeExt.setBlendType(MaterialInfoOpaqueEXT.BLEND_TYPE_ALPHA);
+            domeExt.backgroundOnly = backgroundOnly;
             LightInfo lightInfo = LightInfo.builder()
                     .radiance(domeIntensity, domeIntensity, domeIntensity)
                     .domeExt(domeExt)
@@ -384,6 +380,7 @@ public class SkyRenderer {
 
             lastWeatherOpacity = weather.opacity();
             lastWeatherIntensity = domeIntensity;
+            lastWeatherBackgroundOnly = backgroundOnly;
         }
 
         if (overcastDomeLightAsset == null || !overcastDomeLightAsset.isAlive()) {

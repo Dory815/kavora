@@ -10,7 +10,6 @@ import org.edtp.kavora.cloud.CloudRenderer;
 import org.edtp.kavora.entity.KavoraBlockDamagePass;
 import org.edtp.kavora.entity.KavoraBlockOutlinePass;
 import org.edtp.kavora.light.LightManager;
-import org.edtp.kavora.logic.ConfLayerDriver;
 import org.edtp.kavora.particle.ParticleFramePipeline;
 import org.edtp.kavora.profiling.ProfileScope;
 import org.edtp.kavora.sdk.SubmitInfo;
@@ -27,7 +26,6 @@ final class KavoraSceneEffects {
 
     private final SkyRenderer sky;
     private final CloudRenderer clouds;
-    private final ConfLayerDriver layers;
     private final KavoraFrameMetrics metrics;
     private final LightManager lights;
     private final ParticleFramePipeline particles;
@@ -38,12 +36,11 @@ final class KavoraSceneEffects {
     private final KavoraRainGround rainGround = new KavoraRainGround();
     private boolean environmentCaptured;
 
-    KavoraSceneEffects(SkyRenderer sky, CloudRenderer clouds, ConfLayerDriver layers, KavoraFrameMetrics metrics,
+    KavoraSceneEffects(SkyRenderer sky, CloudRenderer clouds, KavoraFrameMetrics metrics,
                        LightManager lights, ParticleFramePipeline particles, ParticleAtlasManager particleAtlas,
                        KavoraBlockDamagePass blockDamage, KavoraBlockOutlinePass blockOutline) {
         this.sky = sky;
         this.clouds = clouds;
-        this.layers = layers;
         this.metrics = metrics;
         this.lights = lights;
         this.particles = particles;
@@ -90,7 +87,7 @@ final class KavoraSceneEffects {
                 environment.capture(world, camera, partialTick);
                 environmentCaptured = true;
             }
-            sky.render(world, position, environment, layers,
+            sky.render(world, position, environment,
                     KavoraMod.isWorldActive() && clouds.hasVolumetricClouds(environment, client.options.getCloudStatus()));
         } catch (Exception e) {
             LOGGER.error("Error rendering sky", e);

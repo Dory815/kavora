@@ -989,28 +989,10 @@ public final class ConfLayerDriver {
     public record LayerStatus(String name, float strength, boolean acquired) {
     }
 
-    /** Weather strengths as driven into the conf layers, shared with render systems. */
-    public record WeatherStrengths(float rain, float thunder) {
-    }
-
     public boolean isAutomaticMist() { return automaticMist; }
     public void setAutomaticMist(boolean enabled) { automaticMist = enabled; }
     public float getMistStrength() { return mistStrength; }
     public void setMistStrength(float strength) { mistStrength = Math.clamp(strength, 0.0f, 2.0f); }
-
-    public WeatherStrengths weatherStrengths() {
-        return new WeatherStrengths(
-                currentStrength(LogicChannels.WEATHER_RAIN),
-                currentStrength(LogicChannels.WEATHER_THUNDER));
-    }
-
-    private float currentStrength(String channel) {
-        float strength = 0.0f;
-        for (LayerState layer : channelIndex.getOrDefault(channel, List.of())) {
-            strength = Math.max(strength, layer.current);
-        }
-        return strength;
-    }
 
     /**
      * Per-layer status sorted by name, for /kavora conf status. Layers that

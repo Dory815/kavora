@@ -210,7 +210,7 @@ public class KavoraRenderer {
             cameraEnvironment = new KavoraCameraEnvironment(remixApi, textureManager, confLayerDriver, zoneRegistry);
             LOGGER.info("Config option-layers acquired - conf-layer blending active");
 
-            var effects = new KavoraSceneEffects(skyRenderer, cloudRenderer, confLayerDriver, perfTimer,
+            var effects = new KavoraSceneEffects(skyRenderer, cloudRenderer, perfTimer,
                     lightManager, particles, particleAtlasManager, blockDamagePass, blockOutlinePass);
             sceneFrame = new KavoraSceneFrame(interop, presentation, chunkManager, lightManager,
                     entityPass, entitySubmitter, blockEntityPass, firstPersonPass,

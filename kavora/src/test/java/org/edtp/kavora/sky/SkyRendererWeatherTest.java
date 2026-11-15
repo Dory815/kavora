@@ -21,6 +21,11 @@ class SkyRendererWeatherTest {
     }
 
     @Test
+    void fullRainReplacesTheClearSky() {
+        assertWeather(1.0f, 0.0f, 2.0f, 0.5f, 1.0f, 2.0f);
+    }
+
+    @Test
     void thunderStrengthControlsOpacityWithoutChangingThunderIntensity() {
         assertWeather(0.0f, 0.25f, 2.0f, 0.5f, 0.25f, 0.5f);
     }
