@@ -30,13 +30,39 @@ public final class SkyAtmosphere {
 
     /** Full-disk mean RGB air transmission; input height above sea level is in metres. */
     public static float[] transmittanceToLight(float observerHeight, float lightCosine, float angularRadius) {
+        float[] result = new float[3];
+        transmittanceToLight(observerHeight, lightCosine, angularRadius, result, 0);
+        return result;
+    }
+
+    /** Writes four RGB/world-altitude samples without allocating per-altitude temporary arrays. */
+    public static void radianceProfile(float[] output, float[] altitudes, float seaLevel,
+            float[] sourceRadiance, float lightCosine, float angularRadius) {
+        if (output.length != 16 || altitudes.length != 4 || sourceRadiance.length != 3) {
+            throw new IllegalArgumentException("Cloud radiance profile requires four altitudes and an RGB source");
+        }
+        for (int sample = 0; sample < 4; sample++) {
+            int start = sample * 4;
+            transmittanceToLight(altitudes[sample] - seaLevel, lightCosine, angularRadius, output, start);
+            for (int channel = 0; channel < 3; channel++) output[start + channel] *= sourceRadiance[channel];
+            output[start + 3] = altitudes[sample];
+        }
+    }
+
+    private static void transmittanceToLight(float observerHeight, float lightCosine, float angularRadius,
+            float[] output, int offset) {
         double height = observerHeight(observerHeight) * .001 + LOWER_DEPTH;
         double cosine = Math.clamp(lightCosine, -1.0, 1.0);
         double horizon = -Math.sqrt(height * (2.0 * INNER_RADIUS + height)) / (INNER_RADIUS + height);
         double extent = Math.sin(angularRadius) * Math.sqrt(Math.max(0.0, 1.0 - cosine * cosine));
         double first = Math.clamp((horizon - cosine) / Math.max(extent, 1e-6), -1.0, 1.0);
         double visible = (Math.acos(first) - first * Math.sqrt(Math.max(0.0, 1.0 - first * first))) / Math.PI;
-        if (visible == 0.0) return new float[3];
+        if (visible == 0.0) {
+            output[offset] = 0;
+            output[offset + 1] = 0;
+            output[offset + 2] = 0;
+            return;
+        }
         double red = 0.0, green = 0.0, blue = 0.0, normalization = 0.0;
         for (int index = 0; index < DISK_NODES.length; index++) {
             double chord = .5 * (1.0 + first) + .5 * (1.0 - first) * DISK_NODES[index];
@@ -70,7 +96,9 @@ public final class SkyAtmosphere {
             normalization += weight;
         }
         double scale = visible / Math.max(normalization, 1e-8);
-        return new float[]{(float) (red * scale), (float) (green * scale), (float) (blue * scale)};
+        output[offset] = (float) (red * scale);
+        output[offset + 1] = (float) (green * scale);
+        output[offset + 2] = (float) (blue * scale);
     }
 
     private static double altitude(double originHeight, double projection, double distance) {

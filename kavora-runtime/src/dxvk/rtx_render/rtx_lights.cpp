@@ -897,6 +897,35 @@ bool RtDistantLight::setCloudIncidentRadiance(const Vector3& radiance) {
   return true;
 }
 
+bool RtDistantLight::setCloudRadianceProfile(const std::array<Vector4, 4>& samples) {
+  for (size_t index = 0; index < samples.size(); index++) {
+    const Vector4& sample = samples[index];
+    for (float channel : { sample.x, sample.y, sample.z }) {
+      if (!std::isfinite(channel) || channel < 0.0f) {
+        return false;
+      }
+    }
+    if (!std::isfinite(sample.w) || (index > 0 && sample.w <= samples[index - 1].w)) {
+      return false;
+    }
+  }
+  m_cloudRadianceProfile = samples;
+  return true;
+}
+
+Vector3 RtDistantLight::getCloudRadianceMaximum() const {
+  if (!m_cloudRadianceProfile.has_value()) {
+    return m_cloudIncidentRadiance;
+  }
+  Vector3 maximum(0.0f);
+  for (const Vector4& sample : *m_cloudRadianceProfile) {
+    maximum.x = std::max(maximum.x, sample.x);
+    maximum.y = std::max(maximum.y, sample.y);
+    maximum.z = std::max(maximum.z, sample.z);
+  }
+  return maximum;
+}
+
 bool RtDistantLight::validateParameters(
   const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale,
   const XXH64_hash_t forceHash) {
@@ -1002,7 +1031,9 @@ void RtLight::copyFrom(const RtLight& light) {
     m_cylinderLight = light.m_cylinderLight;
     break;
   case RtLightType::Distant:
-    m_distantLight = light.m_distantLight;
+    // Begin the active union member's lifetime before copying its inline profile.
+    static_assert(std::is_trivially_destructible_v<RtDistantLight>);
+    new (&m_distantLight) RtDistantLight(light.m_distantLight);
     break;
   }
   
@@ -1040,7 +1071,7 @@ void RtLight::copyFrom(const RtLight& light) {
 namespace {
   template<int RtLightSize> struct CheckRtLightSize {
     // The second line of the build error should contain the new size of RtLight in the template argument, i.e. `dxvk::CheckRtLightSize<newSize>`
-    static_assert(RtLightSize == 272, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
+    static_assert(RtLightSize == 304, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
   };
   CheckRtLightSize<sizeof(RtLight)> _rtLightSizeTest;
 }

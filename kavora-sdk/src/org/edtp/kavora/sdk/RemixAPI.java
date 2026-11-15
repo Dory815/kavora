@@ -770,7 +770,8 @@ public class RemixAPI {
             LightInfoDistantEXT d = info.distantExt;
             return RemixBridge.allocDistantLightChain(
                     d.direction.x, d.direction.y, d.direction.z,
-                    d.angularDiameterDegrees, d.volumetricRadianceScale, 0, d.cloudIncidentRadiance);
+                    d.angularDiameterDegrees, d.volumetricRadianceScale, 0, d.cloudIncidentRadiance,
+                    d.cloudRadianceProfile);
         } else if (info.rectExt != null) {
             LightInfoRectEXT r = info.rectExt;
             return RemixBridge.allocRectExt(

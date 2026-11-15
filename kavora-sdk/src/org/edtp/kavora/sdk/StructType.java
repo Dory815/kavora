@@ -69,6 +69,7 @@ public final class StructType {
     public static final int LIGHT_INFO_CLOUD_RADIANCE_EXT = 56;
     public static final int MESH_INFO_QUAD_SUBSET_EXT = 57;
     public static final int VULKAN_CLIENT_HUDLESS_INFO_EXT = 58;
+    public static final int LIGHT_INFO_CLOUD_RADIANCE_PROFILE_EXT = 59;
 
     private StructType() {}
 }

@@ -143,6 +143,9 @@ public class LightManager {
     private KavoraLight sunLight;
     private KavoraLight moonLight;
     private SkyLightState skyLightState = SkyLightState.empty();
+    private final float[] cloudProfileAltitudes = new float[4];
+    private final float[] sunCloudProfile = new float[16];
+    private final float[] moonCloudProfile = new float[16];
     private Vec3 firstPersonShadowModelOffset = Vec3.ZERO;
     private long lastEntityLightUpdateNanos;
 
@@ -1080,17 +1083,37 @@ public class LightManager {
                 : SkyLightState.empty();
 
         try {
+            boolean cloudProfile = Float.isFinite(cloudHeight);
+            if (cloudProfile) {
+                updateCloudProfiles(cloudHeight + seaLevel, seaLevel);
+            }
             sunLight = updateDistantLight(sunLight, skyLightState.sunPosition(), skyLightState.sunDirectRadiance(),
-                    skyLightState.sunCloudRadiance(), SUN_ANGULAR_DIAMETER_DEGREES);
+                    skyLightState.sunCloudRadiance(), cloudProfile ? sunCloudProfile : null, SUN_ANGULAR_DIAMETER_DEGREES);
             moonLight = updateDistantLight(moonLight, skyLightState.moonPosition(), skyLightState.moonDirectRadiance(),
-                    skyLightState.moonCloudRadiance(), MOON_ANGULAR_DIAMETER_DEGREES);
+                    skyLightState.moonCloudRadiance(), cloudProfile ? moonCloudProfile : null, MOON_ANGULAR_DIAMETER_DEGREES);
         } catch (RemixException e) {
             LOGGER.error("Failed to update sky light: {}", e.getMessage());
         }
     }
 
+    private void updateCloudProfiles(float hostCloudBase, float seaLevel) {
+        cloudProfileAltitudes[0] = hostCloudBase + cloudOption("altitudeOffsetMeters");
+        cloudProfileAltitudes[1] = cloudProfileAltitudes[0] + cloudOption("thicknessMeters");
+        cloudProfileAltitudes[2] = Math.max(cloudProfileAltitudes[1] + 1000f, cloudOption("highAltitudeMeters"));
+        cloudProfileAltitudes[3] = cloudProfileAltitudes[2] + cloudOption("highThicknessMeters");
+        SkyAtmosphere.radianceProfile(sunCloudProfile, cloudProfileAltitudes, seaLevel,
+                skyLightState.sunSourceRadiance(), skyLightState.sunPosition()[1], SUN_ANGULAR_RADIUS);
+        SkyAtmosphere.radianceProfile(moonCloudProfile, cloudProfileAltitudes, seaLevel,
+                skyLightState.moonSourceRadiance(), skyLightState.moonPosition()[1], MOON_ANGULAR_RADIUS);
+    }
+
+    private float cloudOption(String name) {
+        return Float.parseFloat(api.getConfigVariableResolved("rtx.clouds." + name));
+    }
+
     private KavoraLight updateDistantLight(KavoraLight light, float[] positionDirection, float[] radiance,
-                                          float[] cloudRadiance, float angularDiameterDegrees) throws RemixException {
+                                          float[] cloudRadiance, float[] cloudProfile,
+                                          float angularDiameterDegrees) throws RemixException {
         float[] incomingDirection = {
                 -positionDirection[0],
                 -positionDirection[1],
@@ -1099,7 +1122,8 @@ public class LightManager {
 
         var distant = LightInfoDistantEXT.builder()
                 .direction(incomingDirection[0], incomingDirection[1], incomingDirection[2])
-                .angularDiameterDegrees(angularDiameterDegrees);
+                .angularDiameterDegrees(angularDiameterDegrees)
+                .cloudRadianceProfile(cloudProfile);
         if (cloudRadiance != null) {
             distant.cloudIncidentRadiance(cloudRadiance[0], cloudRadiance[1], cloudRadiance[2]);
         }

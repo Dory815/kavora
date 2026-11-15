@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include <array>
 #include <optional>
 #include <limits>
 
@@ -440,6 +441,13 @@ struct RtDistantLight {
 
   bool setCloudIncidentRadiance(const Vector3& radiance);
 
+  const std::optional<std::array<Vector4, 4>>& getCloudRadianceProfile() const {
+    return m_cloudRadianceProfile;
+  }
+
+  bool setCloudRadianceProfile(const std::array<Vector4, 4>& samples);
+  Vector3 getCloudRadianceMaximum() const;
+
   float getVolumetricRadianceScale() const {
     return m_volumetricRadianceScale;
   }
@@ -456,6 +464,7 @@ private:
   float m_halfAngle;
   Vector3 m_radiance;
   Vector3 m_cloudIncidentRadiance;
+  std::optional<std::array<Vector4, 4>> m_cloudRadianceProfile;
   float m_volumetricRadianceScale;
 
   // Note: Computed from direction, not meant to be modified directly

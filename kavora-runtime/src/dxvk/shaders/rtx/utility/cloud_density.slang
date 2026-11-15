@@ -16,6 +16,9 @@ public struct CloudDensityArgs
   public float weather;
   public float thunder;
   public float night;
+  public float highBaseHeight;
+  public float highThickness;
+  public float highCoverage;
 }
 
 [ForceInline]
@@ -43,39 +46,82 @@ float cloudNoiseLod(float footprint, float period, float resolution)
   return max(0.0f, log2(max(footprint * resolution / period, 1.0f)));
 }
 
-// Integrate a clipped linear ramp over the unresolved shape variation.
+// Integrate a clipped ramp and its square over a moment-matched uniform shape distribution.
 [ForceInline]
-float cloudCoverageDensity(float shape, float coverage, float filterWidth)
+float2 cloudCoverageMoments(float shape, float secondMoment, float coverage)
 {
-  const float value = shape - 1.0f + coverage;
-  if (filterWidth <= 1e-4f)
+  if (coverage <= 0)
   {
-    return saturate(value / max(coverage, 1e-4f));
+    return 0;
   }
-  const float lower = clamp(value - filterWidth, 0.0f, coverage);
-  const float upper = clamp(value + filterWidth, 0.0f, coverage);
-  const float rampIntegral = 0.5f * max(upper * upper - lower * lower, 0.0f);
-  const float plateauIntegral = coverage * max(value + filterWidth - max(coverage, value - filterWidth), 0.0f);
-  return saturate((rampIntegral + plateauIntegral) / (2.0f * filterWidth * max(coverage, 1e-4f)));
+  const float value = shape - 1.0f + coverage;
+  const float width = sqrt(3.0f * max(secondMoment - shape * shape, 0.0f));
+  if (width <= 1e-4f)
+  {
+    const float density = saturate(value / max(coverage, 1e-4f));
+    return float2(density, density * density);
+  }
+  const float lower = saturate((value - width) / max(coverage, 1e-4f));
+  const float upper = saturate((value + width) / max(coverage, 1e-4f));
+  const float2 rampIntegral = float2(0.5f * (upper * upper - lower * lower),
+    (upper * upper * upper - lower * lower * lower) / 3.0f) * coverage;
+  const float plateau = max(value + width - max(coverage, value - width), 0.0f);
+  return saturate((rampIntegral + plateau) / (2.0f * width));
 }
 
 [ForceInline]
-public float3 cloudColumn(CloudDensityArgs args, float2 position, Sampler2D<float4> weatherSampler,
+float cloudSmoothstepIntegral(float height, float begin, float end)
+{
+  const float t = saturate((height - begin) / (end - begin));
+  return (end - begin) * t * t * t * (1.0f - 0.5f * t) + max(height - end, 0.0f);
+}
+
+[ForceInline]
+float cloudProfileIntegral(float height, float bottomEnd, float topBegin)
+{
+  const float h = saturate(height);
+  return cloudSmoothstepIntegral(h, 0.0f, bottomEnd) - cloudSmoothstepIntegral(h, topBegin, 1.0f);
+}
+
+[ForceInline]
+float cloudHeightProfile(float height, float bottomEnd, float topBegin, float footprint)
+{
+  if (footprint <= 1e-4f)
+  {
+    return smoothstep(0.0f, bottomEnd, height) * (1.0f - smoothstep(topBegin, 1.0f, height));
+  }
+  const float lower = cloudProfileIntegral(height - 0.5f * footprint, bottomEnd, topBegin);
+  const float upper = cloudProfileIntegral(height + 0.5f * footprint, bottomEnd, topBegin);
+  return saturate((upper - lower) / footprint);
+}
+
+public struct CloudColumn
+{
+  public float coverage;
+  public float type;
+  public float thickness;
+  public float coverageVariance;
+}
+
+[ForceInline]
+public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D<float4> weatherSampler,
   float footprint = 0)
 {
   const float lod = cloudNoiseLod(footprint, args.shapeScale * 16.0f, 512.0f);
-  const float2 weather = weatherSampler.SampleLevel(position / 16.0f, lod).rg;
+  const float4 weather = weatherSampler.SampleLevel(position / 16.0f, lod);
   const float bias = (args.coverage - 0.45f) * 0.9f - 0.18f + 0.51f * args.weather
     + 0.15f * args.thunder - 0.17f * args.night * (1.0f - args.weather);
-  const float coverage = saturate(weather.x + bias);
-  const float type = saturate(weather.y * (1.0f - 0.4f * args.weather) + 0.85f * args.thunder);
+  const float variance = max(weather.g - weather.r * weather.r, 0.0f);
+  const float mean = weather.r + bias;
+  const float2 coverage = cloudCoverageMoments(mean, mean * mean + variance, 1.0f);
+  const float type = saturate(weather.b * (1.0f - 0.4f * args.weather) + 0.85f * args.thunder);
   const float thickness = args.thickness * ((140.0f + 460.0f * smoothstep(0.1f, 0.6f, type)
     + 900.0f * smoothstep(0.72f, 1.0f, type)) / 1500.0f);
-  return float3(coverage, type, thickness);
+  return { coverage.x, type, thickness, max(coverage.y - coverage.x * coverage.x, 0.0f) };
 }
 
 [ForceInline]
-float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudType)
+float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudType, float heightFootprint)
 {
   const float precipitation = max(args.weather, args.thunder);
   if (precipitation <= 0)
@@ -86,43 +132,73 @@ float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudT
   // A continuous, stratiform layer forms beneath the taller cloud cells as rain sets in.
   const float layerThickness = args.thickness * lerp(0.20f, 0.35f, args.thunder) * lerp(1.0f, 1.35f, cloudType);
   const float height = heightAboveBase / layerThickness;
-  const float profile = smoothstep(0.0f, 0.16f, height) * (1.0f - smoothstep(0.65f, 1.0f, height));
+  const float profile = cloudHeightProfile(height, 0.16f, 0.65f, heightFootprint / layerThickness);
   return precipitation * lerp(0.36f, 0.47f, args.thunder) * profile;
 }
 
 [ForceInline]
-public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0)
+float cirrusDensity(CloudDensityArgs args, float3 p, Sampler2D<float4> weatherSampler,
+  Sampler3D<float4> baseSampler, float footprint, float heightFootprint)
 {
-  const float3 p = cloudCoordinates(args, position);
-  const float heightAboveBase = p.y * args.shapeScale - args.baseHeight;
-  if (heightAboveBase <= 0 || heightAboveBase >= args.thickness)
+  if (args.highThickness <= 0)
   {
     return 0;
   }
-  const float3 column = cloudColumn(args, p.xz, weatherSampler, footprint);
-  const float overcast = overcastDensity(args, heightAboveBase, column.y);
-  const float height = heightAboveBase / column.z;
-  if (column.x <= 0 || height >= 1)
+  const float height = (p.y * args.shapeScale - args.highBaseHeight) / args.highThickness;
+  const float profileFootprint = heightFootprint / args.highThickness;
+  if (args.highCoverage <= 0 || height + 0.5f * profileFootprint <= 0 || height - 0.5f * profileFootprint >= 1)
+  {
+    return 0;
+  }
+  const float weatherLod = cloudNoiseLod(footprint, args.shapeScale * 16.0f, 512.0f);
+  const float weather = weatherSampler.SampleLevel(p.xz / 16.0f, weatherLod).a;
+  const float coverage = saturate(args.highCoverage + 0.6f * (weather - 0.5f));
+  const float profile = cloudHeightProfile(height, 0.15f, 0.65f, profileFootprint);
+  // The shear and stretch retain the common sixteen-period wind repeat.
+  const float3 strandPosition = float3(p.x * 0.125f + p.z * 0.0625f, height * 0.25f + 0.41f, p.z * 0.5f);
+  const float lod = cloudNoiseLod(footprint, args.shapeScale * 2.0f, 128.0f);
+  const float4 noise = baseSampler.SampleLevel(strandPosition, lod);
+  return cloudCoverageMoments(noise.b, noise.a, coverage).x * profile;
+}
+
+[ForceInline]
+public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<float4> weatherSampler,
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0, uint layer = 0,
+  float heightFootprint = 0)
+{
+  const float3 p = cloudCoordinates(args, position);
+  if (layer == 1)
+  {
+    return cirrusDensity(args, p, weatherSampler, baseSampler, footprint, heightFootprint);
+  }
+  const float heightAboveBase = p.y * args.shapeScale - args.baseHeight;
+  if (heightAboveBase + 0.5f * heightFootprint <= 0 || heightAboveBase - 0.5f * heightFootprint >= args.thickness)
+  {
+    return 0;
+  }
+  const CloudColumn column = cloudColumn(args, p.xz, weatherSampler, footprint);
+  const float overcast = overcastDensity(args, heightAboveBase, column.type, heightFootprint);
+  const float columnHeight = heightAboveBase / column.thickness;
+  const float profileFootprint = heightFootprint / column.thickness;
+  if (column.coverage <= 0 || columnHeight - 0.5f * profileFootprint >= 1)
   {
     return overcast;
   }
-  const float profile = smoothstep(0.0f, 0.1f, height) * (1.0f - smoothstep(lerp(0.3f, 0.75f, column.y), 1.0f, height));
-  const float anvil = smoothstep(0.75f, 1.0f, column.y) * smoothstep(0.8f, 0.9f, height)
+  const float height = saturate(columnHeight);
+  const float profile = cloudHeightProfile(columnHeight, 0.1f, lerp(0.3f, 0.75f, column.type), profileFootprint);
+  const float anvil = smoothstep(0.75f, 1.0f, column.type) * smoothstep(0.8f, 0.9f, height)
     * (1.0f - smoothstep(0.95f, 1.0f, height));
-  const float coverage = saturate(column.x * (1.0f - 0.35f * height * (1.0f - column.y)) + 0.5f * anvil * column.x);
+  const float coverageScale = 1.0f - 0.35f * height * (1.0f - column.type) + 0.5f * anvil;
+  const float coverage = saturate(column.coverage * coverageScale);
   if (profile <= 0)
   {
     return overcast;
   }
   const float baseLod = cloudNoiseLod(footprint, args.shapeScale, 128.0f);
   const float4 base = baseSampler.SampleLevel(p, baseLod);
-  const float lowFrequency = dot(base.gba, float3(0.625f, 0.25f, 0.125f));
-  const float shape = saturate((base.r - lowFrequency + 1.0f) / (2.0f - lowFrequency));
-  // The finite-width ramp approximates sub-texel coverage after noise filtering.
-  const float filterWidth = 0.12f * saturate(footprint / (0.25f * args.shapeScale));
-  const float density = cloudCoverageDensity(shape, coverage, filterWidth);
-  if (density * profile <= overcast)
+  const float coverageVariance = column.coverageVariance * coverageScale * coverageScale;
+  const float2 density = cloudCoverageMoments(base.r, base.g + coverageVariance, coverage);
+  if (density.x * profile <= overcast)
   {
     return overcast;
   }
@@ -130,7 +206,7 @@ public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<floa
   const float3 detail = detailSampler.SampleLevel(p * 4.0f, detailLod).rgb;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
   const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.18f;
-  // Erosion changes the edge's slope without punching holes in the condensed core.
-  const float eroded = density * density / max(density + erosion * (1.0f - density), 1e-4f);
+  // The polynomial erosion integrates directly from the two coverage moments.
+  const float eroded = (1.0f - erosion) * density.x + erosion * density.y;
   return max(overcast, eroded * profile);
 }

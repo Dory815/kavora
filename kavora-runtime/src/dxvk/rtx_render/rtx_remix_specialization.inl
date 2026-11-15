@@ -84,6 +84,7 @@ namespace pnext::detail {
     remixapi_LightInfoCylinderEXT,
     remixapi_LightInfoDistantEXT,
     remixapi_LightInfoCloudRadianceEXT,
+    remixapi_LightInfoCloudRadianceProfileEXT,
     remixapi_LightInfoDomeEXT,
     remixapi_LightInfoDomeTransmittanceEXT,
     remixapi_LightInfoDomeProjectionEXT,
@@ -136,6 +137,7 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum< remixapi_LightInfoCylinderEXT           > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CYLINDER_EXT;
   template<> constexpr auto ToEnum< remixapi_LightInfoDistantEXT            > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT;
   template<> constexpr auto ToEnum< remixapi_LightInfoCloudRadianceEXT      > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT;
+  template<> constexpr auto ToEnum< remixapi_LightInfoCloudRadianceProfileEXT > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_PROFILE_EXT;
   template<> constexpr auto ToEnum< remixapi_LightInfoDomeEXT               > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT;
   template<> constexpr auto ToEnum< remixapi_LightInfoDomeTransmittanceEXT  > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_TRANSMITTANCE_EXT;
   template<> constexpr auto ToEnum< remixapi_LightInfoDomeProjectionEXT > = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_PROJECTION_EXT;
@@ -189,6 +191,7 @@ namespace pnext::detail {
   template<>           struct Root< remixapi_LightInfoCylinderEXT           >{ using Type = remixapi_LightInfo;                 };
   template<>           struct Root< remixapi_LightInfoDistantEXT            >{ using Type = remixapi_LightInfo;                 };
   template<>           struct Root< remixapi_LightInfoCloudRadianceEXT      >{ using Type = remixapi_LightInfo;                 };
+  template<>           struct Root< remixapi_LightInfoCloudRadianceProfileEXT >{ using Type = remixapi_LightInfo;                };
   template<>           struct Root< remixapi_LightInfoDomeEXT               >{ using Type = remixapi_LightInfo;                 };
   template<>           struct Root< remixapi_LightInfoDomeTransmittanceEXT  >{ using Type = remixapi_LightInfo;                 };
   template<>           struct Root< remixapi_LightInfoDomeProjectionEXT >{ using Type = remixapi_LightInfo; };

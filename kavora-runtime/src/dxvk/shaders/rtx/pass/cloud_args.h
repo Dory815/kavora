@@ -11,9 +11,10 @@
 
 CLOUD_PARAMETER struct CloudLight {
   CLOUD_PARAMETER vec3 directionToLight;
-  CLOUD_PARAMETER float padding0;
+  CLOUD_PARAMETER uint hasRadianceProfile;
   CLOUD_PARAMETER vec3 irradiance;
   CLOUD_PARAMETER float padding1;
+  CLOUD_PARAMETER vec4 radianceProfile[4];
 };
 
 CLOUD_PARAMETER struct CloudArgs {
@@ -42,10 +43,19 @@ CLOUD_PARAMETER struct CloudArgs {
   CLOUD_PARAMETER float lightMaxDistance;
   CLOUD_PARAMETER vec3 previousWindDelta;
   CLOUD_PARAMETER float viewAngularFootprint;
+  CLOUD_PARAMETER float highBaseHeight;
+  CLOUD_PARAMETER float highThickness;
+  CLOUD_PARAMETER float highExtinction;
+  CLOUD_PARAMETER float highCoverage;
+  CLOUD_PARAMETER float highMaxDistance;
+  CLOUD_PARAMETER float padding2;
+  CLOUD_PARAMETER float padding3;
+  CLOUD_PARAMETER float padding4;
 };
 
 #undef CLOUD_PARAMETER
 
 #ifdef __cplusplus
-static_assert(sizeof(CloudArgs) == 192);
+static_assert(sizeof(CloudLight) == 96);
+static_assert(sizeof(CloudArgs) == 352);
 #endif

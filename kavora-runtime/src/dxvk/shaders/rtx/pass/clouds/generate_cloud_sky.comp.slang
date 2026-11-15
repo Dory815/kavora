@@ -25,33 +25,71 @@ void main(uint2 pixel : SV_DispatchThreadID)
 {
   const CloudArgs args = cb.volumeArgs.clouds;
   const uint2 extent = uint2(args.skyResolution * 2, args.skyResolution);
-  if (any(pixel >= extent)) return;
+  if (any(pixel >= extent))
+  {
+    return;
+  }
   const float3 direction = cloudSkyDirection((float2(pixel) + 0.5f) / float2(extent), args.up);
   const float3 origin = cameraGetWorldPosition(cb.camera);
-  const CloudRayGrid grid = { cloudInterval(args, origin, direction, args.maxDistance), cloudSampleSpacing(args, direction) };
-  const float3 ambient = sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness, SkyProbe, SkySampler, args.up) * 0.5f;
+  float2 intervals[4];
+  bool hasCloud = false;
+  [unroll]
+  for (uint i = 0; i < 4; i++)
+  {
+    intervals[i] = cloudLayerInterval(args, origin, direction, cloudLayerMaxDistance(args, i / 2), i / 2, i % 2);
+    hasCloud = hasCloud || intervals[i].y > intervals[i].x;
+  }
+  if (!hasCloud)
+  {
+    CloudSky[pixel] = float4(0, 0, 0, 1);
+    CloudSkyDistanceMoment[pixel] = 0;
+    return;
+  }
+  const float3 ambient = sampleCloudAmbientRadiance(args, cb.domeLightArgs, cb.skyBrightness, SkyProbe, SkySampler);
   float3 radiance = 0;
   float transmittance = 1;
   float distanceMoment = 0;
-  float previous = grid.interval.x;
-  for (uint cell = 0; previous < grid.interval.y; cell++)
+  for (uint intervalIndex = 0; intervalIndex < 4; intervalIndex++)
   {
-    const float next = grid.boundary(cell + 1);
-    const float distance = grid.sampleAt(cell);
-    const float3 position = origin + direction * distance;
-    const float footprint = max(grid.spacing, distance * 3.14159265359f / float(args.skyResolution));
-    const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
-      CloudDetailSampler, footprint);
-    if (extinction > 0)
+    uint nearest = 0;
+    [unroll]
+    for (uint i = 1; i < 4; i++)
     {
-      const float opacity = accumulateCloudSkyStep(extinction, next - previous, args.albedo,
-        cloudIncidentRadiance(args, position, direction, ambient, CloudWeatherSampler, CloudBaseSampler,
-          CloudDetailSampler), radiance, transmittance);
-      distanceMoment += opacity * distance;
+      if (intervals[i].x < intervals[nearest].x)
+      {
+        nearest = i;
+      }
     }
-    if (transmittance < kOpaqueCloudTransmittance) break;
-    previous = next;
+    const CloudRayGrid grid = { intervals[nearest], cloudSampleSpacing(args, direction, nearest / 2) };
+    intervals[nearest].x = 3.402823466e+38f;
+    float previous = grid.interval.x;
+    for (uint cell = 0; previous < grid.interval.y; cell++)
+    {
+      const float next = grid.boundary(cell + 1);
+      const float distance = grid.sampleAt(cell);
+      const float3 position = origin + direction * distance;
+      const float pixelFootprint = distance * 3.14159265359f / float(args.skyResolution);
+      const float footprint = max(grid.spacing, pixelFootprint);
+      const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
+        CloudDetailSampler, footprint, cloudHeightFootprint(args, position, direction, grid.spacing, pixelFootprint));
+      if (extinction > 0)
+      {
+        const float opacity = accumulateCloudSkyStep(extinction, next - previous, args.albedo,
+          cloudIncidentRadiance(args, position, direction, ambient, CloudWeatherSampler, CloudBaseSampler,
+            CloudDetailSampler), radiance, transmittance);
+        distanceMoment += opacity * distance;
+      }
+      if (transmittance < kOpaqueCloudTransmittance)
+      {
+        break;
+      }
+      previous = next;
+    }
+    if (transmittance < kOpaqueCloudTransmittance)
+    {
+      break;
+    }
   }
   CloudSky[pixel] = float4(radiance, transmittance);
-  CloudSkyDistanceMoment[pixel] = distanceMoment / args.maxDistance;
+  CloudSkyDistanceMoment[pixel] = distanceMoment / cloudMaxViewDistance(args);
 }

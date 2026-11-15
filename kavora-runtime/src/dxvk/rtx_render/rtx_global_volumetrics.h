@@ -34,7 +34,7 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, transportMode, 0u,
       "Cloud transport. 0: World-space volumetric integration. 1: Camera-centered sky map shared by background rays.",
       args.minValue = 0u, args.maxValue = 1u);
-    RTX_OPTION_ARGS("rtx.clouds", uint32_t, skyResolution, 768u,
+    RTX_OPTION_ARGS("rtx.clouds", uint32_t, skyResolution, 1024u,
       "Height of the 2:1 cloud sky map. Used only by the sky-map transport mode.",
       args.minValue = 128u, args.maxValue = 2048u);
     RTX_OPTION_FLAG("rtx.clouds", bool, sceneEnabled, false, RtxOptionFlags::NoSave,
@@ -65,9 +65,19 @@ namespace dxvk {
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 12000.0f, "Cloud visibility distance, including the fade to the background sky.",
       args.minValue = 1.0f);
+    RTX_OPTION_ARGS("rtx.clouds", float, highAltitudeMeters, 6000.0f, "Thin high-cloud base height. Kept at least 1000 meters above the cumulus top.",
+      args.minValue = 1.0f);
+    RTX_OPTION_ARGS("rtx.clouds", float, highThicknessMeters, 800.0f, "Thickness of the high-cloud layer.",
+      args.minValue = 1.0f);
+    RTX_OPTION_ARGS("rtx.clouds", float, highExtinctionPerMeter, 0.0015f, "High-cloud extinction at unit density, per meter.",
+      args.minValue = 0.0f);
+    RTX_OPTION_ARGS("rtx.clouds", float, highCoverage, 0.35f, "Coverage of the optically thin high-cloud layer. Zero disables this layer.",
+      args.minValue = 0.0f, args.maxValue = 1.0f);
+    RTX_OPTION_ARGS("rtx.clouds", float, highMaxDistanceMeters, 96000.0f, "High-cloud visibility distance, including its fade to the background sky.",
+      args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, steps, 160u, "Spatial integration quality of the cloud field. Longer rays use proportionally more density samples.",
       args.minValue = 8u, args.maxValue = 256u);
-    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 6u, "Cloud self-shadow integration steps.",
+    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow integration steps.",
       args.minValue = 1u, args.maxValue = 16u);
   };
 
@@ -357,6 +367,8 @@ namespace dxvk {
     Resources::Resource m_cloudSky;
     Resources::Resource m_cloudSkyDistanceMoment;
     Vector3 m_previousCloudWindOffset = Vector3(0.f);
+    uint32_t m_previousCloudFrame = 0;
+    bool m_cloudHistoryValid = false;
     VkExtent3D m_froxelVolumeExtent;
     VkExtent3D m_restirFroxelVolumeExtent;
     uint32_t m_numFroxelVolumes;

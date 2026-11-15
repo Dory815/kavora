@@ -26,12 +26,15 @@ import "rtx/algorithm/atmosphere.slang";
 [shader("callable")]
 void main(inout AtmosphereCallData data)
 {
-  const float3 ambient = cb.volumeArgs.clouds.enable
-    ? sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler, cb.volumeArgs.sceneUpDirection) * 0.5f
+  const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs, data.origin, data.direction,
+    data.volumeHint, data.mediumExtinction);
+  const float3 ambient = ray.hasCloud
+    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds, cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler)
     : float3(0);
-  const AtmosphereSegment segment = integrateAtmosphereSegment<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
+  const AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, data.origin, data.direction, data.distance, ambient, data.volumeHint, data.mediumExtinction);
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, data.distance, ambient);
   data.radiance = segment.radiance;
   data.transmittance = segment.transmittance;
+  data.cloudMoments = segment.cloudMoments;
 }

@@ -13,6 +13,8 @@ public class LightInfoDistantEXT {
     public float volumetricRadianceScale = 1.0f;
     /** Clear-air incident radiance for clouds. Null uses the light's ordinary radiance. */
     public Float3D cloudIncidentRadiance;
+    /** Four RGB/altitude samples (16 floats), copied during create/update. Null uses constant cloud radiance. */
+    public float[] cloudRadianceProfile;
 
     public LightInfoDistantEXT() {}
 
@@ -21,6 +23,7 @@ public class LightInfoDistantEXT {
         private float angularDiameterDegrees = 0.5f;
         private float volumetricRadianceScale = 1.0f;
         private Float3D cloudIncidentRadiance;
+        private float[] cloudRadianceProfile;
 
         public Builder direction(float x, float y, float z) {
             this.direction = new Float3D(x, y, z);
@@ -42,12 +45,22 @@ public class LightInfoDistantEXT {
             return this;
         }
 
+        /** RGB uses light radiance units; the fourth component is increasing world-space altitude. */
+        public Builder cloudRadianceProfile(float[] samples) {
+            if (samples != null && samples.length != 16) {
+                throw new IllegalArgumentException("Cloud radiance profile requires four RGB/altitude samples");
+            }
+            this.cloudRadianceProfile = samples;
+            return this;
+        }
+
         public LightInfoDistantEXT build() {
             LightInfoDistantEXT ext = new LightInfoDistantEXT();
             ext.direction = this.direction;
             ext.angularDiameterDegrees = this.angularDiameterDegrees;
             ext.volumetricRadianceScale = this.volumetricRadianceScale;
             ext.cloudIncidentRadiance = this.cloudIncidentRadiance;
+            ext.cloudRadianceProfile = this.cloudRadianceProfile;
             return ext;
         }
     }

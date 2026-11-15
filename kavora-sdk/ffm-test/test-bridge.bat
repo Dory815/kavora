@@ -22,9 +22,13 @@ for %%f in ("%ROOT%\kavora-sdk\src\org\edtp\kavora\sdk\*.java") do (
 )
 set "SOURCE=%~dp0RemixBridgeContractTest.java"
 echo "!SOURCE:\=/!" >> "%OUT%\sources.txt"
+set "SOURCE=%~dp0CloudRadianceProfileContractTest.java"
+echo "!SOURCE:\=/!" >> "%OUT%\sources.txt"
 set "SOURCE=%~dp0RemixRuntimeLifecycleTest.java"
 echo "!SOURCE:\=/!" >> "%OUT%\sources.txt"
 "%JAVA_HOME%\bin\javac.exe" -encoding UTF-8 -cp "%JOML_JAR%" -d "%OUT%" @"%OUT%\sources.txt"
+if errorlevel 1 exit /b 1
+"%JAVA_HOME%\bin\java.exe" --enable-native-access=ALL-UNNAMED -cp "%OUT%;%JOML_JAR%" org.edtp.kavora.sdk.CloudRadianceProfileContractTest
 if errorlevel 1 exit /b 1
 "%JAVA_HOME%\bin\java.exe" --enable-native-access=ALL-UNNAMED -cp "%OUT%;%JOML_JAR%" org.edtp.kavora.sdk.RemixBridgeContractTest "%OUT%\mock_runtime.dll"
 if errorlevel 1 exit /b 1

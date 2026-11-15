@@ -2,6 +2,7 @@
 #pragma once
 
 #include "rtx/concept/light/light_helper.slangh"
+import "rtx/pass/cloud_parameters.slang";
 import "rtx/algorithm/cloud_sky.slang";
 
 float3 sampleEnvironmentRadiance(DomeLightArgs dome, float brightness, SamplerCube<float3> probe,
@@ -12,6 +13,34 @@ float3 sampleEnvironmentRadiance(DomeLightArgs dome, float brightness, SamplerCu
     return dome.radiance * sampleDomeLightTexture(sampler, direction, dome.textureIndex, dome.worldToLightTransform);
   }
   return brightness * probe.SampleLevel(direction, 0);
+}
+
+// The diffuse cloud source is the upper-hemisphere radiance integral divided by 4 pi.
+float3 sampleCloudAmbientRadiance(CloudArgs clouds, DomeLightArgs dome, float brightness,
+  SamplerCube<float3> probe, SamplerState sampler)
+{
+  const float3 up = clouds.up;
+  const float3 light = clouds.lights[0].directionToLight;
+  const float3 horizontal = light - dot(light, up) * up;
+  const float3 tangent = dot(horizontal, horizontal) > 1e-6f ? normalize(horizontal) : float3(1, 0, 0);
+  const float3 bitangent = cross(up, tangent);
+  const float4 cosines = float4(0.0694318442f, 0.3300094782f, 0.6699905218f, 0.9305681558f);
+  const float4 weights = float4(0.1739274226f, 0.3260725774f, 0.3260725774f, 0.1739274226f);
+  const float2 azimuths[4] = { float2(1, 0), float2(0, 1), float2(-1, 0), float2(0, -1) };
+  float3 radiance = 0;
+  [unroll]
+  for (uint ring = 0; ring < 4; ring++)
+  {
+    const float cosine = cosines[ring];
+    const float sine = sqrt(1.0f - cosine * cosine);
+    [unroll]
+    for (uint sample = 0; sample < 4; sample++)
+    {
+      const float3 direction = cosine * up + sine * (azimuths[sample].x * tangent + azimuths[sample].y * bitangent);
+      radiance += sampleEnvironmentRadiance(dome, brightness, probe, sampler, direction) * (weights[ring] * 0.125f);
+    }
+  }
+  return radiance;
 }
 
 float3 sampleIndirectEnvironmentRadiance(float3 direction, SamplerCube<float3> probe, SamplerState sampler)

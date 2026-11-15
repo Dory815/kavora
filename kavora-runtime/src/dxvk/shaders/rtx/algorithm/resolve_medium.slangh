@@ -37,14 +37,14 @@ import "rtx/algorithm/atmosphere.slang";
 #include "rtx/pass/gbuffer/atmosphere_call.slangh"
 #endif
 
-void resolveAtmosphere(float3 origin, float3 direction, float distance, uint volumeHint,
+float2 resolveAtmosphere(float3 origin, float3 direction, float distance, uint volumeHint,
   inout float3 attenuation, inout float3 radiance, uint mediumState = SURFACE_INDEX_INVALID)
 {
   const float3 mediumExtinction = translucentMediumExtinction(mediumState, surfaceMaterials);
   if (!cb.volumeArgs.enable && !cb.volumeArgs.clouds.enable)
   {
     attenuation *= volumeTransmittance(mediumExtinction, distance);
-    return;
+    return 0;
   }
 #ifdef RESOLVER_ATMOSPHERE_CALLABLE
   AtmosphereCallData data;
@@ -54,16 +54,19 @@ void resolveAtmosphere(float3 origin, float3 direction, float distance, uint vol
   data.volumeHint = volumeHint;
   data.mediumExtinction = mediumExtinction;
   CallShader(0, data);
-  const AtmosphereSegment segment = { data.radiance, data.transmittance };
+  const AtmosphereSegment segment = { data.radiance, data.transmittance, data.cloudMoments };
 #else
-  float3 ambient = cb.volumeArgs.clouds.enable
-    ? sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler, cb.volumeArgs.sceneUpDirection) * 0.5f
+  const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs, origin, direction,
+    volumeHint, mediumExtinction);
+  float3 ambient = ray.hasCloud
+    ? sampleCloudAmbientRadiance(cb.volumeArgs.clouds, cb.domeLightArgs, cb.skyBrightness, SkyProbe, LinearWrapSampler)
     : float3(0);
-  AtmosphereSegment segment = integrateAtmosphereSegment<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
+  AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, origin, direction, distance, ambient, volumeHint, mediumExtinction);
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, distance, ambient);
 #endif
   radiance += attenuation * segment.radiance;
   attenuation *= segment.transmittance;
+  return segment.cloudMoments;
 }
 #endif

@@ -753,7 +753,7 @@ namespace dxvk {
   void DxvkPathtracerGbuffer::ensurePathBuffers(const VkExtent3D& rayDims, bool atmosphereCache,
     uint32_t atmosphereStride, uint32_t checkpointCapacity) {
     static_assert(GBUFFER_PRIMARY_INTERSECTION_WORDS == 5);
-    static_assert(GBUFFER_PRIMARY_ATMOSPHERE_WORDS == 6);
+    static_assert(GBUFFER_PRIMARY_ATMOSPHERE_WORDS == 7);
     static_assert(GBUFFER_PRIMARY_TAIL_WORDS == 7);
     static_assert(GBUFFER_PSR_STATE_WORDS == 18);
     static_assert(GBUFFER_PSR_QUEUE_ROW_WIDTH % 128 == 0);
@@ -1142,7 +1142,7 @@ namespace dxvk {
       volume.fogIntegrationMode == 1 ? GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY : GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY);
     ctx->bindResourceBuffer(GBUFFER_BINDING_PATH_STORAGE, DxvkBufferSlice(m_pathStorage, 0, m_pathStorage->info().size));
     if (raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable)) {
-      // Primary consumes these six-word segments before PSR initializes the same storage.
+      // Primary consumes the atmospheric transfers and motion guides before PSR reuses the storage.
       ScopedGpuProfileZone(ctx, "Primary Atmosphere");
       {
         ScopedGpuProfileZone(ctx, "Column Prefix");

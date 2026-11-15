@@ -44,6 +44,43 @@ class SkyAtmosphereTest {
         assertTrue(centred[0] > centred[1] && centred[1] > centred[2] && centred[2] > 0);
     }
 
+    @Test void sunsetProfileKeepsIlluminatedHighCloudsAboveTheDarkLowLayer() {
+        float[] profile = new float[16];
+        float[] altitudes = {400, 1900, 6000, 6800};
+        float[] source = {30, 30, 30};
+        float cosine = (float) Math.sin(Math.toRadians(-2));
+        SkyAtmosphere.radianceProfile(profile, altitudes, 63, source, cosine, SUN_RADIUS);
+        assertTrue(profile[0] < 1e-6f, "The low cloud base is in atmospheric shadow");
+        assertTrue(profile[8] > 1f, "High cloud illumination survives surface-light extinction");
+        assertTrue(profile[12] > profile[8] && profile[8] > profile[4]);
+        for (int sample = 0; sample < 4; sample++) {
+            float[] transmission = SkyAtmosphere.transmittanceToLight(altitudes[sample] - 63, cosine, SUN_RADIUS);
+            assertEquals(altitudes[sample], profile[sample * 4 + 3]);
+            for (int channel = 0; channel < 3; channel++) {
+                assertEquals(transmission[channel] * source[channel], profile[sample * 4 + channel]);
+            }
+        }
+        assertTrue(profile[12] > profile[13] && profile[13] > profile[14]);
+    }
+
+    @Test void cloudProfileUsesSeaLevelAsDensityReferenceAndReusesItsOutput() {
+        float[] output = new float[16];
+        float[] heights = {400, 1900, 6000, 6800};
+        SkyAtmosphere.radianceProfile(output, heights, 0, new float[]{2, 3, 4}, 1, SUN_RADIUS);
+        float[] original = output.clone();
+        SkyAtmosphere.radianceProfile(output, new float[]{500, 2000, 6100, 6900}, 100,
+                new float[]{2, 3, 4}, 1, SUN_RADIUS);
+        for (int sample = 0; sample < 4; sample++) {
+            for (int channel = 0; channel < 3; channel++) {
+                assertEquals(original[sample * 4 + channel], output[sample * 4 + channel]);
+            }
+        }
+        SkyAtmosphere.radianceProfile(output, heights, 0, new float[]{2, 3, 4}, -1, SUN_RADIUS);
+        for (int sample = 0; sample < 4; sample++) {
+            for (int channel = 0; channel < 3; channel++) assertEquals(0, output[sample * 4 + channel]);
+        }
+    }
+
     private static void assertTransmission(float height, double elevation, double... expected) {
         float[] actual = SkyAtmosphere.transmittanceToLight(height,
                 (float) Math.sin(Math.toRadians(elevation)), SUN_RADIUS);

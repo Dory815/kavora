@@ -440,6 +440,10 @@ final class RemixLayouts {
                 JAVA_INT.withName("sType"),
                 ADDRESS.withName("pNext"),
                 layout("Float3D").withName("incidentRadiance"));
+        define("LightInfoCloudRadianceProfileEXT",
+                JAVA_INT.withName("sType"),
+                ADDRESS.withName("pNext"),
+                MemoryLayout.sequenceLayout(4, layout("Float4D")).withName("samples"));
         define("LightInfoDomeEXT",
                 JAVA_INT.withName("sType"),
                 ADDRESS.withName("pNext"),

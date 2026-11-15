@@ -27,6 +27,7 @@ import "rtx/utility/quaternion.slang";
 
 import "rtx/pass/gbuffer/gbuffer_motion.slang";
 import "rtx/pass/cloud_parameters.slang";
+import "rtx/algorithm/clouds.slang";
 #include "rtx/pass/gbuffer/gbuffer_output.slangh"
 #include "rtx/pass/gbuffer/gbuffer_optical_ray.slangh"
 #include "rtx/pass/gbuffer/gbuffer_shading_cache.slangh"
@@ -47,6 +48,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate, 
   geometryResolverState.directionAltered = false;
 
   geometryResolverState.radiance = vec3(0.0f, 0.0f, 0.0f);
+  geometryResolverState.cloudMoments = 0;
   geometryResolverState.attenuation = f16vec3(1.0f, 1.0f, 1.0f);
   geometryResolverState.segmentHitDistance = 0.0f;
   geometryResolverState.accumulatedHitDistance = 0.0f;
@@ -183,6 +185,9 @@ void geometryResolverVertex(
     ray, interaction, surface, surfaceInteraction, material, stochasticAlpha, raytracedRenderTarget);
   geometryResolverState.insideMedium = geometryResolverState.mediumState != SURFACE_INDEX_INVALID;
   extraArgs.firstSegment = false;
+  segment.cloudMoments.x += segment.cloudMoments.y * geometryResolverState.accumulatedHitDistance
+    / max(cloudMaxViewDistance(cb.volumeArgs.clouds), 1e-6f);
+  geometryResolverState.cloudMoments = composeCloudMoments(geometryResolverState.cloudMoments, segment.cloudMoments);
 
   if (cb.enableCoverageAov != 0) {
     PrimaryCoverage[geometryResolverState.pixelCoordinate] *= opacityTransmittance;
@@ -250,6 +255,11 @@ void geometryResolverVertex(
       const float3 direction = geometryResolverState.direction;
       const CloudArgs clouds = cb.volumeArgs.clouds;
       float3 background = sampleClearBackgroundRadiance(direction, SkyProbe, LinearWrapSampler);
+      if (clouds.enable && clouds.transportMode == 0 && geometryResolverState.cloudMoments.y > 0.0f)
+      {
+        cloudDistance = geometryResolverState.cloudMoments.x / geometryResolverState.cloudMoments.y
+          * cloudMaxViewDistance(clouds);
+      }
       if (clouds.enable && clouds.transportMode == 1)
       {
         const float2 uv = cloudSkyUv(clouds, direction);
@@ -259,7 +269,7 @@ void geometryResolverVertex(
         if (opacity > 0.0f)
         {
           const float moment = CloudSkyDistanceMoment.SampleLevel(LinearWrapSampler, uv, 0);
-          cloudDistance = saturate(moment / opacity) * clouds.maxDistance;
+          cloudDistance = saturate(moment / opacity) * cloudMaxViewDistance(clouds);
         }
       }
       geometryResolverState.radiance += geometryResolverState.attenuation * background;

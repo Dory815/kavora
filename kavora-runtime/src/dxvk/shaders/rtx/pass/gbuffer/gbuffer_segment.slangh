@@ -11,6 +11,7 @@ struct GBufferSegment
 {
   vec3 attenuation;
   vec3 emission;
+  float2 cloudMoments;
   uint4 decalMemory;
   f16vec3 decalEmission;
   uint numUnorderedInteractions;
@@ -60,7 +61,7 @@ float resolveGBufferSegment<State : IBasePayloadState, MaterialContext : IVertex
   uint8_t firstRayPortal = invalidRayPortalIndex;
   const float orderedTransmittance = resolveVertex<State, MaterialContext>(mode, candidate, state, materialContext,
     ray, interaction, surface, surfaceInteraction, material,
-    segment.attenuation, segment.emission, segment.decalMemory, segment.decalEmission,
+    segment.attenuation, segment.emission, segment.cloudMoments, segment.decalMemory, segment.decalEmission,
     spreadAngle, stochasticAlpha, firstRayPortal, pomOpaqueSurfaceEncountered,
     raytracedRenderTarget, medium, false, StochasticAlpha, forceFirstHit, firstPrimarySegment, evaluatePomSilhouette);
   return unorderedTransmittance * orderedTransmittance;

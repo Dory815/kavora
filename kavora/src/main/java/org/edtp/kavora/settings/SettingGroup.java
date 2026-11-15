@@ -30,6 +30,7 @@ public enum SettingGroup {
     NIGHT_SKY(SettingCategory.SKY, "kavora.settings.group.nightSky"),
     END_SKY(SettingCategory.SKY, "kavora.settings.group.endSky"),
     CLOUDS(SettingCategory.WEATHER, "kavora.settings.group.clouds"),
+    HIGH_CLOUDS(CLOUDS, "kavora.settings.group.highClouds"),
     CLOUD_QUALITY(CLOUDS, "kavora.settings.group.cloudQuality"),
     RAIN_GROUND(SettingCategory.WEATHER, "kavora.settings.group.rainGround"),
     FOG(SettingCategory.WEATHER, "kavora.settings.group.fog"),

@@ -2,10 +2,18 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 RTX Remix for Minecraft Community Edition contributors
  * SPDX-License-Identifier: Apache-2.0
  */
+//!variant generate_cloud_noise.comp CLOUD_NOISE_BASE
+//!variant generate_cloud_detail.comp
+//!end-variants
+
 #include "rtx/pass/cloud_noise.h"
 #include "rtx/utility/cloud_noise.slangh"
 
+#ifdef CLOUD_NOISE_BASE
+layout(rgba16f, binding = 0)
+#else
 layout(rgba8, binding = 0)
+#endif
 RWTexture3D<float4> CloudNoise;
 layout(push_constant)
 ConstantBuffer<CloudNoiseGenerationArgs> cb;
@@ -33,6 +41,10 @@ void main(uint3 id : SV_DispatchThreadID)
   }
   perlin = saturate(perlin * (0.75f / 1.75f) + 0.5f);
   const float worley4 = cloudWorleyFbm(uv, 4, kCloudNoiseSeed + 11);
-  CloudNoise[id] = float4(perlin, worley4,
-    cloudWorleyFbm(uv, 8, kCloudNoiseSeed + 23), cloudWorleyFbm(uv, 16, kCloudNoiseSeed + 37));
+  const float lowFrequency = 0.625f * worley4 + 0.25f * cloudWorleyFbm(uv, 8, kCloudNoiseSeed + 23)
+    + 0.125f * cloudWorleyFbm(uv, 16, kCloudNoiseSeed + 37);
+  const float cumulus = saturate((perlin - lowFrequency + 1.0f) / (2.0f - lowFrequency));
+  const float cirrus = saturate(1.0f - abs(perlin * 2.0f - 1.0f) - 0.2f * worley4);
+  // Filtering both moments retains the variation needed by the coverage threshold.
+  CloudNoise[id] = float4(cumulus, cumulus * cumulus, cirrus, cirrus * cirrus);
 }

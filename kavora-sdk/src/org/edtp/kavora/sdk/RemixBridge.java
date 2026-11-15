@@ -1410,8 +1410,22 @@ public final class RemixBridge {
     static long allocDistantLightChain(float dirX, float dirY, float dirZ,
             float angularDiameter, float volumetricRadianceScale,
             long chainNext, Float3D cloudIncidentRadiance) {
+        return allocDistantLightChain(dirX, dirY, dirZ, angularDiameter, volumetricRadianceScale,
+                chainNext, cloudIncidentRadiance, null);
+    }
+
+    static long allocDistantLightChain(float dirX, float dirY, float dirZ,
+            float angularDiameter, float volumetricRadianceScale,
+            long chainNext, Float3D cloudIncidentRadiance, float[] cloudRadianceProfile) {
         Arena arena = Arena.ofShared();
         try {
+            if (cloudRadianceProfile != null) {
+                validateCloudRadianceProfile(cloudRadianceProfile);
+                String type = "LightInfoCloudRadianceProfileEXT";
+                MemorySegment profile = info(arena, type, StructType.LIGHT_INFO_CLOUD_RADIANCE_PROFILE_EXT, chainNext);
+                floats(profile, type, "samples", cloudRadianceProfile);
+                chainNext = profile.address();
+            }
             if (cloudIncidentRadiance != null) {
                 String type = "LightInfoCloudRadianceEXT";
                 MemorySegment clouds = info(arena, type, StructType.LIGHT_INFO_CLOUD_RADIANCE_EXT, chainNext);
@@ -1428,6 +1442,24 @@ public final class RemixBridge {
         } catch (Throwable error) {
             arena.close();
             throw failure(error);
+        }
+    }
+
+    private static void validateCloudRadianceProfile(float[] samples) {
+        if (samples.length != 16) {
+            throw new IllegalArgumentException("Cloud radiance profile requires four RGB/altitude samples");
+        }
+        for (int sample = 0; sample < 4; sample++) {
+            int start = sample * 4;
+            for (int channel = 0; channel < 4; channel++) {
+                float value = samples[start + channel];
+                if (!Float.isFinite(value) || (channel < 3 && value < 0)) {
+                    throw new IllegalArgumentException("Cloud radiance profile requires finite altitudes and nonnegative RGB");
+                }
+            }
+            if (sample > 0 && samples[start + 3] <= samples[start - 1]) {
+                throw new IllegalArgumentException("Cloud radiance profile altitudes must increase");
+            }
         }
     }
 

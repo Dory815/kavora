@@ -2,18 +2,23 @@
  * SPDX-License-Identifier: MIT
  */
 //!variant filter_cloud_noise_3d.comp CLOUD_NOISE_VOLUME
+//!variant filter_cloud_noise_3d_float.comp CLOUD_NOISE_VOLUME CLOUD_NOISE_FLOAT
 //!variant filter_cloud_noise_2d.comp
 //!end-variants
 
 #ifdef CLOUD_NOISE_VOLUME
 layout(binding = 0)
 Sampler3D<float4> Source;
+#ifdef CLOUD_NOISE_FLOAT
+layout(rgba16f, binding = 1)
+#else
 layout(rgba8, binding = 1)
+#endif
 RWTexture3D<float4> Destination;
 #else
 layout(binding = 0)
 Sampler2D<float4> Source;
-layout(rgba8, binding = 1)
+layout(rgba16f, binding = 1)
 RWTexture2D<float4> Destination;
 #endif
 

@@ -45,6 +45,7 @@ void storePrimaryResolveState(uint pixel, GeometryResolverState state, float rem
   PathStorage[a + 3] = packGBufferHalf2(state._accumulatedRotation.xy);
   PathStorage[a + 4] = packGBufferHalf2(state._accumulatedRotation.zw);
   PathStorage[a + 5] = asuint(state.accumulatedHitDistance);
+  PathStorage[a + 6] = packCloudMoments(state.cloudMoments);
   PathStorage[t + 0] = asuint(remainingDistance);
   PathStorage[t + 1] = packGBufferHalf2(state._direction.xy);
   PathStorage[t + 2] = f32tof16(state._direction.z) | (uint(state._rayMask) << 16);
@@ -69,6 +70,7 @@ GeometryResolverState loadPrimaryResolveState(uint pixel, out float remainingDis
   state.mediumState = PathStorage[a + 2];
   state._accumulatedRotation = f16vec4(unpackGBufferHalf2(PathStorage[a + 3]), unpackGBufferHalf2(PathStorage[a + 4]));
   state.accumulatedHitDistance = asfloat(PathStorage[a + 5]);
+  state.cloudMoments = unpackCloudMoments(PathStorage[a + 6]);
   remainingDistance = asfloat(PathStorage[t + 0]);
   state._direction = f16vec3(unpackGBufferHalf2(PathStorage[t + 1]), f16tof32(PathStorage[t + 2] & 0xffff));
   state._rayMask = uint8_t(PathStorage[t + 2] >> 16);

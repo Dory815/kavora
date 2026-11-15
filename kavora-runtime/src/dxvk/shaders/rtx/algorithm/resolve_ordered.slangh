@@ -23,6 +23,7 @@
 
 #include "rtx/algorithm/resolve.h"
 import "rtx/utility/quaternion.slang";
+import "rtx/algorithm/clouds.slang";
 #include "rtx/algorithm/resolve_medium.slangh"
 #include "rtx/algorithm/resolve_portal.slangh"
 #include "rtx/algorithm/resolve_surface_approximations.slangh"
@@ -101,6 +102,7 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
   inout RayInteraction rayInteraction,
   inout vec3 radianceAttenuation,
   inout vec3 emissiveRadiance,
+  inout float2 cloudMoments,
   float alreadyAttenuatedDistance = 0.0f,
   uint mediumState = SURFACE_INDEX_INVALID)
 {
@@ -109,12 +111,15 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
   // Account for attenuation on miss
   // Note: This is important for any effects which apply after miss, such as potential future skybox effects.
 #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
-  resolveAtmosphere(resolveVertexState.origin + resolveVertexState.direction * alreadyAttenuatedDistance,
+  float2 tailMoments = resolveAtmosphere(resolveVertexState.origin + resolveVertexState.direction * alreadyAttenuatedDistance,
     resolveVertexState.direction, floatMax, portalSpaceToVolumeHint(resolveVertexState.portalSpace),
     radianceAttenuation, emissiveRadiance, mediumState);
+  tailMoments.x += tailMoments.y * alreadyAttenuatedDistance / max(cloudMaxViewDistance(cb.volumeArgs.clouds), 1e-6f);
+  cloudMoments = composeCloudMoments(cloudMoments, tailMoments);
 #else
   unused(radianceAttenuation);
   unused(emissiveRadiance);
+  unused(cloudMoments);
 #endif
 }
 
@@ -146,6 +151,7 @@ float resolveVertex<T: IBasePayloadState, M: IVertexMaterialContext>(
   inout Surface surface, inout SurfaceInteraction surfaceInteraction,
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   inout vec3 radianceAttenuation, inout vec3 emissiveRadiance,
+  out float2 cloudMoments,
   uint4 decalMemory,
   f16vec3 decalEmissiveRadiance,
   float coneSpreadAngle,
@@ -163,6 +169,7 @@ float resolveVertex<T: IBasePayloadState, M: IVertexMaterialContext>(
   const bool firstPrimarySegment = false,
   const bool evaluatePomSilhouette = false)
 {
+  cloudMoments = 0;
   const Camera camera = cb.camera;
   bool teleport = false;
   mat4 teleportMatrix = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1);
@@ -222,11 +229,12 @@ float resolveVertex<T: IBasePayloadState, M: IVertexMaterialContext>(
     const AtmosphereSegment segment = loadPrimaryAtmosphere(getDispatchRaysIndex().xy);
     emissiveRadiance += radianceAttenuation * segment.radiance;
     radianceAttenuation *= segment.transmittance;
+    cloudMoments = segment.cloudMoments;
   }
   else
 #endif
   {
-    resolveAtmosphere(ray.origin, ray.direction, hasSurface ? rayHitInfo.hitDistance : floatMax,
+    cloudMoments = resolveAtmosphere(ray.origin, ray.direction, hasSurface ? rayHitInfo.hitDistance : floatMax,
       portalSpaceToVolumeHint(resolveVertexState.portalSpace),
       radianceAttenuation, emissiveRadiance, mediumState);
   }
@@ -527,7 +535,7 @@ float resolveVertex<T: IBasePayloadState, M: IVertexMaterialContext>(
       // If the ray mask was zeroed out, finish resolving and return this as a miss to the caller
       if (isRayMaskEmpty(resolveVertexState.rayMask))
       {
-        resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation, emissiveRadiance,
+        resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation, emissiveRadiance, cloudMoments,
           rayInteraction.hitDistance, mediumState);
 
         return 1.0f;

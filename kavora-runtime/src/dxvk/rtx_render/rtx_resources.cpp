@@ -48,9 +48,11 @@
 
 #include "rtx/pass/cloud_noise.h"
 #include <rtx_shaders/generate_cloud_noise.h>
+#include <rtx_shaders/generate_cloud_detail.h>
 #include <rtx_shaders/generate_cloud_weather.h>
 #include <rtx_shaders/filter_cloud_noise_2d.h>
 #include <rtx_shaders/filter_cloud_noise_3d.h>
+#include <rtx_shaders/filter_cloud_noise_3d_float.h>
 
 namespace dxvk {
 
@@ -65,6 +67,17 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(GenerateCloudNoiseShader);
+
+    class GenerateCloudDetailShader : public ManagedShader {
+      SHADER_SOURCE(GenerateCloudDetailShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_detail)
+      PUSH_CONSTANTS(CloudNoiseGenerationArgs)
+
+      BEGIN_PARAMETER()
+        RW_TEXTURE3D(0)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(GenerateCloudDetailShader);
 
     class GenerateCloudWeatherShader : public ManagedShader {
       SHADER_SOURCE(GenerateCloudWeatherShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_weather)
@@ -86,6 +99,17 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(FilterCloudNoise3DShader);
+
+    class FilterCloudNoise3DFloatShader : public ManagedShader {
+      SHADER_SOURCE(FilterCloudNoise3DFloatShader, VK_SHADER_STAGE_COMPUTE_BIT, filter_cloud_noise_3d_float)
+
+      BEGIN_PARAMETER()
+        SAMPLER3D(0)
+        RW_TEXTURE3D(1)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(FilterCloudNoise3DFloatShader);
 
     class FilterCloudNoise2DShader : public ManagedShader {
       SHADER_SOURCE(FilterCloudNoise2DShader, VK_SHADER_STAGE_COMPUTE_BIT, filter_cloud_noise_2d)
@@ -1145,7 +1169,7 @@ namespace dxvk {
     ScopedGpuProfileZone(ctx, "Cloud Noise Generation");
     m_cloudBaseLut = createImageResource(ctx, "cloud base shape",
       VkExtent3D { kCloudBaseResolution, kCloudBaseResolution, kCloudBaseResolution },
-      VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D, 0, VK_IMAGE_USAGE_STORAGE_BIT,
+      VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D, 0, VK_IMAGE_USAGE_STORAGE_BIT,
       {}, uint32_t(std::log2(kCloudBaseResolution)) + 1);
     m_cloudDetailLut = createImageResource(ctx, "cloud erosion detail",
       VkExtent3D { kCloudDetailResolution, kCloudDetailResolution, kCloudDetailResolution },
@@ -1153,7 +1177,7 @@ namespace dxvk {
       {}, uint32_t(std::log2(kCloudDetailResolution)) + 1);
     m_cloudWeatherLut = createImageResource(ctx, "cloud weather",
       VkExtent3D { kCloudWeatherResolution, kCloudWeatherResolution, 1 },
-      VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, VK_IMAGE_USAGE_STORAGE_BIT,
+      VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, VK_IMAGE_USAGE_STORAGE_BIT,
       {}, uint32_t(std::log2(kCloudWeatherResolution)) + 1);
 
     const auto mipView = [&ctx](const Resource& resource, uint32_t level, VkImageUsageFlags usage) {
@@ -1169,7 +1193,8 @@ namespace dxvk {
       const uint32_t resolution = detail ? kCloudDetailResolution : kCloudBaseResolution;
       ctx->pushConstants(0, sizeof(args), &args);
       ctx->bindResourceView(0, mipView(detail ? m_cloudDetailLut : m_cloudBaseLut, 0, VK_IMAGE_USAGE_STORAGE_BIT), nullptr);
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateCloudNoiseShader::getShader());
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, detail
+        ? GenerateCloudDetailShader::getShader() : GenerateCloudNoiseShader::getShader());
       ctx->dispatch(resolution / 4, resolution / 4, resolution / 4);
     }
     ctx->bindResourceView(0, mipView(m_cloudWeatherLut, 0, VK_IMAGE_USAGE_STORAGE_BIT), nullptr);
@@ -1179,8 +1204,13 @@ namespace dxvk {
     const auto sampler = getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     for (const Resource* resource : { &m_cloudBaseLut, &m_cloudDetailLut, &m_cloudWeatherLut }) {
       const bool volume = resource->image->info().type == VK_IMAGE_TYPE_3D;
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, volume
-        ? FilterCloudNoise3DShader::getShader() : FilterCloudNoise2DShader::getShader());
+      if (!volume) {
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FilterCloudNoise2DShader::getShader());
+      } else if (resource->image->info().format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FilterCloudNoise3DFloatShader::getShader());
+      } else {
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FilterCloudNoise3DShader::getShader());
+      }
       ctx->bindResourceSampler(0, sampler);
       for (uint32_t level = 1; level < resource->image->info().mipLevels; level++) {
         const uint32_t resolution = resource->image->info().extent.width >> level;

@@ -535,9 +535,19 @@ namespace dxvk {
       ctx->writeToBuffer(m_lightIdentityBuffer, 0, m_lightIdentityData.size() * sizeof(LightIdentityGpuEntry), m_lightIdentityData.data());
     }
 
-    // If there are no lights with >0 intensity, then clear the list...
-    if (m_currentActiveLightCount == 0)
-      clear();
+    // A celestial light may still illuminate high clouds after its surface radiance reaches zero.
+    if (m_currentActiveLightCount == 0) {
+      const bool hasCloudLight = std::any_of(m_linearizedLights.begin(), m_linearizedLights.end(), [](const RtLight* light) {
+        if (light->getType() != RtLightType::Distant) {
+          return false;
+        }
+        const Vector3 radiance = light->getDistantLight().getCloudRadianceMaximum();
+        return radiance.x > 0.0f || radiance.y > 0.0f || radiance.z > 0.0f;
+      });
+      if (!hasCloudLight) {
+        clear();
+      }
+    }
 
     // Reset external active light list.
     m_externalActiveLightList.clear();
@@ -877,7 +887,7 @@ namespace dxvk {
           continue;
         }
         const auto& distant = light->getDistantLight();
-        const Vector3 radiance = distant.getCloudIncidentRadiance();
+        const Vector3 radiance = distant.getCloudRadianceMaximum();
         const float power = radiance.x + radiance.y + radiance.z;
         if (power > powers[1]) {
           const uint index = power > powers[0] ? 0 : 1;
@@ -888,6 +898,15 @@ namespace dxvk {
           powers[index] = power;
           cloudLights[index].directionToLight = -distant.getDirection();
           cloudLights[index].irradiance = radiance * 3.14159265359f;
+          const auto& profile = distant.getCloudRadianceProfile();
+          cloudLights[index].hasRadianceProfile = profile.has_value();
+          if (profile.has_value()) {
+            for (size_t sampleIndex = 0; sampleIndex < profile->size(); sampleIndex++) {
+              const Vector4& sample = (*profile)[sampleIndex];
+              cloudLights[index].radianceProfile[sampleIndex] = Vector4(
+                sample.x * 3.14159265359f, sample.y * 3.14159265359f, sample.z * 3.14159265359f, sample.w);
+            }
+          }
         }
       }
     }

@@ -484,6 +484,11 @@ printf("LightInfoCloudRadianceEXT alignof %zu\n", __alignof(remixapi_LightInfoCl
 printf("LightInfoCloudRadianceEXT sType %zu\n", offsetof(remixapi_LightInfoCloudRadianceEXT, sType));
 printf("LightInfoCloudRadianceEXT pNext %zu\n", offsetof(remixapi_LightInfoCloudRadianceEXT, pNext));
 printf("LightInfoCloudRadianceEXT incidentRadiance %zu\n", offsetof(remixapi_LightInfoCloudRadianceEXT, incidentRadiance));
+printf("LightInfoCloudRadianceProfileEXT sizeof %zu\n", sizeof(remixapi_LightInfoCloudRadianceProfileEXT));
+printf("LightInfoCloudRadianceProfileEXT alignof %zu\n", __alignof(remixapi_LightInfoCloudRadianceProfileEXT));
+printf("LightInfoCloudRadianceProfileEXT sType %zu\n", offsetof(remixapi_LightInfoCloudRadianceProfileEXT, sType));
+printf("LightInfoCloudRadianceProfileEXT pNext %zu\n", offsetof(remixapi_LightInfoCloudRadianceProfileEXT, pNext));
+printf("LightInfoCloudRadianceProfileEXT samples %zu\n", offsetof(remixapi_LightInfoCloudRadianceProfileEXT, samples));
 printf("LightInfoDomeEXT sizeof %zu\n", sizeof(remixapi_LightInfoDomeEXT));
 printf("LightInfoDomeEXT alignof %zu\n", __alignof(remixapi_LightInfoDomeEXT));
 printf("LightInfoDomeEXT sType %zu\n", offsetof(remixapi_LightInfoDomeEXT, sType));

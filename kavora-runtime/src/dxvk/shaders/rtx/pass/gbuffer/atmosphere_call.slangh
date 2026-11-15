@@ -12,4 +12,5 @@ struct AtmosphereCallData
   float3 mediumExtinction;
   float3 radiance;
   float3 transmittance;
+  float2 cloudMoments;
 };

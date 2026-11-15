@@ -697,6 +697,17 @@ namespace {
           if (cloud != nullptr && !light->setCloudIncidentRadiance(tovec3(cloud->incidentRadiance))) {
             return {};
           }
+          const auto* profile = pnext::find<remixapi_LightInfoCloudRadianceProfileEXT>(&info);
+          if (profile != nullptr) {
+            std::array<Vector4, 4> samples;
+            for (size_t index = 0; index < samples.size(); index++) {
+              const auto& sample = profile->samples[index];
+              samples[index] = Vector4(sample.x, sample.y, sample.z, sample.w);
+            }
+            if (!light->setCloudRadianceProfile(samples)) {
+              return {};
+            }
+          }
         }
         return light;
       }
@@ -1457,6 +1468,10 @@ namespace {
     // async load
     std::lock_guard lock { s_mutex };
     const bool dome = pnext::find<remixapi_LightInfoDomeEXT>(info) != nullptr;
+    const bool cloudProfile = pnext::find<remixapi_LightInfoCloudRadianceProfileEXT>(info) != nullptr;
+    if (cloudProfile && dome) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
     const auto transmission = pnext::find<remixapi_LightInfoDomeTransmittanceEXT>(info);
     const auto projection = pnext::find<remixapi_LightInfoDomeProjectionEXT>(info);
     if (projection && (!dome || projection->projection > 2)) {
@@ -1510,7 +1525,7 @@ namespace {
 
       // Note: If the toRtLight conversion process returns an empty optional, the specified LightInfo did
       // not contain the proper arguments to create a light with.
-      if (!rtLight.has_value()) {
+      if (!rtLight.has_value() || (cloudProfile && rtLight->getType() != dxvk::RtLightType::Distant)) {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
 

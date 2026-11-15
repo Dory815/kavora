@@ -175,6 +175,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT         = 56,
     REMIXAPI_STRUCT_TYPE_MESH_INFO_QUAD_SUBSET_EXT             = 57,
     REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_HUDLESS_INFO_EXT         = 58,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_PROFILE_EXT = 59,
     // NOTE: always leave ',' after the number, so the git diff is cleaner!
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
@@ -1014,6 +1015,19 @@ extern "C" {
     void*                          pNext;
     remixapi_Float3D               incidentRadiance;
   } remixapi_LightInfoCloudRadianceEXT;
+
+  // Attachable to remixapi_LightInfo alongside remixapi_LightInfoDistantEXT.
+  // Four clear-air incident radiance samples in increasing altitude order.
+  // RGB uses remixapi_LightInfo::radiance units. W is altitude above the cloud
+  // tangent frame's zero-height plane, in world units (Y-up or Z-up).
+  // All components must be finite, RGB nonnegative, and altitudes strictly increasing.
+  // The runtime copies the samples during CreateLight/UpdateLight and interpolates
+  // within the profile, clamping outside it. This overrides LightInfoCloudRadianceEXT.
+  typedef struct remixapi_LightInfoCloudRadianceProfileEXT {
+    remixapi_StructType             sType;
+    void*                          pNext;
+    remixapi_Float4D               samples[4];
+  } remixapi_LightInfoCloudRadianceProfileEXT;
 
   typedef struct remixapi_LightInfoDomeEXT {
     remixapi_StructType             sType;

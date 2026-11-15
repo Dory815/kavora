@@ -611,20 +611,22 @@ namespace dxvk {
       ? Vector3(4.8f * cloudTime, 1.4f * cloudTime, 0) * cloudWorldScale
       : Vector3(4.8f * cloudTime, 0, 1.4f * cloudTime) * cloudWorldScale;
 
-    clouds.previousWindDelta = m_cloudSky.isValid() && !mainCamera.isCameraCut()
+    const uint32_t frame = m_device->getCurrentFrameId();
+    clouds.previousWindDelta = m_cloudHistoryValid && m_previousCloudFrame + 1 == frame && !mainCamera.isCameraCut()
       ? m_previousCloudWindOffset - windOffset : Vector3(0.f);
     m_previousCloudWindOffset = windOffset;
+    m_previousCloudFrame = frame;
+    m_cloudHistoryValid = clouds.enable;
     clouds.baseHeight = (CloudOptions::worldBaseHeightMeters() + CloudOptions::altitudeOffsetMeters()) * cloudWorldScale;
     clouds.thickness = CloudOptions::thicknessMeters() * cloudWorldScale;
     clouds.shapeScale = CloudOptions::shapeScaleMeters() * cloudWorldScale;
     // The weather, shape and erosion textures share this repeat period.
     const auto sceneOrigin = m_device->getCommon()->getSceneManager().getSceneOrigin();
     const double period = 16.0 * clouds.shapeScale;
-    clouds.windOffset = Vector3 {
-      float(std::remainder(double(windOffset.x) - sceneOrigin.x, period)),
-      windOffset.y,
-      float(std::remainder(double(windOffset.z) - sceneOrigin.y, period))
-    };
+    const float windX = float(std::remainder(double(windOffset.x) - sceneOrigin.x, period));
+    const float windHorizontal = float(std::remainder(double(RtxOptions::zUp() ? windOffset.y : windOffset.z)
+      - sceneOrigin.y, period));
+    clouds.windOffset = RtxOptions::zUp() ? Vector3(windX, windHorizontal, 0) : Vector3(windX, 0, windHorizontal);
     clouds.extinction = CloudOptions::extinctionPerMeter() / cloudWorldScale;
     clouds.weather = std::clamp(CloudOptions::weather(), 0.0f, 1.0f);
     clouds.thunder = std::clamp(CloudOptions::thunder(), 0.0f, 1.0f);
@@ -636,6 +638,12 @@ namespace dxvk {
       : Vector3(cameraPosition.x, 0, cameraPosition.z);
     clouds.planetRadius = 6360000.0f * cloudWorldScale;
     clouds.maxDistance = CloudOptions::maxDistanceMeters() * cloudWorldScale;
+    clouds.highBaseHeight = std::max(clouds.baseHeight + clouds.thickness + 1000.0f * cloudWorldScale,
+      CloudOptions::highAltitudeMeters() * cloudWorldScale);
+    clouds.highThickness = CloudOptions::highThicknessMeters() * cloudWorldScale;
+    clouds.highExtinction = CloudOptions::highExtinctionPerMeter() / cloudWorldScale;
+    clouds.highCoverage = CloudOptions::highCoverage();
+    clouds.highMaxDistance = CloudOptions::highMaxDistanceMeters() * cloudWorldScale;
     // Preserve the celestial light path when the camera's cloud range is shortened.
     clouds.lightMaxDistance = 60000.0f * cloudWorldScale;
     // Water droplets have negligible absorption in the visible spectrum.
