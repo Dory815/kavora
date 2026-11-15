@@ -200,6 +200,11 @@ public struct CloudRayGrid
   {
     return 0.5f * (boundary(index) + boundary(index + 1));
   }
+
+  public float spanAt(uint index)
+  {
+    return boundary(index + 1) - boundary(index);
+  }
 };
 
 public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction, float distance,
@@ -226,7 +231,7 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
         const float sampleDistance = grid.sampleAt(cell);
         const float3 position = origin + direction * sampleDistance;
         const float footprint = max(grid.spacing, args.viewAngularFootprint * sampleDistance);
-        const float heightFootprint = cloudHeightFootprint(args, position, direction, grid.spacing,
+        const float heightFootprint = cloudHeightFootprint(args, position, direction, grid.spanAt(cell),
           args.viewAngularFootprint * sampleDistance);
         const float extinction = cloudViewExtinction(args, position, sampleDistance,
           weatherSampler, baseSampler, detailSampler, footprint, heightFootprint);

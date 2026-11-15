@@ -74,6 +74,18 @@ def check_homogeneous(probe):
     print("PASS homogeneous Beer integration: 16 density/subdivision cases")
 
 
+def check_noise_gradient(probe):
+    axis = np.linspace(-0.75, 1.75, 16, endpoint=False)
+    points = [(x, y, period, 1e-3) for period in (2, 4) for x in axis for y in axis]
+    result = probe.run("noiseGradient", points)
+    assert np.isfinite(result).all()
+    # A 1e-3 UV difference balances float32 cancellation against truncation error.
+    np.testing.assert_allclose(result[:, :2], result[:, 2:], atol=1.5e-3, rtol=5e-4,
+                               err_msg="curl-flow potential gradient differs from the noise derivative")
+    print(f"PASS periodic noise gradient: 512 finite differences, "
+          f"maximum error {np.max(np.abs(result[:, :2] - result[:, 2:])):.7f}")
+
+
 def shell_interval(clouds, origin, direction, limit):
     radius = clouds["planetRadius"]
     point = np.asarray(origin, np.float64) + [0, radius, 0]
@@ -188,10 +200,14 @@ def cloud_textures(device):
     filters = {name: production_kernel(device, "rtx/pass/clouds/filter_cloud_noise.comp.slang", defines, True)
                for name, defines in (("Base", {"CLOUD_NOISE_VOLUME": "1", "CLOUD_NOISE_FLOAT": "1"}),
                                      ("Detail", {"CLOUD_NOISE_VOLUME": "1"}), ("Weather", {}))}
+    # The preview tool can replay an earlier shader root with its original storage format.
+    base_source = (SHADERS / "rtx/pass/clouds/generate_cloud_noise.comp.slang").read_text(encoding="utf-8")
+    base_format = spy.Format.rg16_float if "layout(rg16f," in base_source else spy.Format.rgba16_float
     for name, size, dimensions in (("Base", 128, 3), ("Detail", 32, 3), ("Weather", 512, 2)):
         floating = name != "Detail"
+        image_format = base_format if name == "Base" else (spy.Format.rgba16_float if floating else spy.Format.rgba8_unorm)
         texture = device.create_texture(type=spy.TextureType.texture_3d if dimensions == 3 else spy.TextureType.texture_2d,
-                                       format=spy.Format.rgba16_float if floating else spy.Format.rgba8_unorm,
+                                       format=image_format,
                                        width=size, height=size,
                                        depth=size if dimensions == 3 else 1,
                                        mip_count=int(np.log2(size)) + 1, usage=usage)
@@ -204,7 +220,8 @@ def cloud_textures(device):
         assert np.ptp(data[..., 0]) > (0.12 if floating else 32), (name, "degenerate generated noise")
         if floating:
             # The mean and its square are independently quantized to half precision.
-            mean_channels, moment_channels = ([0, 2], [1, 3]) if name == "Base" else ([0], [1])
+            mean_channels = list(range(0, data.shape[-1], 2)) if name == "Base" else [0]
+            moment_channels = [channel + 1 for channel in mean_channels]
             np.testing.assert_allclose(data[..., moment_channels], data[..., mean_channels].astype(np.float32) ** 2,
                                        atol=np.finfo(np.float16).eps, rtol=0, err_msg="unfiltered shape moments")
         # Compare the production filter with independent reference box averages at every level.
@@ -212,7 +229,7 @@ def cloud_textures(device):
             shape = []
             for extent in data.shape[:-1]:
                 shape.extend([extent // 2, 2])
-            expected = data.reshape(*shape, 4).astype(np.float32).mean(
+            expected = data.reshape(*shape, data.shape[-1]).astype(np.float32).mean(
                 axis=tuple(range(1, 2 * dimensions, 2)))
             expected = expected.astype(np.float16) if floating else np.rint(expected).astype(np.uint8)
             source = texture.create_view(mip=mip - 1, mip_count=1, sampler=sampler)
@@ -288,13 +305,68 @@ def check_high_density(probe, textures, dump):
     actual = probe.run("densities", points, clouds=clouds, textures=textures)[:, 0]
     assert np.isfinite(actual).all() and np.all((0 <= actual) & (actual <= 1))
     assert 0.001 < np.mean(actual) < 0.9, "the high layer must retain variable thin coverage"
+
+    previous = np.zeros_like(actual)
+    for coverage in (0.0, 0.1, 0.35, 0.7, 1.0):
+        density = probe.run("densities", points, clouds=clouds | {"highCoverage": coverage},
+                            textures=textures)[:, 0]
+        assert np.isfinite(density).all() and np.all((0 <= density) & (density <= 1))
+        if coverage == 0:
+            np.testing.assert_array_equal(density, 0)
+        assert np.all(density >= previous - 1e-6), "increasing high coverage must not remove condensate"
+        previous = density
+
+    # The host wraps wind after sixteen shape periods. All high-layer sampling
+    # must have that same period, including its regional envelope and distortion.
+    period = 16 * clouds["shapeScale"]
+    for wind in ([period, 0, 0], [0, 0, period], [-period, 0, period]):
+        wrapped = probe.run("densities", points, clouds=clouds | {"windOffset": wind},
+                            textures=textures)[:, 0]
+        np.testing.assert_allclose(wrapped, actual, atol=1e-5, rtol=1e-4,
+                                   err_msg="high clouds jump when the host wraps wind")
+
     for height in (5800, 7100):
         points[:, 1] = height
         outside = probe.run("densities", points, clouds=clouds, textures=textures)[:, 0]
         np.testing.assert_array_equal(outside, 0)
     if dump:
         np.savez(dump / "cloud-high-density.npz", axis=axis, density=actual.reshape(x.shape))
-    print(f"PASS high-layer density: bounded strands, empty exterior, mean {np.mean(actual):.5f}")
+    print(f"PASS high-layer density: bounds, coverage monotonicity, wind wrap, mean {np.mean(actual):.5f}")
+
+
+def check_high_column_transmission(probe, textures):
+    positions = [(x, z) for x in (-6144.0, -2048.0, 2048.0, 6144.0)
+                 for z in (-6144.0, -2048.0, 2048.0, 6144.0)]
+    positions.append((8183.0, 1171.0))
+    center_height = 6400.0
+    actual, expected = [], []
+    for thickness in (100.0, 200.0, 800.0):
+        clouds = cloud_parameters(extinction=0.0, highBaseHeight=center_height - 0.5 * thickness,
+                                  highThickness=thickness, highExtinction=1.2 / thickness,
+                                  highCoverage=0.35, highMaxDistance=96000.0)
+        distance = center_height + 0.5 * thickness + 100.0
+        for x, z in positions:
+            # Put the planet tangent beneath this column so radial altitude equals world Y.
+            column = clouds | {"groundReference": [x, 0.0, z]}
+            result = probe.run("viewTransmission", [[x, 0.0, z, distance]], [[0.0, 1.0, 0.0, 0.0]],
+                               column, textures)[0]
+            # Use the actual view spacing as the density footprint. The 800m layer
+            # selects a coarser mip than the thin layers, so their raw densities differ.
+            density = probe.run("densities", [[x, center_height, z, result[1]]],
+                                clouds=column, textures=textures)[0, 0]
+            # Smooth ramps over [0, .15] and [.65, 1] enclose area .75; the midpoint
+            # lies on the unit plateau. This is an independent Beer-law column reference.
+            optical_depth = float(density) * 0.75 * thickness * clouds["highExtinction"]
+            actual.append(result[0])
+            expected.append(np.exp(-optical_depth))
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    assert np.isfinite(actual).all() and np.all((0 <= actual) & (actual <= 1))
+    assert np.any(expected < 1.0 - 1e-5), "column integration must exercise nonzero cloud density"
+    np.testing.assert_allclose(actual, expected, atol=2e-6, rtol=2e-5,
+                               err_msg="changing high-layer thickness must preserve its optical column")
+    print(f"PASS high-layer view columns: 51 columns at 100/200/800m, "
+          f"maximum Beer-law error {np.max(np.abs(actual - expected)):.7f}")
 
 
 def check_tangent_visibility(probe, textures):
@@ -330,12 +402,14 @@ def main():
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=OPTIONS)
     probe = Probe(device)
     check_homogeneous(probe)
+    check_noise_gradient(probe)
     check_intervals(probe)
     check_layer_intervals(probe)
     check_light_profiles(probe)
     textures = cloud_textures(device)
     check_density(probe, textures, args.dump)
     check_high_density(probe, textures, args.dump)
+    check_high_column_transmission(probe, textures)
     check_visibility(probe, textures, args.dump)
     check_tangent_visibility(probe, textures)
 

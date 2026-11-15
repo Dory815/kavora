@@ -304,7 +304,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       const float cloudFootprint = max(cloudGrid.spacing, args.clouds.viewAngularFootprint * cloudSample);
       const float cloudSigma = cloudActive ?
         cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail, cloudFootprint,
-          cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spacing,
+          cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spanAt(cloudCell),
             args.clouds.viewAngularFootprint * cloudSample)) : 0;
       const float3 extinction = fogMedium.extinction + cloudSigma + ray.mediumExtinction;
       if (cloudSigma > 0)

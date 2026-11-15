@@ -10,7 +10,7 @@
 layout(binding = 0)
 Sampler3D<float4> Source;
 #ifdef CLOUD_NOISE_FLOAT
-layout(rgba16f, binding = 1)
+layout(rg16f, binding = 1)
 #else
 layout(rgba8, binding = 1)
 #endif

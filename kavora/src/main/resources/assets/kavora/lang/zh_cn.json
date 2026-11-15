@@ -156,7 +156,7 @@
   "kavora.effect.clouds.coverage": "云量",
   "kavora.settings.group.highClouds": "高空云",
   "kavora.effect.clouds.highCoverage": "高空云量",
-  "kavora.effect.clouds.highCoverage.tip": "高空薄云的覆盖程度，设为零可关闭这一云层。",
+  "kavora.effect.clouds.highCoverage.tip": "调节天空中高空薄云的云量，设为零可关闭这一云层。",
   "kavora.effect.clouds.highAltitude": "高空云高度",
   "kavora.effect.clouds.highAltitude.tip": "云底的世界高度，单位为方块；始终至少高于积云顶部 1000 方块。",
   "kavora.effect.clouds.highThickness": "高空云厚度",

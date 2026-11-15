@@ -1169,7 +1169,7 @@ namespace dxvk {
     ScopedGpuProfileZone(ctx, "Cloud Noise Generation");
     m_cloudBaseLut = createImageResource(ctx, "cloud base shape",
       VkExtent3D { kCloudBaseResolution, kCloudBaseResolution, kCloudBaseResolution },
-      VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D, 0, VK_IMAGE_USAGE_STORAGE_BIT,
+      VK_FORMAT_R16G16_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D, 0, VK_IMAGE_USAGE_STORAGE_BIT,
       {}, uint32_t(std::log2(kCloudBaseResolution)) + 1);
     m_cloudDetailLut = createImageResource(ctx, "cloud erosion detail",
       VkExtent3D { kCloudDetailResolution, kCloudDetailResolution, kCloudDetailResolution },
@@ -1206,7 +1206,7 @@ namespace dxvk {
       const bool volume = resource->image->info().type == VK_IMAGE_TYPE_3D;
       if (!volume) {
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FilterCloudNoise2DShader::getShader());
-      } else if (resource->image->info().format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+      } else if (resource->image->info().format == VK_FORMAT_R16G16_SFLOAT) {
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FilterCloudNoise3DFloatShader::getShader());
       } else {
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FilterCloudNoise3DShader::getShader());

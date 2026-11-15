@@ -71,7 +71,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const float pixelFootprint = distance * 3.14159265359f / float(args.skyResolution);
       const float footprint = max(grid.spacing, pixelFootprint);
       const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
-        CloudDetailSampler, footprint, cloudHeightFootprint(args, position, direction, grid.spacing, pixelFootprint));
+        CloudDetailSampler, footprint, cloudHeightFootprint(args, position, direction, grid.spanAt(cell), pixelFootprint));
       if (extinction > 0)
       {
         const float opacity = accumulateCloudSkyStep(extinction, next - previous, args.albedo,

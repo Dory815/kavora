@@ -138,7 +138,7 @@ float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudT
 
 [ForceInline]
 float cirrusDensity(CloudDensityArgs args, float3 p, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, float footprint, float heightFootprint)
+  float footprint, float heightFootprint)
 {
   if (args.highThickness <= 0)
   {
@@ -151,14 +151,14 @@ float cirrusDensity(CloudDensityArgs args, float3 p, Sampler2D<float4> weatherSa
     return 0;
   }
   const float weatherLod = cloudNoiseLod(footprint, args.shapeScale * 16.0f, 512.0f);
-  const float weather = weatherSampler.SampleLevel(p.xz / 16.0f, weatherLod).a;
-  const float coverage = saturate(args.highCoverage + 0.6f * (weather - 0.5f));
+  const float4 weather = weatherSampler.SampleLevel(p.xz / 16.0f, weatherLod);
+  const float coverage = saturate(args.highCoverage);
+  const float amount = coverage * (2.0f - coverage);
+  const float regionalAmount = lerp(amount * amount, amount * (2.0f - amount), weather.b);
   const float profile = cloudHeightProfile(height, 0.15f, 0.65f, profileFootprint);
-  // The shear and stretch retain the common sixteen-period wind repeat.
-  const float3 strandPosition = float3(p.x * 0.125f + p.z * 0.0625f, height * 0.25f + 0.41f, p.z * 0.5f);
-  const float lod = cloudNoiseLod(footprint, args.shapeScale * 2.0f, 128.0f);
-  const float4 noise = baseSampler.SampleLevel(strandPosition, lod);
-  return cloudCoverageMoments(noise.b, noise.a, coverage).x * profile;
+  // Regional amount is monotone in coverage and linear in filtered weather.
+  // Finished fibres fade without applying another threshold to their mip chain.
+  return weather.a * regionalAmount * profile;
 }
 
 [ForceInline]
@@ -169,7 +169,7 @@ public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<floa
   const float3 p = cloudCoordinates(args, position);
   if (layer == 1)
   {
-    return cirrusDensity(args, p, weatherSampler, baseSampler, footprint, heightFootprint);
+    return cirrusDensity(args, p, weatherSampler, footprint, heightFootprint);
   }
   const float heightAboveBase = p.y * args.shapeScale - args.baseHeight;
   if (heightAboveBase + 0.5f * heightFootprint <= 0 || heightAboveBase - 0.5f * heightFootprint >= args.thickness)

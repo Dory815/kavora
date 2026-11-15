@@ -10,7 +10,7 @@
 #include "rtx/utility/cloud_noise.slangh"
 
 #ifdef CLOUD_NOISE_BASE
-layout(rgba16f, binding = 0)
+layout(rg16f, binding = 0)
 #else
 layout(rgba8, binding = 0)
 #endif
@@ -44,7 +44,6 @@ void main(uint3 id : SV_DispatchThreadID)
   const float lowFrequency = 0.625f * worley4 + 0.25f * cloudWorleyFbm(uv, 8, kCloudNoiseSeed + 23)
     + 0.125f * cloudWorleyFbm(uv, 16, kCloudNoiseSeed + 37);
   const float cumulus = saturate((perlin - lowFrequency + 1.0f) / (2.0f - lowFrequency));
-  const float cirrus = saturate(1.0f - abs(perlin * 2.0f - 1.0f) - 0.2f * worley4);
   // Filtering both moments retains the variation needed by the coverage threshold.
-  CloudNoise[id] = float4(cumulus, cumulus * cumulus, cirrus, cirrus * cirrus);
+  CloudNoise[id] = float4(cumulus, cumulus * cumulus, 0, 0);
 }
