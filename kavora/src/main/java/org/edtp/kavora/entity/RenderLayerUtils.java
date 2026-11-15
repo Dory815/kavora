@@ -135,6 +135,7 @@ final class RenderLayerUtils {
         Map<RenderPipeline, SurfaceMode> modes = new IdentityHashMap<>();
         modes.put(RenderPipelines.END_PORTAL, SurfaceMode.END_PORTAL);
         modes.put(RenderPipelines.END_GATEWAY, SurfaceMode.END_GATEWAY);
+        modes.put(RenderPipelines.LIGHTNING, SurfaceMode.EMISSIVE);
         modes.put(RenderPipelines.ARMOR_CUTOUT_NO_CULL_GLINT, SurfaceMode.ARMOR_GLINT_CUTOUT);
         modes.put(RenderPipelines.ENTITY_SOLID_GLINT, SurfaceMode.ENTITY_GLINT_OPAQUE);
         modes.put(RenderPipelines.ITEM_CUTOUT_GLINT, SurfaceMode.ITEM_GLINT_CUTOUT);
@@ -190,22 +191,22 @@ final class RenderLayerUtils {
 
     /**
      * Whether a layer that draws without a texture still carries geometry worth
-     * submitting to Remix. In 1.21.1 the lead between a mob and its holder is the
-     * only such layer.
+     * submitting to Remix.
      *
      * <p>Two conditions, both about what the layer can actually shade with.
      * Vertex colour is the only surface detail such a layer has, so a layer
      * without it carries nothing to submit; that excludes the water mask, which
      * exists to write depth. And of the untextured layers that do have colour,
      * the triangle strips are world geometry while the quads are screen
-     * furniture such as the nameplate background, which should not become
-     * scene geometry that lights and casts shadows.
+     * furniture such as the nameplate background. The vanilla lightning layer
+     * also uses untextured quads for its world-space emissive bolt.
      */
     static boolean isCapturableUntexturedLayer(RenderType layer) {
         // Only layers with no texture at all qualify: a textured layer that
         // capturableTexture declined must not re-enter capture through here.
         return extractTexture(layer).isEmpty()
-                && topology(layer).filter(t -> t == Topology.TRIANGLE_STRIP).isPresent()
+                && (layer.pipeline() == RenderPipelines.LIGHTNING
+                    || topology(layer).filter(t -> t == Topology.TRIANGLE_STRIP).isPresent())
                 && layer.format().contains("Color");
     }
 

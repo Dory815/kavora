@@ -50,3 +50,4 @@ accessible field net/minecraft/client/renderer/texture/SpriteContents$AnimatedTe
 accessible field net/minecraft/client/renderer/texture/SpriteContents$AnimatedTexture interpolateFrames Z
 accessible field net/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection sectionMesh Ljava/util/concurrent/atomic/AtomicReference;
 accessible method net/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection updateUploadTime ()V
+accessible field net/minecraft/world/entity/LightningBolt life I

@@ -51,6 +51,7 @@ import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.BlockItem;
@@ -200,7 +201,7 @@ public class LightManager {
 
     /**
      * Updates lights for light-emitting entities: held and dropped block items,
-     * plus beacon beams carried by {@code block_display} entities.
+     * lightning, and beacon beams carried by {@code block_display} entities.
      *
      * <p>Every loaded entity is considered, with no distance cull. That is not an
      * oversight to tidy up later: a display beacon is a lighthouse, and being
@@ -241,6 +242,19 @@ public class LightManager {
                 }
             } else if (entity instanceof Display.BlockDisplay display) {
                 ensureDisplayBeaconLight(display, tickDelta);
+            } else if (entity instanceof LightningBolt bolt) {
+                float interpolation = world.tickRateManager().isEntityFrozen(bolt) ? 0.0f : tickDelta;
+                var light = LightningFlash.light(bolt, interpolation, RenderOrigin.current());
+                if (light != null) {
+                    EntityLightKey key = new EntityLightKey(bolt.getId(), Kind.LIGHTNING);
+                    try {
+                        putLight(key, light);
+                        seenEntityKeys.add(key);
+                        lightOwnerIds.add(bolt.getId());
+                    } catch (RemixException e) {
+                        LOGGER.error("Failed to submit lightning light for {}: {}", bolt.getId(), e.getMessage());
+                    }
+                }
             }
         }
 
@@ -1035,7 +1049,8 @@ public class LightManager {
         ITEM,
         MAIN_HAND,
         OFF_HAND,
-        BLOCK_DISPLAY
+        BLOCK_DISPLAY,
+        LIGHTNING
     }
 
     // ================================================================

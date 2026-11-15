@@ -120,8 +120,7 @@ public class KavoraVertexConsumerProvider  {
             textureId = texOpt.get();
         } else if (RenderLayerUtils.isCapturableUntexturedLayer(layer)) {
             // Shaded entirely by vertex colour, so it needs an identity to hang a
-            // material on but no texture of its own. In 1.21.1 the lead is the only
-            // layer that reaches this.
+            // material on but no texture of its own.
             textureId = RenderLayerUtils.UNTEXTURED_LAYER_ID;
         } else {
             // Nothing Remix can draw: shadow, debug overlays, lines, depth-only masks,
