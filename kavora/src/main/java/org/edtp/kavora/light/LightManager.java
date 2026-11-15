@@ -1140,8 +1140,6 @@ public class LightManager {
                 SkyAtmosphere.transmittanceToLight(observerHeight, sunPosition[1], SUN_ANGULAR_RADIUS));
         float[] moonDirect = applyTransmittance(moonSource,
                 SkyAtmosphere.transmittanceToLight(observerHeight, moonPosition[1], MOON_ANGULAR_RADIUS));
-        sunDirect = scaleRadiance(sunDirect, weatherSunDirectScale(rainGradient, thunderGradient));
-        moonDirect = scaleRadiance(moonDirect, weatherMoonDirectScale(rainGradient, thunderGradient));
         float[] sunCloud = null;
         float[] moonCloud = null;
         if (Float.isFinite(cloudHeightAboveSeaLevel)) {
@@ -1149,6 +1147,10 @@ public class LightManager {
                     SkyAtmosphere.transmittanceToLight(cloudHeightAboveSeaLevel, sunPosition[1], SUN_ANGULAR_RADIUS)));
             moonCloud = thresholdDirectRadiance(applyTransmittance(moonSource,
                     SkyAtmosphere.transmittanceToLight(cloudHeightAboveSeaLevel, moonPosition[1], MOON_ANGULAR_RADIUS)));
+        } else {
+            // Procedural cloud visibility already transports weather extinction to every receiver.
+            sunDirect = scaleRadiance(sunDirect, weatherSunDirectScale(rainGradient, thunderGradient));
+            moonDirect = scaleRadiance(moonDirect, weatherMoonDirectScale(rainGradient, thunderGradient));
         }
 
         return new SkyLightState(

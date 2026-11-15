@@ -55,11 +55,16 @@ final class KavoraSceneEffects {
     }
 
     void recordLights(ClientLevel world, Camera camera, float partialTick) {
+        environmentCaptured = false;
         metrics.begin(metrics.perfLights);
         try (ProfileScope ignored = ProfileScope.begin("Lights")) {
+            environment.capture(world, camera, partialTick);
+            environmentCaptured = true;
             // updateLights publishes the analytic lights at their current entity positions.
             lights.updateEntityLights(world, camera, partialTick);
-            lights.updateLights(world, camera, partialTick, clouds.isProceduralClouds(), clouds.getCloudsHeight());
+            boolean volumetricClouds = KavoraMod.isWorldActive()
+                    && clouds.hasVolumetricClouds(environment, Minecraft.getInstance().options.getCloudStatus());
+            lights.updateLights(world, camera, partialTick, volumetricClouds, clouds.getCloudsHeight());
         } finally {
             metrics.end(metrics.perfLights);
         }
@@ -80,10 +85,9 @@ final class KavoraSceneEffects {
     }
 
     void recordSky(Minecraft client, ClientLevel world, Camera camera, Vec3 position, float partialTick) {
-        environmentCaptured = false;
         metrics.begin(metrics.perfSky);
         try (ProfileScope skyScope = ProfileScope.begin("Sky")) {
-            if (SkyRenderer.isEnabled()) {
+            if (SkyRenderer.isEnabled() && !environmentCaptured) {
                 environment.capture(world, camera, partialTick);
                 environmentCaptured = true;
             }

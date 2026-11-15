@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class LightManagerSkyLightStateTest {
 
@@ -101,8 +102,31 @@ class LightManagerSkyLightStateTest {
         var rainy = LightManager.evaluateSkyLightState(0f, .5f, 0, 1f, 0f, 64f, 320f);
         var higherCamera = LightManager.evaluateSkyLightState(0f, .5f, 0, 1f, 0f, 192f, 320f);
         assertTrue(clear.sunCloudRadiance()[0] > clear.sunDirectRadiance()[0]);
-        assertEquals(clear.sunDirectRadiance()[0] * .0025f, rainy.sunDirectRadiance()[0], 1e-5f);
+        assertArrayEquals(clear.sunDirectRadiance(), rainy.sunDirectRadiance());
         assertArrayEquals(clear.sunCloudRadiance(), rainy.sunCloudRadiance());
         assertArrayEquals(clear.sunCloudRadiance(), higherCamera.sunCloudRadiance());
+    }
+
+    @Test
+    void proceduralCloudsOwnRainAndThunderExtinctionForBothCelestialLights() {
+        for (float time : new float[]{0f, .24f, .5f, .74f}) {
+            var clear = LightManager.evaluateSkyLightState(time, time + .5f, 0, 0f, 0f, 64f, 320f);
+            var storm = LightManager.evaluateSkyLightState(time, time + .5f, 0, 1f, 1f, 64f, 320f);
+            assertArrayEquals(clear.sunDirectRadiance(), storm.sunDirectRadiance());
+            assertArrayEquals(clear.moonDirectRadiance(), storm.moonDirectRadiance());
+            assertArrayEquals(clear.sunCloudRadiance(), storm.sunCloudRadiance());
+            assertArrayEquals(clear.moonCloudRadiance(), storm.moonCloudRadiance());
+        }
+    }
+
+    @Test
+    void classicAndDisabledCloudsRetainAuthoredWeatherAttenuation() {
+        var clear = LightManager.evaluateSkyLightState(0f, .5f, 0, 0f, 0f, 64f, Float.NaN);
+        var rainy = LightManager.evaluateSkyLightState(0f, .5f, 0, 1f, 0f, 64f, Float.NaN);
+        var storm = LightManager.evaluateSkyLightState(0f, .5f, 0, 1f, 1f, 64f, Float.NaN);
+        assertEquals(clear.sunDirectRadiance()[0] * .0025f, rainy.sunDirectRadiance()[0], 1e-5f);
+        assertEquals(clear.sunDirectRadiance()[0] * .001f, storm.sunDirectRadiance()[0], 1e-5f);
+        assertNull(storm.sunCloudRadiance());
+        assertNull(storm.moonCloudRadiance());
     }
 }

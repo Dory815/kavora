@@ -38,8 +38,8 @@ import net.minecraft.world.phys.Vec3;
  * Manages sky rendering for Kavora.
  *
  * <p>Uses a physically-based dome light generated from Rayleigh+Mie atmospheric
- * scattering, driven by Minecraft's time-of-day. Weather blends a static HDR
- * overcast dome over the atmospheric sky. Dimensions without a NORMAL sky publish a
+ * scattering, driven by Minecraft's time-of-day. Procedural clouds transport weather;
+ * classic clouds use an HDR overcast dome. Dimensions without a NORMAL sky publish a
  * fixed dome instead: the End's shared cosmic environment, and black with no sky ambient for a
  * skyless (SkyType.NONE) dimension such as the Nether.
  */
@@ -127,7 +127,6 @@ public class SkyRenderer {
     private final float[] atmosphericMean = new float[3];
     private float lastWeatherOpacity = -1f;
     private float lastWeatherIntensity = -1f;
-    private boolean lastWeatherBackgroundOnly;
     private float lastSkyDomeMultiplier = Float.NaN;
     private float atmosphericMeanR;
     private float atmosphericMeanG;
@@ -245,16 +244,13 @@ public class SkyRenderer {
         }
         boolean weatherRendered;
         try (ProfileScope ignored = ProfileScope.begin("Sky.Weather")) {
-            // The weather panorama replaces the visible sky behind the cloud volume in every direction.
-            weatherRendered = updateWeatherDomeLight(api, weather, volumetricClouds);
+            weatherRendered = !volumetricClouds && updateWeatherDomeLight(api, weather);
         }
         try (ProfileScope ignored = ProfileScope.begin("Sky.Ambient")) {
             publishCombinedSkyAmbient(
                     api,
                     sunDirection[1],
-                    weatherRendered && !volumetricClouds
-                            ? weather
-                            : WeatherDomeState.CLEAR);
+                    weatherRendered ? weather : WeatherDomeState.CLEAR);
         }
     }
 
@@ -342,14 +338,13 @@ public class SkyRenderer {
         }
     }
 
-    private boolean updateWeatherDomeLight(RemixAPI api, WeatherDomeState weather, boolean backgroundOnly) {
+    private boolean updateWeatherDomeLight(RemixAPI api, WeatherDomeState weather) {
         if (weather.opacity() <= 0.0f) {
             return false;
         }
 
         float domeIntensity = weather.intensity() * skyDomeMultiplier;
         boolean needsUpdate = overcastDomeLightAsset == null
-                || lastWeatherBackgroundOnly != backgroundOnly
                 || Math.abs(weather.opacity() - lastWeatherOpacity) > WEATHER_UPDATE_DELTA
                 || Math.abs(domeIntensity - lastWeatherIntensity) > WEATHER_UPDATE_DELTA;
 
@@ -362,7 +357,6 @@ public class SkyRenderer {
             domeExt.setColorTexture(overcastTextureHandle);
             domeExt.setOpacity(weather.opacity());
             domeExt.setBlendType(MaterialInfoOpaqueEXT.BLEND_TYPE_ALPHA);
-            domeExt.backgroundOnly = backgroundOnly;
             LightInfo lightInfo = LightInfo.builder()
                     .radiance(domeIntensity, domeIntensity, domeIntensity)
                     .domeExt(domeExt)
@@ -380,7 +374,6 @@ public class SkyRenderer {
 
             lastWeatherOpacity = weather.opacity();
             lastWeatherIntensity = domeIntensity;
-            lastWeatherBackgroundOnly = backgroundOnly;
         }
 
         if (overcastDomeLightAsset == null || !overcastDomeLightAsset.isAlive()) {
