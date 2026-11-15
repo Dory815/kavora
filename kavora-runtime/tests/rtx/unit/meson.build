@@ -149,6 +149,16 @@ exe = executable('test_dome_blending', files('test_dome_blending.cpp'),
 test('test_dome_blending', exe, env: test_env)
 tests += exe
 
+exe = executable('test_display_color', files('test_display_color.cpp'),
+  include_directories : test_include_path, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_display_color', exe, env: test_env)
+tests += exe
+
+exe = executable('test_display_output', files('test_display_output.cpp', '../../../src/dxvk/dxvk_display_policy.cpp'),
+  include_directories : test_include_path, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_display_output', exe, env: test_env)
+tests += exe
+
 exe = executable('test_option_layer_export',  files('test_option_layer_export.cpp'), 
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_option_layer_export', exe, env: test_env)
@@ -229,6 +239,10 @@ test('test_volume_transport', exe, env: test_env)
 tests += exe
 
 # Explicitly opt in to shader readback tests on a hardware or software Vulkan device.
+run_target('test_display_color_gpu',
+  command: [python_interpreter, files('test_display_color_gpu.py')])
+run_target('test_display_present',
+  command: [python_interpreter, files('test_display_present.py'), '--device', 'vulkan'])
 run_target('test_cloud_transport',
   command: [python_interpreter, files('test_cloud_transport.py')])
 run_target('test_cloud_scattering',

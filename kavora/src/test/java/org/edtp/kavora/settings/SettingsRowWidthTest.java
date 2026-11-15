@@ -153,6 +153,27 @@ class SettingsRowWidthTest {
     }
 
     @Test
+    void displayControlsFitTheirFullWidthRowsAndHaveTooltips() {
+        Map<String, String> widestValues = Map.of(
+                "kavora.display.hdr", lang.get("kavora.display.auto"),
+                "kavora.display.paperWhite", lang.get("kavora.display.nits").formatted(500),
+                "kavora.display.peak", lang.get("kavora.display.nits").formatted(10000),
+                "kavora.display.status", lang.get("kavora.display.output.hdr10"));
+        for (Map.Entry<String, String> row : widestValues.entrySet()) {
+            String label = lang.get(row.getKey());
+            String tooltip = lang.get(row.getKey() + TOOLTIP_SUFFIX);
+            assertNotNull(label, row.getKey());
+            assertNotNull(tooltip, row.getKey() + TOOLTIP_SUFFIX);
+            assertFalse(tooltip.isBlank(), row.getKey() + TOOLTIP_SUFFIX);
+            String text = label + ": " + row.getValue();
+            int width = font.width(text);
+            assertTrue(width <= FULL_WIDTH_OPTION_TEXT_WIDTH, String.format(
+                    "%s is %d px, %d over: \"%s\"", row.getKey(), width,
+                    width - FULL_WIDTH_OPTION_TEXT_WIDTH, text));
+        }
+    }
+
+    @Test
     void everyButtonLabelFitsItsWidget() {
         for (Map.Entry<String, Integer> button : BUTTON_WIDTHS.entrySet()) {
             String label = lang.get(button.getKey());
