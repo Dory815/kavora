@@ -603,6 +603,8 @@ namespace dxvk {
     clouds.transportMode = CloudOptions::transportMode();
     // World-space view rays integrate clouds directly. Fog lighting only needs a low-frequency sky map.
     clouds.skyResolution = clouds.transportMode == 1 ? CloudOptions::skyResolution() : 64u;
+    const auto renderExtent = m_device->getCommon()->getResources().getDownscaleDimensions();
+    clouds.viewAngularFootprint = 2.0f * std::tan(mainCamera.getFov() * 0.5f) / float(std::max(renderExtent.height, 1u));
     clouds.up = RtxOptions::zUp() ? Vector3(0, 0, 1) : Vector3(0, 1, 0);
     const float cloudTime = CloudOptions::worldTimeSeconds() * CloudOptions::windSpeed();
     const Vector3 windOffset = RtxOptions::zUp()

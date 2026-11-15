@@ -1527,6 +1527,7 @@ namespace dxvk {
     Rc<DxvkImageView> valueNoiseLut = getResourceManager().getValueNoiseLut(this);
     Rc<DxvkImageView> cloudNoiseLut = getResourceManager().getCloudBaseLut();
     Rc<DxvkSampler> linearSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    Rc<DxvkSampler> cloudSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
     Rc<DxvkBuffer> samplerFeedbackBuffer = getResourceManager().getRaytracingOutput().m_samplerFeedbackDevice;
 
     DebugView& debugView = getCommonObjects()->metaDebugView();
@@ -1553,11 +1554,11 @@ namespace dxvk {
     bindResourceView(BINDING_VALUE_NOISE_SAMPLER, valueNoiseLut, nullptr);
     bindResourceSampler(BINDING_VALUE_NOISE_SAMPLER, linearSampler);
     bindResourceView(BINDING_CLOUD_BASE_SAMPLER, cloudNoiseLut, nullptr);
-    bindResourceSampler(BINDING_CLOUD_BASE_SAMPLER, linearSampler);
+    bindResourceSampler(BINDING_CLOUD_BASE_SAMPLER, cloudSampler);
     bindResourceView(BINDING_CLOUD_DETAIL_SAMPLER, getResourceManager().getCloudDetailLut(), nullptr);
-    bindResourceSampler(BINDING_CLOUD_DETAIL_SAMPLER, linearSampler);
+    bindResourceSampler(BINDING_CLOUD_DETAIL_SAMPLER, cloudSampler);
     bindResourceView(BINDING_CLOUD_WEATHER_SAMPLER, getResourceManager().getCloudWeatherLut(), nullptr);
-    bindResourceSampler(BINDING_CLOUD_WEATHER_SAMPLER, linearSampler);
+    bindResourceSampler(BINDING_CLOUD_WEATHER_SAMPLER, cloudSampler);
     bindResourceView(BINDING_CLOUD_SKY_SAMPLER, m_common->metaGlobalVolumetrics().getCloudSky(), nullptr);
     bindResourceSampler(BINDING_CLOUD_SKY_SAMPLER, linearSampler);
     bindResourceBuffer(BINDING_SAMPLER_READBACK_BUFFER, DxvkBufferSlice(samplerFeedbackBuffer, 0, samplerFeedbackBuffer.ptr() ? samplerFeedbackBuffer->info().size : 0));

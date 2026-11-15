@@ -82,18 +82,18 @@ public float2 cloudInterval(CloudArgs args, float3 origin, float3 direction, flo
 }
 
 public float cloudExtinction(CloudArgs args, float3 position, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0)
 {
   return args.extinction * cloudDensity(cloudDensityParameters(args), position, weatherSampler,
-    baseSampler, detailSampler);
+    baseSampler, detailSampler, footprint);
 }
 
 [ForceInline]
 public float cloudViewExtinction(CloudArgs args, float3 position, float distance,
-  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0)
 {
   const float visibility = 1.0f - smoothstep(0.5f, 1.0f, distance / args.maxDistance);
-  return visibility * cloudExtinction(args, position, weatherSampler, baseSampler, detailSampler);
+  return visibility * cloudExtinction(args, position, weatherSampler, baseSampler, detailSampler, footprint);
 }
 
 public float cloudSampleSpacing(CloudArgs args, float3 direction)
@@ -147,8 +147,9 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
   for (uint cell = 0; previous < end; cell++) {
     const float next = min(end, grid.boundary(cell + 1));
     const float sampleDistance = grid.sampleAt(cell);
+    const float footprint = max(grid.spacing, args.viewAngularFootprint * sampleDistance);
     const float extinction = cloudViewExtinction(args, origin + direction * sampleDistance, sampleDistance, weatherSampler,
-      baseSampler, detailSampler);
+      baseSampler, detailSampler, footprint);
     transmittance *= exp(-extinction * (next - previous));
     if (transmittance < kOpaqueCloudTransmittance) {
       break;
@@ -176,18 +177,23 @@ float cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, fl
       return 0;
     }
   }
-  // Concentrate self-shadow samples near the receiver while covering the entire layer.
+  // Cell boundaries depend on the fixed light range, so a moving shell exit only clips the last cell.
   const float spacing = cloudSampleSpacing(args, direction);
-  const float stretch = log(1.0f + (interval.y - interval.x) / spacing);
+  const float stretch = log(1.0f + args.lightMaxDistance / spacing);
   float opticalDepth = 0;
   float previous = interval.x;
   for (uint i = 0; i < args.lightSteps; i++)
   {
-    const float next = interval.x + spacing * (exp(stretch * float(i + 1) / float(args.lightSteps)) - 1.0f);
+    const float boundary = interval.x + spacing * (exp(stretch * float(i + 1) / float(args.lightSteps)) - 1.0f);
+    const float next = min(interval.y, boundary);
     const float t = (previous + next) * 0.5f;
-    opticalDepth += cloudExtinction(args, origin + direction * t, weatherSampler, baseSampler, detailSampler)
+    opticalDepth += cloudExtinction(args, origin + direction * t, weatherSampler, baseSampler, detailSampler, next - previous)
       * (next - previous);
     previous = next;
+    if (previous >= interval.y)
+    {
+      break;
+    }
   }
   return opticalDepth;
 }

@@ -205,8 +205,9 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       // Keep each cloud quadrature cell constant when a prefix checkpoint clips it.
       const float cloudSample = cloudGrid.sampleAt(cloudCell);
       const float3 cloudPosition = origin + direction * cloudSample;
+      const float cloudFootprint = max(cloudGrid.spacing, args.clouds.viewAngularFootprint * cloudSample);
       const float cloudSigma = cloudActive ?
-        cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail) : 0;
+        cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail, cloudFootprint) : 0;
       const float3 extinction = fogMedium.extinction + cloudSigma + ray.mediumExtinction;
       if (cloudSigma > 0)
       {

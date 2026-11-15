@@ -38,9 +38,33 @@ public float3 cloudCoordinates(CloudDensityArgs args, float3 position)
 }
 
 [ForceInline]
-public float3 cloudColumn(CloudDensityArgs args, float2 position, Sampler2D<float4> weatherSampler)
+float cloudNoiseLod(float footprint, float period, float resolution)
 {
-  const float2 weather = weatherSampler.SampleLevel(position / 16.0f, 0).rg;
+  return max(0.0f, log2(max(footprint * resolution / period, 1.0f)));
+}
+
+// Integrate a clipped linear ramp over the unresolved shape variation.
+[ForceInline]
+float cloudCoverageDensity(float shape, float coverage, float filterWidth)
+{
+  const float value = shape - 1.0f + coverage;
+  if (filterWidth <= 1e-4f)
+  {
+    return saturate(value / max(coverage, 1e-4f));
+  }
+  const float lower = clamp(value - filterWidth, 0.0f, coverage);
+  const float upper = clamp(value + filterWidth, 0.0f, coverage);
+  const float rampIntegral = 0.5f * max(upper * upper - lower * lower, 0.0f);
+  const float plateauIntegral = coverage * max(value + filterWidth - max(coverage, value - filterWidth), 0.0f);
+  return saturate((rampIntegral + plateauIntegral) / (2.0f * filterWidth * max(coverage, 1e-4f)));
+}
+
+[ForceInline]
+public float3 cloudColumn(CloudDensityArgs args, float2 position, Sampler2D<float4> weatherSampler,
+  float footprint = 0)
+{
+  const float lod = cloudNoiseLod(footprint, args.shapeScale * 16.0f, 512.0f);
+  const float2 weather = weatherSampler.SampleLevel(position / 16.0f, lod).rg;
   const float bias = (args.coverage - 0.45f) * 0.9f - 0.18f + 0.51f * args.weather
     + 0.15f * args.thunder - 0.17f * args.night * (1.0f - args.weather);
   const float coverage = saturate(weather.x + bias);
@@ -68,7 +92,7 @@ float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudT
 
 [ForceInline]
 public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0)
 {
   const float3 p = cloudCoordinates(args, position);
   const float heightAboveBase = p.y * args.shapeScale - args.baseHeight;
@@ -76,7 +100,7 @@ public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<floa
   {
     return 0;
   }
-  const float3 column = cloudColumn(args, p.xz, weatherSampler);
+  const float3 column = cloudColumn(args, p.xz, weatherSampler, footprint);
   const float overcast = overcastDensity(args, heightAboveBase, column.y);
   const float height = heightAboveBase / column.z;
   if (column.x <= 0 || height >= 1)
@@ -87,22 +111,26 @@ public float cloudDensity(CloudDensityArgs args, float3 position, Sampler2D<floa
   const float anvil = smoothstep(0.75f, 1.0f, column.y) * smoothstep(0.8f, 0.9f, height)
     * (1.0f - smoothstep(0.95f, 1.0f, height));
   const float coverage = saturate(column.x * (1.0f - 0.35f * height * (1.0f - column.y)) + 0.5f * anvil * column.x);
-  // A negative bound rules out any contribution from the cumulus shape.
-  // Leave a margin at zero for differences in floating-point evaluation.
-  if (profile - 1.0f + coverage < -1e-6f)
+  if (profile <= 0)
   {
     return overcast;
   }
-  const float4 base = baseSampler.SampleLevel(p, 0);
+  const float baseLod = cloudNoiseLod(footprint, args.shapeScale, 128.0f);
+  const float4 base = baseSampler.SampleLevel(p, baseLod);
   const float lowFrequency = dot(base.gba, float3(0.625f, 0.25f, 0.125f));
   const float shape = saturate((base.r - lowFrequency + 1.0f) / (2.0f - lowFrequency));
-  const float density = saturate((shape * profile - 1.0f + coverage) / max(coverage, 1e-4f)) * coverage;
-  if (density <= overcast)
+  // The finite-width ramp approximates sub-texel coverage after noise filtering.
+  const float filterWidth = 0.12f * saturate(footprint / (0.25f * args.shapeScale));
+  const float density = cloudCoverageDensity(shape, coverage, filterWidth);
+  if (density * profile <= overcast)
   {
     return overcast;
   }
-  const float3 detail = detailSampler.SampleLevel(p * 4.0f, 0).rgb;
+  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * 0.25f, 32.0f);
+  const float3 detail = detailSampler.SampleLevel(p * 4.0f, detailLod).rgb;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
-  const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.35f;
-  return max(overcast, saturate((density - erosion) / (1.0f - erosion)));
+  const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.18f;
+  // Erosion changes the edge's slope without punching holes in the condensed core.
+  const float eroded = density * density / max(density + erosion * (1.0f - density), 1e-4f);
+  return max(overcast, eroded * profile);
 }

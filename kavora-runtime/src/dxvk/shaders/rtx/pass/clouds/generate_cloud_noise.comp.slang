@@ -33,6 +33,6 @@ void main(uint3 id : SV_DispatchThreadID)
   }
   perlin = saturate(perlin * (0.75f / 1.75f) + 0.5f);
   const float worley4 = cloudWorleyFbm(uv, 4, kCloudNoiseSeed + 11);
-  CloudNoise[id] = float4(saturate((perlin - worley4 + 1.0f) / (2.0f - worley4)), worley4,
+  CloudNoise[id] = float4(perlin, worley4,
     cloudWorleyFbm(uv, 8, kCloudNoiseSeed + 23), cloudWorleyFbm(uv, 16, kCloudNoiseSeed + 37));
 }

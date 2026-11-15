@@ -39,8 +39,9 @@ void main(uint2 pixel : SV_DispatchThreadID)
     const float next = grid.boundary(cell + 1);
     const float distance = grid.sampleAt(cell);
     const float3 position = origin + direction * distance;
+    const float footprint = max(grid.spacing, distance * 3.14159265359f / float(args.skyResolution));
     const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
-      CloudDetailSampler);
+      CloudDetailSampler, footprint);
     if (extinction > 0)
     {
       const float opacity = accumulateCloudSkyStep(extinction, next - previous, args.albedo,

@@ -41,7 +41,7 @@ CLOUD_PARAMETER struct CloudArgs {
   CLOUD_PARAMETER float night;
   CLOUD_PARAMETER float lightMaxDistance;
   CLOUD_PARAMETER vec3 previousWindDelta;
-  CLOUD_PARAMETER uint padding2;
+  CLOUD_PARAMETER float viewAngularFootprint;
 };
 
 #undef CLOUD_PARAMETER
