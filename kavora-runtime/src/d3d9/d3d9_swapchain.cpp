@@ -1196,6 +1196,13 @@ namespace dxvk {
     for (uint32_t i = 0; i < SyncInterval || i < 1; i++) {
       SynchronizePresent();
 
+      // NV-DXVK start: A display transition changes encoding before image acquisition.
+      auto& displayOutput = m_device->getCommon()->displayOutput();
+      if (displayOutput.needsSurfaceRecreation(GetPresenter()->info().format)) {
+        RecreateSwapChain(m_vsync);
+      }
+      // NV-DXVK end
+
       // NV-DXVK start: DLFG integration
       vk::Presenter* presenter = GetPresenter();
       // NV-DXVK end
@@ -1232,6 +1239,17 @@ namespace dxvk {
           break;
       }
 
+      // NV-DXVK start: The composed image and FG inputs share one actual output contract.
+      const auto display = displayOutput.makePresent(clientImage ? clientImage->display : DxvkDisplayFrame {}, info.format);
+      if (display.generation != m_displayMetadataGeneration) {
+        VkHdrMetadataEXT metadata;
+        if (displayOutput.hdrMetadata(metadata)) {
+          presenter->setHdrMetadata(metadata);
+        }
+        m_displayMetadataGeneration = display.generation;
+      }
+      // NV-DXVK end
+
       m_context->beginRecording(
         m_device->createCommandList());
 
@@ -1257,7 +1275,9 @@ namespace dxvk {
 
       m_blitter->presentImage(m_context.ptr(),
         m_imageViews.at(imageIndex), dstRect,
-        swapImageView, srcRect, clientImage && clientImage->bottomUp);
+        // NV-DXVK start: Encode the actual WSI color space exactly once.
+        swapImageView, srcRect, clientImage && clientImage->bottomUp, display);
+        // NV-DXVK end
 
       // NV-DXVK start: The host already composited both GUI layers and advanced the scene.
       if (!clientImage) {
@@ -1276,7 +1296,7 @@ namespace dxvk {
       DxvkFrameInterpolationInfo clientInterpolation {};
       if (clientImage) {
         if (m_dlfgPresenter != nullptr && clientImage->interpolation.valid()) {
-          clientInterpolation = PrepareClientInterpolation(imageIndex, *clientImage, srcRect, dstRect);
+          clientInterpolation = PrepareClientInterpolation(imageIndex, *clientImage, srcRect, dstRect, display);
         } else {
           m_clientInterpolationHistory = false;
         }
@@ -1375,8 +1395,10 @@ namespace dxvk {
 
   // NV-DXVK start: Snapshot FG inputs into the acquired virtual backbuffer's lifetime.
   DxvkFrameInterpolationInfo D3D9SwapChainEx::PrepareClientInterpolation(uint32_t imageIndex,
-      const ClientPresentImage& clientImage, VkRect2D srcRect, VkRect2D dstRect) {
+      const ClientPresentImage& clientImage, VkRect2D srcRect, VkRect2D dstRect,
+      const DxvkDisplayPresent& display) {
     DxvkFrameInterpolationInfo info = clientImage.interpolation;
+    info.display = display;
     auto& slot = m_clientInterpolationSlots.at(imageIndex);
     auto prepareInput = [this](VkExtent3D extent, VkFormat format, VkImageUsageFlags viewUsage,
                               Rc<DxvkImageView>& destination, const char* name) {
@@ -1418,10 +1440,10 @@ namespace dxvk {
     prepareInput(info.depth->imageInfo().extent, info.depth->imageInfo().format, guideUsage,
       slot.depth, "ClientFrame::depth");
     if (clientImage.hudless != nullptr) {
-      const auto& display = m_imageViews.at(imageIndex)->imageInfo();
-      prepareInput(display.extent, display.format, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+      const auto& displayImageInfo = m_imageViews.at(imageIndex)->imageInfo();
+      prepareInput(displayImageInfo.extent, displayImageInfo.format, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         slot.hudless, "ClientFrame::hudless");
-      m_blitter->presentImage(m_context.ptr(), slot.hudless, dstRect, clientImage.hudless, srcRect, clientImage.bottomUp);
+      m_blitter->presentImage(m_context.ptr(), slot.hudless, dstRect, clientImage.hudless, srcRect, clientImage.bottomUp, display);
       info.hudless = slot.hudless;
     }
 
@@ -1441,8 +1463,12 @@ namespace dxvk {
     info.motionVectorsLayout = VK_IMAGE_LAYOUT_GENERAL;
     info.depthLayout = VK_IMAGE_LAYOUT_GENERAL;
     info.resetHistory |= !m_clientInterpolationHistory || info.frameId != m_lastClientInterpolationFrame + 1;
+    info.resetHistory |= display.sourceGeneration != m_clientSourceGeneration
+      || display.generation != m_clientOutputGeneration;
     m_clientInterpolationHistory = true;
     m_lastClientInterpolationFrame = info.frameId;
+    m_clientSourceGeneration = display.sourceGeneration;
+    m_clientOutputGeneration = display.generation;
     return info;
   }
   // NV-DXVK end
@@ -1534,6 +1560,10 @@ namespace dxvk {
     // NV-DXVK end
     presenterDevice.adapter       = m_device->adapter()->handle();
     presenterDevice.features.fullScreenExclusive = m_device->extensions().extFullScreenExclusive;
+    // NV-DXVK start: Negotiate HDR and storage support on the sole native presenter.
+    presenterDevice.features.storageImage = dlfgEnabled;
+    presenterDevice.displayOutput = &m_device->getCommon()->displayOutput();
+    // NV-DXVK end
 
     vk::PresenterDesc presenterDesc;
     presenterDesc.imageExtent     = GetPresentExtent();
@@ -1581,6 +1611,7 @@ namespace dxvk {
     m_clientInterpolationSlots.clear();
     m_clientInterpolationSlots.resize(info.imageCount);
     m_clientInterpolationHistory = false;
+    m_displayMetadataGeneration = 0;
     ++m_clientPresentationEpoch;
     m_clientInterpolationCount = m_context->dlfgInterpolatedFrameCount();
     // NV-DXVK end

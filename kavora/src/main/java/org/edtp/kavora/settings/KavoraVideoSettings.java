@@ -8,6 +8,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.edtp.kavora.KavoraMod;
+import org.edtp.kavora.NativeRuntime;
 import org.edtp.kavora.sdk.RemixAPI;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,7 +30,8 @@ public final class KavoraVideoSettings {
     public static final String FRAME_GENERATION = "frameGenerationMultiplier";
     private static final String ENABLED = "enabled";
     private static final List<String> SAVED_KEYS = Stream.concat(
-            Stream.of(UPSCALER, DLSS, RECONSTRUCTION, FRAME_GENERATION, ENABLED, KavoraNeuralRenderingSettings.ENABLED),
+            Stream.of(UPSCALER, DLSS, RECONSTRUCTION, FRAME_GENERATION, ENABLED, KavoraNeuralRenderingSettings.ENABLED,
+                    KavoraDisplaySettings.MODE, KavoraDisplaySettings.PAPER_WHITE, KavoraDisplaySettings.PEAK),
             KavoraNeuralRenderingSettings.ADVANCED.stream().map(KavoraNeuralRenderingSettings.Control::key)).toList();
     private static final Logger LOGGER = LoggerFactory.getLogger(KavoraVideoSettings.class);
     private static final Map<String, String> saved = new LinkedHashMap<>();
@@ -50,6 +52,17 @@ public final class KavoraVideoSettings {
     }
 
     public static void load() {
+        readSaved();
+        apply(saved);
+    }
+
+    /** Presentation starts before the scene renderer and must also honor saved choices in menus. */
+    public static void loadDisplay() {
+        readSaved();
+        KavoraDisplaySettings.apply(saved);
+    }
+
+    private static void readSaved() {
         saved.clear();
         pending.clear();
         if (!Files.isRegularFile(file())) return;
@@ -61,7 +74,6 @@ public final class KavoraVideoSettings {
                 if (valid(key, value)) saved.put(key, value);
                 else LOGGER.warn("Ignoring invalid video setting {}={}", key, value);
             }
-            apply(saved);
         } catch (IOException | RuntimeException e) {
             LOGGER.warn("Could not load RTX video settings", e);
         }
@@ -75,11 +87,23 @@ public final class KavoraVideoSettings {
                 case FRAME_GENERATION -> Integer.parseInt(value) >= 1 && Integer.parseInt(value) <= 7;
                 case RECONSTRUCTION, ENABLED, KavoraNeuralRenderingSettings.ENABLED ->
                         value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false");
-                default -> KavoraNeuralRenderingSettings.ADVANCED.stream()
+                default -> KavoraDisplaySettings.valid(key, value) || KavoraNeuralRenderingSettings.ADVANCED.stream()
                         .anyMatch(control -> control.key().equals(key) && control.valid(value));
             };
         } catch (NumberFormatException e) {
             return false;
+        }
+    }
+
+    static String displayValue(String key, String fallback) {
+        String override = saved.get(key);
+        if (override != null) return override;
+        if (!KavoraDisplaySettings.available()) return fallback;
+        try {
+            String value = NativeRuntime.api().getConfigVariableResolved(key);
+            return KavoraDisplaySettings.valid(key, value) ? value : fallback;
+        } catch (RuntimeException unavailable) {
+            return fallback;
         }
     }
 
@@ -136,7 +160,7 @@ public final class KavoraVideoSettings {
     }
 
     static void save() {
-        if (pending.isEmpty() || !available()) return;
+        if (pending.isEmpty() || !NativeRuntime.isStarted()) return;
         apply(pending);
         saved.putAll(pending);
         pending.clear();
@@ -158,6 +182,8 @@ public final class KavoraVideoSettings {
     }
 
     private static void apply(Map<String, String> values) {
+        KavoraDisplaySettings.apply(values);
+        if (!available()) return;
         normalizeNativeMode(values);
         if (values.containsKey(UPSCALER) || values.containsKey(DLSS)) {
             // The native DLSS preset otherwise resets an explicit quality choice to Auto.

@@ -63,7 +63,7 @@ struct LuminanceArgs
   uint debugView;
 
   uint useLegacyACES;
-  uint pad1;
+  uint hdrScene;
   uint pad2;
   uint enableAutoExposure;
 };
@@ -73,7 +73,7 @@ struct ExposureWeightArgs
   float sigmaSq;
   float offset;
   uint debugView;
-  uint padding;
+  uint hdrScene;
 };
 
 struct BlendArgs
@@ -100,7 +100,12 @@ struct FinalCombineArgs
   uint finalizeWithACES;
   uint enableAutoExposure;
   uint useLegacyACES;
-  uint pad0;
+  uint hdrScene;
+
+  float peakToWhite;
+  float pad0;
+  float pad1;
+  float pad2;
 };
 
 

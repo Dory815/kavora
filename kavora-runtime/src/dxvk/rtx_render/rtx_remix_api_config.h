@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include <string_view>
+
 #include <remix/remix_c.h>
 
 namespace dxvk::remixapi_config {
@@ -17,6 +19,7 @@ namespace dxvk::remixapi_config {
   // Validation is safe on application threads; it never dereferences the opaque handle.
   bool validateLayer(remixapi_ConfigLayerHandle handle);
   remixapi_ErrorCode getResolved(remixapi_ConfigVariableResolvedInfo* info);
+  remixapi_ErrorCode getResolved(remixapi_ConfigVariableResolvedInfo* info, std::string_view value);
   remixapi_ErrorCode setVariable(const char* key, const char* value);
 
   // Called after configuration initialization and before the first option update.

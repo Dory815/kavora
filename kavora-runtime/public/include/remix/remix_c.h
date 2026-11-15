@@ -1159,6 +1159,8 @@ extern "C" {
   // Returns GENERAL_FAILURE for a key that no option or namespace owns.
   // Returns NOT_INITIALIZED before the runtime has loaded its configuration, which happens during Startup.
   // May be called from any application thread. See documentation/RemixConfig.md.
+  // The rtx.display.status. namespace exposes read-only display snapshots, owned by the presenter.
+  // These keys are not options and SetConfigVariable rejects writes to them.
   typedef struct remixapi_ConfigVariableResolvedInfo {
     remixapi_StructType       sType;
     // Reserved for extension structs that request more outputs. None exist yet, and the runtime ignores the chain.
@@ -1443,12 +1445,12 @@ extern "C" {
     uint64_t image;
   } remixapi_VulkanInteropImage;
 
-  // Minecraft owns presentation. Submit signals the done timeline value after releasing both images to
-  // VK_QUEUE_FAMILY_EXTERNAL in GENERAL. The client waits, acquires EXTERNAL -> its queue family with
-  // GENERAL -> GENERAL, uses the images, releases its queue family -> EXTERNAL with GENERAL -> GENERAL,
-  // and signals the client timeline. Present(skipVulkanSwapchain=true) queues the matching runtime acquire
-  // after waiting for clientDoneSemaphore_ValueToWait. Both operations must balance before another Submit.
-  // Identical deviceUUID and driverUUID are required. Changing an image generation requires a fresh import.
+  // Submit signals the done timeline after preparing images in GENERAL. A shared-device client waits,
+  // reads the borrowed images, restores GENERAL, and signals the client timeline. Present completes
+  // the handoff by waiting for clientDoneSemaphore_ValueToWait. Both operations balance before another
+  // Submit. Independent-device imports additionally use matching EXTERNAL queue-family transfers,
+  // identical deviceUUID/driverUUID, and a fresh import whenever the image generation changes.
+  // Minecraft presents its composed target through VulkanClientFrameInfoEXT on the runtime's presenter.
   // Output extension for the exact frame paired with dxvkDoneSemaphore_ValueToWait.
   typedef struct remixapi_InteropFrameStatusEXT {
     remixapi_StructType sType;
@@ -1477,6 +1479,9 @@ extern "C" {
   // the runtime owns sourceConsumedSemaphore. Both are timeline semaphores.
   // image == 0 releases borrowed views synchronously without advancing a frame. Use it
   // before destroying a previously presented image. Other image fields are then ignored.
+  // On the shared host device, R16G16B16A16_SFLOAT carries display-referred extended-sRGB.
+  // One represents paper white. Components above one retain HDR headroom. This is not linear scRGB.
+  // The runtime owns conversion to the negotiated swapchain color space. GUI colors remain sRGB.
   typedef struct remixapi_VulkanClientFrameInfoEXT {
     remixapi_StructType sType;
     void* pNext;
@@ -1522,6 +1527,8 @@ extern "C" {
     uint64_t dxvkDoneSemaphore_Handle;
     uint64_t dxvkDoneSemaphore_ValueToWait;
     uint64_t clientDoneSemaphore_Handle;
+    // Shared-device R16G16B16A16_SFLOAT color is display-referred extended-sRGB, not linear scRGB.
+    // Its format is reported exactly. Clients must preserve floating-point values above one.
     remixapi_VulkanInteropImage color;
     remixapi_VulkanInteropImage depth;
     // Premultiplied transparent native UI, composite after the client's screens and HUD.

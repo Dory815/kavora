@@ -65,7 +65,7 @@ namespace dxvk {
   }
 
   bool DxvkDLFG::hasDLFGFailed() const {
-    return m_hasDLFGFailed && !s_dlfgPresetRequest.load();
+    return m_failure.load() != Failure::None && !s_dlfgPresetRequest.load();
   }
 
   template<uint numBarriers>
@@ -330,6 +330,12 @@ namespace dxvk {
     return ret;
   }
 
+  void DxvkDLFGPresenter::setHdrMetadata(const VkHdrMetadataEXT& metadata) {
+    std::unique_lock<dxvk::mutex> lock(m_presentThread.mutex);
+    synchronize(lock);
+    vk::Presenter::setHdrMetadata(metadata);
+  }
+
   void DxvkDLFGPresenter::createBackbuffers() {
     // note: assumes queue is idle and m_presentThread.mutex is locked
     assert(m_presentQueue.empty());
@@ -487,6 +493,7 @@ namespace dxvk {
                                             present.frameInterpolation.depth,
                                             interpolatedFrameIndex,
                                             present.frameInterpolation.interpolatedFrameCount,
+                                            present.frameInterpolation.display.hdr10(),
                                             present.frameInterpolation.resetHistory && interpolatedFrameIndex == 0);
     swapchainImage.generated = interpolated;
 
@@ -1411,6 +1418,21 @@ namespace dxvk {
   }
 
   const std::string& DxvkDLFG::getDLFGNotSupportedReason() {
+    // Immutable messages are safe to read while the presentation thread fails
+    // or retries a context. Hardware support remains available for preset recovery.
+    static const std::string runtimeReasons[] = {
+      "",
+      "Frame Generation stopped because its Vulkan queue could not be drained. Change HDR mode or the Frame Generation preset to retry.",
+      "Frame Generation could not create its NGX context. Change HDR mode or the Frame Generation preset to retry.",
+      "Frame Generation could not initialize its SDR output context. Change HDR mode or the Frame Generation preset to retry.",
+      "Frame Generation could not initialize its HDR10 output context. HDR rendering remains active. Change HDR mode or the Frame Generation preset to retry.",
+      "Frame Generation stopped after an NGX evaluation failure. Change HDR mode or the Frame Generation preset to retry.",
+      "Frame Generation stopped after an HDR10 NGX evaluation failure. HDR rendering remains active. Change HDR mode or the Frame Generation preset to retry.",
+    };
+    const auto failure = m_failure.load();
+    if (failure != Failure::None) {
+      return runtimeReasons[uint32_t(failure)];
+    }
     return m_device->getCommon()->metaNGXContext().getDLFGNotSupportedReason();
   }
 
@@ -1434,6 +1456,7 @@ namespace dxvk {
                           Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                           uint32_t interpolatedFrameIndex,                     // starts at 0
                           uint32_t interpolatedFrameCount,                     // total number of frames we will interpolate before the next rendered frame
+                          bool hdr10,
                           bool resetHistory) {
     ScopedCpuProfileZone();
 
@@ -1445,20 +1468,20 @@ namespace dxvk {
     // vkQueueWaitIdle only waits for submitted work.
     if (interpolatedFrameIndex == 0) {
       const uint32_t requestedPreset = s_dlfgPresetRequest.exchange(0);
-      if (requestedPreset && (requestedPreset != s_dlfgPreset.load() || m_hasDLFGFailed)) {
+      if (requestedPreset && (requestedPreset != s_dlfgPreset.load() || m_failure.load() != Failure::None)) {
         if (m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) != VK_SUCCESS) {
           Logger::err("DLFG runtime preset: failed to drain the FG queue");
-          m_hasDLFGFailed = true;
+          m_failure = Failure::QueueDrain;
           return false;
         }
         s_dlfgPreset = requestedPreset;
         m_dlfgContext.reset();
-        m_hasDLFGFailed = false;
+        m_failure = Failure::None;
         Logger::info(str::format("DLFG runtime preset: recreating FG for ", getPresetName()));
       }
     }
 
-    if (m_hasDLFGFailed) {
+    if (m_failure.load() != Failure::None) {
       return false;
     }
 
@@ -1466,7 +1489,7 @@ namespace dxvk {
       m_dlfgContext = m_device->getCommon()->metaNGXContext().createDLFGContext();
       m_contextDirty = true;
       if (!m_dlfgContext) {
-        m_hasDLFGFailed = true;
+        m_failure = Failure::ContextCreation;
         return false;
       }
     }
@@ -1480,12 +1503,18 @@ namespace dxvk {
       m_contextDirty = true;
     }
 
+    if (outputImage->info().format != m_currentDisplayFormat || hdr10 != m_currentDisplayHdr) {
+      m_currentDisplayFormat = outputImage->info().format;
+      m_currentDisplayHdr = hdr10;
+      m_contextDirty = true;
+    }
+
     if (m_contextDirty) {
       assert(m_dlfgContext != nullptr);
 
       if (m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) != VK_SUCCESS) {
         Logger::err("DxvkDLFG::dispatch: vkQueueWaitIdle failed");
-        m_hasDLFGFailed = true;
+        m_failure = Failure::QueueDrain;
         return false;
       }
 
@@ -1495,7 +1524,7 @@ namespace dxvk {
                                 m_currentDisplaySize,
                                 outputImage->info().format,
                                 s_dlfgPreset.load() == kLitePreset)) {
-        m_hasDLFGFailed = true;
+        m_failure = hdr10 ? Failure::HdrInitialization : Failure::Initialization;
         return false;
       }
       m_contextDirty = false;
@@ -1524,12 +1553,13 @@ namespace dxvk {
                                                     Vector2(1.0f, 1.0f),
                                                     interpolatedFrameIndex,
                                                     interpolatedFrameCount,
+                                                    hdr10,
                                                     resetHistory);
 
       switch (res) {
       case NGXDLFGContext::EvaluateResult::Failure:
         Logger::err("NGX DLFG evaluate failed");
-        m_hasDLFGFailed = true;
+        m_failure = hdr10 ? Failure::HdrEvaluation : Failure::Evaluation;
         return false;
 
       case NGXDLFGContext::EvaluateResult::Success:

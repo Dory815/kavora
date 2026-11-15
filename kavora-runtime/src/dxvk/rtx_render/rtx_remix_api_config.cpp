@@ -14,6 +14,7 @@
 #include "rtx_remix_api_config.h"
 #include "rtx_option.h"
 #include "rtx_option_manager.h"
+#include "../dxvk_display_output.h"
 #include "../../util/util_string.h"
 
 namespace dxvk::remixapi_config {
@@ -155,6 +156,13 @@ namespace dxvk::remixapi_config {
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       return result;
     }
+    return getResolved(info, value);
+  }
+
+  remixapi_ErrorCode getResolved(remixapi_ConfigVariableResolvedInfo* info, std::string_view value) {
+    if (!info || info->sType != REMIXAPI_STRUCT_TYPE_CONFIG_VARIABLE_RESOLVED_INFO || !info->key || !info->key[0]) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
     if (value.size() >= std::numeric_limits<uint32_t>::max()) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
@@ -166,12 +174,18 @@ namespace dxvk::remixapi_config {
     if (capacity < info->valueSize) {
       return REMIXAPI_ERROR_CODE_BUFFER_TOO_SMALL;
     }
-    std::memcpy(info->value, value.c_str(), info->valueSize);
+    if (!value.empty()) {
+      std::memcpy(info->value, value.data(), value.size());
+    }
+    info->value[value.size()] = '\0';
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
   remixapi_ErrorCode setVariable(const char* key, const char* value) {
     if (!key || !key[0] || !value) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    if (DxvkDisplayOutput::isStatusKey(key)) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     const std::string name(key);

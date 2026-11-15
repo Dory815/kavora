@@ -524,6 +524,7 @@ namespace dxvk {
       m_extensions.khrSurface.enable(host->extensions->supports(VK_KHR_SURFACE_EXTENSION_NAME));
       m_extensions.khrGetSurfaceCapabilities2.enable(host->extensions->supports(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
       m_extensions.extDebugUtils.enable(host->extensions->supports(VK_EXT_DEBUG_UTILS_EXTENSION_NAME));
+      m_extensions.extSwapchainColorspace.enable(host->extensions->supports(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME));
       m_extensions.khrDeviceProperties2.enable(host->extensions->supports(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME));
       // External capability queries are core in the host's required Vulkan 1.4 instance.
       m_extensions.khrExternalMemoryCapabilities.enable(1);
@@ -738,6 +739,9 @@ namespace dxvk {
     DxvkInstanceExtensions insExtensions;
 
     std::vector<DxvkExt*> insExtensionList = {{
+      // NV-DXVK start: Enumerate optional HDR surface color spaces.
+      &insExtensions.extSwapchainColorspace,
+      // NV-DXVK end
       &insExtensions.khrGetSurfaceCapabilities2,
       &insExtensions.khrSurface,
       &insExtensions.khrDeviceProperties2,

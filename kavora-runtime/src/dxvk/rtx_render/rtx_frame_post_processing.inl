@@ -37,7 +37,7 @@
 namespace dxvk {
   __forceinline void RtxFramePipeline::recordDisplayEffects(RtxContext& ctx, Resources::RaytracingOutput& rtOutput, RtxFrameCapture capture) {
     DisplayFrame display { rtOutput, capture };
-    // Bloom and motion blur consume HDR. Lens effects and final grading consume LDR.
+    // Bloom and motion blur consume scene radiance. Lens effects and grading consume display-linear color.
     using Effects = frame::Schedule<recordDust, recordNeuralRendering, dispatchBloom, dispatchPostFxMotionBlur,
       dispatchToneMapping, dispatchPostFxLensEffects, recordDisplayConversion, captureDisplay>;
     static_assert(Effects::orders<dispatchBloom, dispatchToneMapping>);
@@ -60,10 +60,8 @@ namespace dxvk {
   }
 
   __forceinline void RtxFramePipeline::recordDisplayConversion(RtxContext& ctx, DisplayFrame& frame) {
-    // Final output pass grades the linear post-tonemap LDR image, converts to sRGB and applies
-    // dithering as the very last step. SRGB conversion is suppressed for screenshot
-    // captures (WAR for TREX-553: NVTT implicitly applies sRGB during dds->png conversion
-    // for 16bit float formats).
+    // Shared FP16 output retains extended-sRGB even during a native diagnostic capture.
+    // The legacy SDR path suppresses encoding for NVTT's implicit conversion of float DDS captures.
     ScopedCpuProfileZoneN("dxvk::RtxContext::dispatchSRGBDither");
     ctx.getCommonObjects()->metaSRGBDither().dispatch(
       &ctx, DxvkSRGBDither::DispatchResources(frame.resources), frame.capture.screenImage);

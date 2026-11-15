@@ -527,6 +527,9 @@ namespace dxvk {
 
   DxvkObjects::DxvkObjects(DxvkDevice* device)
     : m_device(device),
+    // NV-DXVK start: Centralize the native display color contract.
+    m_displayOutput(device),
+    // NV-DXVK end
     m_memoryManager(device),
     m_renderPassPool(device),
     m_pipelineManager(device, &m_renderPassPool),

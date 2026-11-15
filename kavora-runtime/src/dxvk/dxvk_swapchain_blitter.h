@@ -1,7 +1,14 @@
 #pragma once
 
+// NV-DXVK start: Verify the native presentation push-constant layout.
+#include <cstddef>
+// NV-DXVK end
+
 #include "../dxvk/dxvk_device.h"
 #include "../dxvk/dxvk_context.h"
+// NV-DXVK start: Present using the immutable frame's encoding parameters.
+#include "dxvk_display_output.h"
+// NV-DXVK end
 
 namespace dxvk {
 
@@ -41,7 +48,8 @@ namespace dxvk {
             VkRect2D            dstRect,
       const Rc<DxvkImageView>&  srcView,
             VkRect2D            srcRect,
-            bool                bottomUp = false);
+            bool                bottomUp = false,
+      const DxvkDisplayPresent& display = {});
     // NV-DXVK end
 
     /**
@@ -73,8 +81,14 @@ namespace dxvk {
       // NV-DXVK start: Host framebuffer orientation.
       uint32_t bottomUp;
       uint32_t sourceHeight;
+      DxvkDisplayPresentArgs display;
       // NV-DXVK end
     };
+
+    // NV-DXVK start: Match all four GLSL presentation push-constant blocks.
+    static_assert(sizeof(PresenterArgs) == 48);
+    static_assert(offsetof(PresenterArgs, display) == 24);
+    // NV-DXVK end
 
     Rc<DxvkDevice>      m_device;
 
@@ -104,7 +118,8 @@ namespace dxvk {
             VkRect2D            dstRect,
       const Rc<DxvkImageView>&  srcView,
             VkRect2D            srcRect,
-            bool                bottomUp);
+            bool                bottomUp,
+      const DxvkDisplayPresent& display);
     // NV-DXVK end
 
     void resolve(

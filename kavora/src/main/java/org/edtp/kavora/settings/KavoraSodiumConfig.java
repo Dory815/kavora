@@ -82,6 +82,37 @@ public final class KavoraSodiumConfig implements ConfigEntryPoint {
                         && KavoraVideoSettings.frameGenerationCapabilities().supported, ConfigState.UPDATE_ON_REBUILD));
         mod.addPage(builder.createOptionPage().setName(text("title")).addOptionGroup(rendering));
 
+        var display = builder.createOptionGroup();
+        display.addOption(builder.createEnumOption(id("display.hdr"), KavoraDisplaySettings.Mode.class)
+                .setName(displayText("hdr")).setTooltip(displayText("hdr.tip"))
+                .setDefaultValue(KavoraDisplaySettings.Mode.AUTO).setElementNameProvider(KavoraDisplaySettings::modeText)
+                .setBinding(KavoraDisplaySettings::stageMode, KavoraDisplaySettings::mode).setStorageHandler(VIDEO_STORAGE)
+                .setEnabledProvider(state -> KavoraDisplaySettings.available(), ConfigState.UPDATE_ON_REBUILD));
+        display.addOption(builder.createIntegerOption(id("display.paper_white"))
+                .setName(displayText("paperWhite")).setTooltip(displayText("paperWhite.tip"))
+                .setRange(new Range(0, 22, 1)).setDefaultValue(0)
+                .setValueFormatter(value -> KavoraDisplaySettings.nitsText(value, 80, 20))
+                .setBinding(value -> KavoraDisplaySettings.stageNits(KavoraDisplaySettings.PAPER_WHITE, value, 80, 20),
+                        () -> KavoraDisplaySettings.nitsPosition(KavoraDisplaySettings.PAPER_WHITE, 80, 20))
+                .setStorageHandler(VIDEO_STORAGE)
+                .setEnabledProvider(state -> KavoraDisplaySettings.available(), ConfigState.UPDATE_ON_REBUILD));
+        display.addOption(builder.createIntegerOption(id("display.peak"))
+                .setName(displayText("peak")).setTooltip(displayText("peak.tip"))
+                .setRange(new Range(0, 99, 1)).setDefaultValue(0)
+                .setValueFormatter(value -> KavoraDisplaySettings.nitsText(value, 200, 100))
+                .setBinding(value -> KavoraDisplaySettings.stageNits(KavoraDisplaySettings.PEAK, value, 200, 100),
+                        () -> KavoraDisplaySettings.nitsPosition(KavoraDisplaySettings.PEAK, 200, 100))
+                .setStorageHandler(VIDEO_STORAGE)
+                .setEnabledProvider(state -> KavoraDisplaySettings.available(), ConfigState.UPDATE_ON_REBUILD));
+        display.addOption(builder.createEnumOption(id("display.status"), KavoraDisplaySettings.OutputStatus.class)
+                .setName(displayText("status")).setTooltip(value -> KavoraDisplaySettings.statusText())
+                .setDefaultValue(KavoraDisplaySettings.OutputStatus.CURRENT)
+                .setElementNameProvider(value -> KavoraDisplaySettings.outputText())
+                .setBinding(value -> {}, () -> KavoraDisplaySettings.OutputStatus.CURRENT)
+                .setStorageHandler(VIDEO_STORAGE)
+                .setEnabled(false).setControlHiddenWhenDisabled(false));
+        mod.addPage(builder.createOptionPage().setName(displayText("title")).addOptionGroup(display));
+
         KavoraSettings settings = KavoraMod.getRtxSettings();
         if (settings != null) {
             var page = builder.createOptionPage().setName(Component.translatable(SettingCategory.PERFORMANCE.labelKey()));
@@ -171,5 +202,6 @@ public final class KavoraSodiumConfig implements ConfigEntryPoint {
 
     private static Identifier id(String path) { return Identifier.fromNamespaceAndPath(MOD_ID, path); }
     private static Component text(String key) { return Component.translatable("kavora.video." + key); }
+    private static Component displayText(String key) { return Component.translatable("kavora.display." + key); }
 }
 

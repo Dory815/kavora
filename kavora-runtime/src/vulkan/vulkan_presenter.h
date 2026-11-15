@@ -37,6 +37,7 @@
 namespace dxvk {
   struct DxvkPresentInfo;
   struct DxvkFrameInterpolationInfo;
+  class DxvkDisplayOutput;
 };
 // NV-DXVK end
 
@@ -80,6 +81,9 @@ namespace dxvk::vk {
    */
   struct PresenterFeatures {
     bool                fullScreenExclusive : 1;
+    // NV-DXVK start: Frame generation writes storage images.
+    bool                storageImage : 1;
+    // NV-DXVK end
   };
   
   /**
@@ -90,6 +94,9 @@ namespace dxvk::vk {
     VkQueue             queue       = VK_NULL_HANDLE;
     VkPhysicalDevice    adapter     = VK_NULL_HANDLE;
     PresenterFeatures   features    = { };
+    // NV-DXVK start: One owner negotiates and reports display encoding.
+    DxvkDisplayOutput*  displayOutput = nullptr;
+    // NV-DXVK end
   };
 
   /**
@@ -144,6 +151,10 @@ namespace dxvk::vk {
     virtual
     // NV-DXVK end
     PresenterInfo info() const;
+
+    // NV-DXVK start: Update HDR metadata after synchronizing presenter ownership.
+    virtual void setHdrMetadata(const VkHdrMetadataEXT& metadata);
+    // NV-DXVK end
 
     /**
      * \brief Retrieves image by index
@@ -296,7 +307,9 @@ namespace dxvk::vk {
     Rc<DeviceFn>      m_vkd;
 
     PresenterDevice   m_device;
-    PresenterInfo     m_info;
+    // NV-DXVK start: Creation failures must not expose uninitialized format state.
+    PresenterInfo     m_info = { };
+    // NV-DXVK end
 
     HWND              m_window      = nullptr;
     VkSurfaceKHR      m_surface     = VK_NULL_HANDLE;
@@ -315,6 +328,10 @@ namespace dxvk::vk {
     // NV-DXVK end
 
     FpsLimiter m_fpsLimiter;
+
+    // NV-DXVK start: Separate one creation attempt from the bounded SDR retry.
+    VkResult createSwapChain(const PresenterDesc& desc);
+    // NV-DXVK end
 
     VkResult getSupportedFormats(
             std::vector<VkSurfaceFormatKHR>& formats,

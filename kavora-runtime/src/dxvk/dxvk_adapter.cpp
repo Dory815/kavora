@@ -353,7 +353,9 @@ namespace dxvk {
     // NV-DXVK end
     DxvkDeviceExtensions devExtensions;
 
-    std::array<DxvkExt*, 43> devExtensionList = {{
+    // NV-DXVK start: Enable optional HDR metadata on the shared device.
+    std::array<DxvkExt*, 44> devExtensionList = {{
+    // NV-DXVK end
       &devExtensions.amdMemoryOverallocationBehaviour,
       &devExtensions.amdShaderFragmentMask,
       &devExtensions.ext4444Formats,
@@ -362,6 +364,9 @@ namespace dxvk {
       &devExtensions.extDepthClipEnable,
       &devExtensions.extExtendedDynamicState,
       &devExtensions.extFullScreenExclusive,
+      // NV-DXVK start: Enable optional HDR metadata on the shared device.
+      &devExtensions.extHdrMetadata,
+      // NV-DXVK end
       &devExtensions.extMemoryBudget,
       &devExtensions.extMemoryPriority,
       &devExtensions.extRobustness2,

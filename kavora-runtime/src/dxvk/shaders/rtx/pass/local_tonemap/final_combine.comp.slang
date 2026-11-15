@@ -60,6 +60,10 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   vec2 vUv = (threadId + 0.5) / vec2(width, height);
   float avgExposure = getExposure(AutoExposureTexture, cb.enableAutoExposure, cb.exposure);
+  if (cb.hdrScene)
+  {
+    avgExposure = sanitizeExposure(avgExposure);
+  }
   vec4 originalColor = OutputTexture[threadId] * avgExposure;
 
   // Guided upsampling.
@@ -86,19 +90,44 @@ void main(uint2 threadId : SV_DispatchThreadID)
   momentX2 /= ws;
   momentXY /= ws;
   float A = (momentXY - momentX * momentY) / (max(momentX2 - momentX * momentX, 0.0) + 0.00001);
+  if (cb.hdrScene)
+  {
+    // A nonnegative local slope preserves the ordering of the luminance guide.
+    A = max(A, 0.0f);
+  }
   float B = momentY - A * momentX;
 
 
   const float sceneLuminance = calcBt709Luminance(max(originalColor.xyz, 0.0f));
-  const float guideLuminance = encodeExposureLuminance(sceneLuminance, cb.useLegacyACES);
-  const float fusedLuminance = A * guideLuminance + B;
+  const float guideLuminance = encodeExposureLuminance(sceneLuminance, cb.useLegacyACES, cb.hdrScene);
+  float fusedLuminance = A * guideLuminance + B;
+  if (cb.hdrScene)
+  {
+    // Laplacian reconstruction can overshoot. Keep its gain within the supplied exposures.
+    const float3 exposures = OriginalMip0Texture[threadId].xyz;
+    const float minimumExposure = min(exposures.x, min(exposures.y, exposures.z));
+    const float maximumExposure = max(exposures.x, max(exposures.y, exposures.z));
+    fusedLuminance = clamp(fusedLuminance, minimumExposure, maximumExposure);
+  }
   // Reconstruct an exposure in scene-linear space before tone mapping the original color.
-  const float adjustedLuminance = decodeExposureLuminance(fusedLuminance, cb.useLegacyACES);
-  const float nearBlackWeight = saturate(guideLuminance / 0.007f);
-  const float finalMultiplier = mix(1.0f, adjustedLuminance / max(sceneLuminance, 0.00001f), square(nearBlackWeight));
+  const float adjustedLuminance = decodeExposureLuminance(fusedLuminance, cb.useLegacyACES, cb.hdrScene);
+  float finalMultiplier;
+  if (cb.hdrScene)
+  {
+    finalMultiplier = sceneLuminance > 0.0f ? adjustedLuminance / sceneLuminance : 1.0f;
+  }
+  else
+  {
+    const float nearBlackWeight = saturate(guideLuminance / 0.007f);
+    finalMultiplier = mix(1.0f, adjustedLuminance / max(sceneLuminance, 0.00001f), square(nearBlackWeight));
+  }
 
   vec3 texelFinal = originalColor.xyz * finalMultiplier;
-  if (cb.finalizeWithACES)
+  if (cb.hdrScene)
+  {
+    texelFinal = displayHdrShoulder(texelFinal, cb.peakToWhite);
+  }
+  else if (cb.finalizeWithACES)
   {
     texelFinal = ACESFilm(texelFinal, cb.useLegacyACES);
   }

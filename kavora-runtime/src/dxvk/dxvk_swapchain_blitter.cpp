@@ -28,7 +28,8 @@ namespace dxvk {
           VkRect2D            dstRect,
     const Rc<DxvkImageView>&  srcView,
           VkRect2D            srcRect,
-          bool                bottomUp) {
+          bool                bottomUp,
+    const DxvkDisplayPresent& display) {
     ScopedGpuProfileZone(ctx, "Blitter presentImage");
     if (m_gammaDirty)
       this->updateGammaTexture(ctx);
@@ -53,10 +54,10 @@ namespace dxvk {
 
     if (srcView->imageInfo().sampleCount == VK_SAMPLE_COUNT_1_BIT) {
       this->draw(ctx, sameSize ? m_fsCopy : m_fsBlit,
-        dstView, dstRect, srcView, srcRect, bottomUp);
+        dstView, dstRect, srcView, srcRect, bottomUp, display);
     } else if (sameSize) {
       this->draw(ctx, m_fsResolve,
-        dstView, dstRect, srcView, srcRect, bottomUp);
+        dstView, dstRect, srcView, srcRect, bottomUp, display);
     } else {
         if (m_resolveImage == nullptr
          || m_resolveImage->info().extent != srcView->imageInfo().extent
@@ -64,7 +65,7 @@ namespace dxvk {
           this->createResolveImage(srcView->imageInfo());
 
       this->resolve(ctx, m_resolveView, srcView);
-      this->draw(ctx, m_fsBlit, dstView, dstRect, m_resolveView, srcRect, bottomUp);
+      this->draw(ctx, m_fsBlit, dstView, dstRect, m_resolveView, srcRect, bottomUp, display);
 
       usedResolveImage = true;
     }
@@ -116,7 +117,8 @@ namespace dxvk {
           VkRect2D            dstRect,
     const Rc<DxvkImageView>&  srcView,
           VkRect2D            srcRect,
-          bool                bottomUp) {
+          bool                bottomUp,
+    const DxvkDisplayPresent& display) {
   // NV-DXVK end
     DxvkInputAssemblyState iaState;
     iaState.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
@@ -213,6 +215,7 @@ namespace dxvk {
     // NV-DXVK start: Preserve host framebuffer orientation during presentation.
     args.bottomUp = bottomUp;
     args.sourceHeight = srcRect.extent.height;
+    args.display = display.shader;
     // NV-DXVK end
     args.srcOffset = srcRect.offset;
 

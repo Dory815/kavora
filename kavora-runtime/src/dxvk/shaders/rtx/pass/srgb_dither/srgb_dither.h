@@ -39,4 +39,9 @@ struct SRGBDitherArgs {
   float inversionAmount;
   uint inversionMode;
   float inversionThreshold;
+
+  uint extendedSrgb;
+  uint pad0;
+  uint pad1;
+  uint pad2;
 };

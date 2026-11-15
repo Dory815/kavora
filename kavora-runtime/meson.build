@@ -315,7 +315,9 @@ shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile
 
 # GLSL Compiler
 
-glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '@EXTRA_ARGS@' ]
+# NV-DXVK start: Rebuild presenters when their shared color headers change.
+glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '--depfile', '@DEPFILE@', '@EXTRA_ARGS@' ]
+# NV-DXVK end
 
 if run_command(glsl_compiler, [ '--quiet', '--version' ], check: false).returncode() == 0
   glsl_args += [ '--quiet' ]
@@ -328,6 +330,9 @@ endif
 glsl_generator = generator(
   glsl_compiler,
   output    : [ '@BASENAME@.h' ],
+  # NV-DXVK start: Track transitive GLSL includes.
+  depfile   : '@BASENAME@.d',
+  # NV-DXVK end
   arguments : glsl_args
 )
 

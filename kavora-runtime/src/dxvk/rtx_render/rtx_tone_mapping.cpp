@@ -22,6 +22,7 @@
 #include "rtx_tone_mapping.h"
 #include "rtx_dlss_neural_rendering.h"
 #include "dxvk_device.h"
+#include "../dxvk_display_output.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx.h"
@@ -290,6 +291,9 @@ namespace dxvk {
     pushArgs.enableAutoExposure = autoExposureEnabled;
     pushArgs.finalizeWithACES = finalizeWithACES();
     pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+    const auto& displayFrame = ctx->getCommonObjects()->displayOutput().renderFrame();
+    pushArgs.hdrScene = displayFrame.hdrScene();
+    pushArgs.peakToWhite = displayFrame.peakToWhite();
 
     // Tonemap args
     pushArgs.shadowContrast = shadowContrast();
@@ -330,14 +334,15 @@ namespace dxvk {
     }
 
     const Resources::Resource& inputColorBuffer = resources.get<&RaytracingFrame::m_finalOutput>().resource(Resources::AccessType::Read);
-    if (tonemappingEnabled()) {
+    const bool hdrScene = ctx->getCommonObjects()->displayOutput().renderFrame().hdrScene();
+    if (tonemappingEnabled() && !hdrScene) {
       dispatchHistogram(ctx, exposureView, inputColorBuffer, autoExposureEnabled);
       dispatchToneCurve(ctx);
     }
 
     dispatchApplyToneMapping(ctx, linearSampler, exposureView, inputColorBuffer, resources.get<&RaytracingFrame::m_finalOutput>().resource(Resources::AccessType::Write), autoExposureEnabled);
 
-    m_resetState = false;
+    m_resetState = hdrScene;
   }
 
   void DxvkToneMapping::dispatchFastToneMapping(

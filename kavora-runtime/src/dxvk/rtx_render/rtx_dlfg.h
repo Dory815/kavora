@@ -158,6 +158,7 @@ namespace dxvk {
                           VkSemaphore waitSemaphore = VK_NULL_HANDLE) override;
     VkResult recreateSwapChain(const vk::PresenterDesc& desc) override;
     vk::PresenterInfo info() const override;
+    void setHdrMetadata(const VkHdrMetadataEXT& metadata) override;
 
     // waits for all queued frames to be consumed
     void synchronize() override;
@@ -300,6 +301,7 @@ namespace dxvk {
                   Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                   uint32_t interpolatedFrameIndex,                     // starts at 0
                   uint32_t interpolatedFrameCount,                     // total number of frames we will interpolate before the next rendered frame
+                  bool hdr10,
                   bool resetHistory = false);
 
     Rc<RtxSemaphore>& getFrameEndSemaphore() {
@@ -336,9 +338,21 @@ namespace dxvk {
     RTX_OPTION("rtx.dlfg", bool, enablePresentMetering, true, "Use hardware present metering for DLSS 4.0 frame generation instead of CPU pacing.");
 
   private:
+    enum class Failure : uint32_t {
+      None,
+      QueueDrain,
+      ContextCreation,
+      Initialization,
+      HdrInitialization,
+      Evaluation,
+      HdrEvaluation,
+    };
+
     std::unique_ptr<NGXDLFGContext> m_dlfgContext = nullptr;
-    std::atomic<bool> m_hasDLFGFailed = { false };
+    std::atomic<Failure> m_failure = { Failure::None };
     uint32_t m_currentDisplaySize[2] = { 0,0 };
+    VkFormat m_currentDisplayFormat = VK_FORMAT_UNDEFINED;
+    bool m_currentDisplayHdr = false;
     bool m_contextDirty = true;
     
     DxvkDLFGCommandListArray m_dlfgEvalCommandLists;

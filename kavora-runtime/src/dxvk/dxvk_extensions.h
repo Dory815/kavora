@@ -306,6 +306,9 @@ namespace dxvk {
     DxvkExt extDepthClipEnable                = { VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME,                  DxvkExtMode::Optional };
     DxvkExt extExtendedDynamicState           = { VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,             DxvkExtMode::Optional };
     DxvkExt extFullScreenExclusive            = { VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,              DxvkExtMode::Optional };
+    // NV-DXVK start: HDR output metadata is optional.
+    DxvkExt extHdrMetadata                    = { VK_EXT_HDR_METADATA_EXTENSION_NAME,                      DxvkExtMode::Optional };
+    // NV-DXVK end
     // NV-DXVK start: NRC requires this extension in the logical device's enabled list.
     DxvkExt extMemoryBudget                   = { VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,                      DxvkExtMode::Optional };
     // NV-DXVK end
@@ -379,6 +382,9 @@ namespace dxvk {
    */
   struct DxvkInstanceExtensions {
     DxvkExt extDebugUtils                   = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME,                      DxvkExtMode::Optional };
+    // NV-DXVK start: Enumerate HDR surface color spaces when available.
+    DxvkExt extSwapchainColorspace          = { VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,            DxvkExtMode::Optional };
+    // NV-DXVK end
     DxvkExt khrGetSurfaceCapabilities2      = { VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,       DxvkExtMode::Optional };
     DxvkExt khrSurface                      = { VK_KHR_SURFACE_EXTENSION_NAME,                          DxvkExtMode::Required };
     DxvkExt khrDeviceProperties2            = { VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, DxvkExtMode::Required };

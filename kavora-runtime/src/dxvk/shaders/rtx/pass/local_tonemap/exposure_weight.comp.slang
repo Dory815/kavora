@@ -41,7 +41,13 @@ void main(uint2 threadId : SV_DispatchThreadID)
 {
   // Compute the synthetic exposure weights.
   vec3 diff = LuminanceTexture[threadId].xyz - vec3(0.50 + cb.offset);
-  vec3 weights = vec3(exp(-0.5 * diff * diff * cb.sigmaSq));
+  vec3 logWeights = -0.5 * diff * diff * cb.sigmaSq;
+  if (cb.hdrScene)
+  {
+    // At least one HDR exposure retains unit weight even far beyond paper white.
+    logWeights -= max(logWeights.x, max(logWeights.y, logWeights.z));
+  }
+  vec3 weights = vec3(exp(logWeights));
   weights /= dot(weights, vec3(1.0)) + 0.00001;
   WeightTexture[threadId] = vec4(weights, 1.0);
 }

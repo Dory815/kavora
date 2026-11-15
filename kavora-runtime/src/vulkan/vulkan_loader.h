@@ -391,6 +391,10 @@ namespace dxvk::vk {
     VULKAN_FN(vkQueuePresentKHR);
     #endif
 
+    // NV-DXVK start: Optional HDR mastering metadata.
+    VULKAN_FN(vkSetHdrMetadataEXT);
+    // NV-DXVK end
+
     #ifdef VK_EXT_conditional_rendering
     VULKAN_FN(vkCmdBeginConditionalRenderingEXT);
     VULKAN_FN(vkCmdEndConditionalRenderingEXT);

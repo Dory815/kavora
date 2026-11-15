@@ -85,6 +85,14 @@ dxvk_src = files([
   'dxvk_device_filter.cpp',
   'dxvk_device_filter.h',
   'dxvk_device_info.h',
+  # NV-DXVK start: Display negotiation and its platform-independent policy.
+  'dxvk_display_monitor.cpp',
+  'dxvk_display_monitor.h',
+  'dxvk_display_output.cpp',
+  'dxvk_display_output.h',
+  'dxvk_display_policy.cpp',
+  'dxvk_display_policy.h',
+  # NV-DXVK end
   'dxvk_extension_provider.h',
   'dxvk_extensions.cpp',
   'dxvk_extensions.h',
@@ -397,6 +405,9 @@ dxvk_src = files([
   'rtx_render/rtx_water_sim.cpp',
   'rtx_render/rtx_water_sim.h',
   'rtx_render/rtx_xess.cpp',
+  # NV-DXVK start: Shared CPU and GPU display conversion.
+  'shaders/dxvk_display_color.h',
+  # NV-DXVK end
   'shaders/rtx/pass/water_sim/water_surface_args.h',
   'shaders/rtx/utility/atlas_mip_bounds.h',
   'rtx_render/rtx_xess.h',
