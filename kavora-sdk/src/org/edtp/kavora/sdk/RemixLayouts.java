@@ -242,6 +242,7 @@ final class RemixLayouts {
                 ADDRESS.withName("material"),
                 ADDRESS.withName("vertices"),
                 ADDRESS.withName("materials"),
+                ADDRESS.withName("materialIndices"),
                 JAVA_INT.withName("quadCount"),
                 JAVA_INT.withName("materialCount"));
         define("MeshInfoQuadsEXT",
@@ -382,7 +383,8 @@ final class RemixLayouts {
                 JAVA_INT.withName("categoryFlags"),
                 ADDRESS.withName("mesh"),
                 layout("Transform").withName("transform"),
-                JAVA_INT.withName("doubleSided"));
+                JAVA_INT.withName("doubleSided"),
+                JAVA_INT.withName("prepareOnly"));
         define("LightInfoLightShaping",
                 layout("Float3D").withName("direction"),
                 JAVA_FLOAT.withName("coneAngleDegrees"),

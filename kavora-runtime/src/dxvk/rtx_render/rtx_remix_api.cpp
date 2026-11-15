@@ -954,6 +954,7 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
   state->cameraType = cameraType;
   state->categories = convert::toRtCategories(info.categoryFlags);
   state->doubleSided = convert::tobool(info.doubleSided);
+  state->prepareOnly = convert::tobool(info.prepareOnly);
 
   return state;
 }
@@ -1231,11 +1232,12 @@ namespace {
     }
     static std::atomic<uint64_t> nextMesh { 0 };
     auto handle = reinterpret_cast<remixapi_MeshHandle>(++nextMesh);
+    const auto* quadSurfaces = pnext::find<remixapi_MeshInfoQuadsEXT>(info);
 
     if (auto* subset = pnext::find<remixapi_MeshInfoQuadSubsetEXT>(info)) {
       if (info->surfaces_count || info->surfaces_values || !subset->sourceMesh || !subset->quadIndices ||
           !subset->quadCount || subset->quadCount > dxvk::kQuadIndexVertexCount / 4 ||
-          pnext::find<remixapi_MeshInfoQuadsEXT>(info) || pnext::find<remixapi_MeshInfoSharedBuffersEXT>(info)) {
+          quadSurfaces || pnext::find<remixapi_MeshInfoSharedBuffersEXT>(info)) {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
       const auto* end = subset->quadIndices + subset->quadCount;
@@ -1255,19 +1257,18 @@ namespace {
     }
 
     auto allocatedSurfaces = std::vector<dxvk::RasterGeometry> {};
-    if (auto* quads = pnext::find<remixapi_MeshInfoQuadsEXT>(info)) {
+    if (const auto* quads = quadSurfaces) {
       if (info->surfaces_count || info->surfaces_values || !quads->surfaces || !quads->surfaceCount
           || quads->surfaceCount > 65536 || pnext::find<remixapi_MeshInfoSharedBuffersEXT>(info)) {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
-      for (uint32_t i = 0; i < quads->surfaceCount; i++) {
-        if (!validQuadSurface(quads->surfaces[i])) {
-          return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
-        }
-      }
       allocatedSurfaces.reserve(quads->surfaceCount);
       for (uint32_t i = 0; i < quads->surfaceCount; i++) {
-        allocatedSurfaces.push_back(allocateQuadSurfaceGeometry(remixDevice, quads->surfaces[i]));
+        dxvk::AxisAlignedBoundingBox bounds;
+        if (!validQuadSurface(quads->surfaces[i], bounds)) {
+          return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+        }
+        allocatedSurfaces.push_back(allocateQuadSurfaceGeometry(remixDevice, quads->surfaces[i], bounds));
       }
     } else if (auto* shared = pnext::find<remixapi_MeshInfoSharedBuffersEXT>(info)) {
       if (info->surfaces_count || info->surfaces_values || !shared->surfaces || !shared->surfaceCount || shared->surfaceCount > 65536) {

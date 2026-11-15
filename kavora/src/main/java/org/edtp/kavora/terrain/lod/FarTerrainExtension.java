@@ -6,6 +6,7 @@ package org.edtp.kavora.terrain.lod;
 
 import org.edtp.kavora.sdk.RemixAPI;
 import org.edtp.kavora.light.BlockLightKey;
+import org.edtp.kavora.render.SceneCompletion;
 import org.edtp.kavora.texture.BlockTextureManager;
 import java.util.List;
 import java.util.Set;
@@ -22,7 +23,7 @@ public interface FarTerrainExtension extends AutoCloseable {
                  long geometryBytes, long visibleGeometryBytes, long reservedWorkerBytes,
                  int retiringCells, int failedCells, boolean memoryBackpressured) { }
     /** Workers may retain immutable CPU snapshots, never the client world or native handles. */
-    void tick(RemixAPI api, BlockTextureManager textures, ClientLevel world, Vec3 camera);
+    void tick(RemixAPI api, BlockTextureManager textures, ClientLevel world, Vec3 camera, SceneCompletion completion);
     /** Records committed near geometry. The extension must not delay or initiate near publication. */
     void recordNear(long column, Set<NearSection> sections);
     /** Submit sources from observed far terrain without replacing a committed near source. */

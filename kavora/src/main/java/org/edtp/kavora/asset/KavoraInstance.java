@@ -52,9 +52,18 @@ public class KavoraInstance extends KavoraAssetBase {
 
     /** Whether the retained native description needs a complete replacement. */
     private boolean sceneInfoDirty = true;
+    private boolean prepareOnly;
 
     public KavoraInstance(KavoraMesh mesh) {
         this.mesh = mesh;
+    }
+
+    public KavoraInstance setPrepareOnly(boolean value) {
+        if (prepareOnly != value) {
+            prepareOnly = value;
+            sceneInfoDirty = true;
+        }
+        return this;
     }
 
     /** Replaces the mesh referenced by this retained scene instance. */
@@ -149,12 +158,12 @@ public class KavoraInstance extends KavoraAssetBase {
 
     private long addSceneInstance(RemixAPI api) {
         return api.sceneInstanceAdd(mesh.getHandleFast(), transformForSubmission(),
-                categoryFlags, doubleSided ? 1 : 0, pNextChain());
+                categoryFlags, doubleSided ? 1 : 0, pNextChain(), prepareOnly);
     }
 
     private void updateSceneInstance(RemixAPI api, long sceneHandle) {
         api.sceneInstanceUpdate(sceneHandle, mesh.getHandleFast(), transformForSubmission(),
-                categoryFlags, doubleSided ? 1 : 0, pNextChain());
+                categoryFlags, doubleSided ? 1 : 0, pNextChain(), prepareOnly);
     }
 
     private float[] transformForSubmission() {

@@ -53,9 +53,10 @@ Sixteen transactions can overlap IO, meshing, material resolution and upload;
 only the active mesh workers hold decoded neighbourhood snapshots. Vertex
 expansion keeps at most eight four-page batches pending.
 
-Upload and retirement share a render-thread time budget, with separate byte
-limits. Retirement runs first so old geometry cannot strand an otherwise idle
-upload budget. Surface categories are packed together into byte-capped pages.
+Upload, publication and retirement share an allowance paced by scene completion.
+An independent BLAS can be built during upload and enters the TLAS when the
+complete replacement is ready. Retirement runs first to free residency for
+pending replacements. Surface categories are packed together into byte-capped pages.
 Unchanged quad arrays reuse their native resources, and only changed boundary
 materials invalidate a neighbouring mesh. Off-screen detail may remain resident
 while memory is available and is merged when capacity is needed.
@@ -76,8 +77,9 @@ The same published mask has a CPU summed-volume index. A far page wholly
 covered by near sections leaves the ray-traced scene; its mesh remains
 resident so removing near coverage restores it in the same scene submission.
 Bounds include the runtime's coverage-position offset and float rounding.
-Partly covered pages still use per-hit clipping. This decision applies to all
-rays and does not discard geometry merely because the camera cannot see it.
+For partly covered pages, an index subset omits quads wholly owned by the near
+grid. Quads crossing the coverage boundary still use per-hit clipping. This
+decision applies to all rays and preserves off-screen geometry for secondary rays.
 `-Dkavora.horizons.disableCoveredPageCulling=true` disables the page-level
 optimization for image and timing comparisons. Diagnostics report submitted
 and covered page counts separately.
@@ -88,13 +90,11 @@ lightmap. Coplanar overlays use the near renderer's decal blend rule. Liquid
 interfaces inside solid blocks or continuous water volumes are culled.
 There is no separate raster framebuffer or OpenGL readback.
 
-CPU pages and their FFM uploads contain 44-byte vertices, marked
-`COMPACT_VERTICES`. They contain all vertex attributes without the legacy
-20-byte trailing padding. The runtime copies each vertex array contiguously
-and keeps every attribute bit. The geometry budget accounts for this storage
-plus indices. Legacy CPU input and shared-buffer vertex layouts remain
-64 bytes. This requires the matching source-built runtime, not a version label
-applied to an older DLL.
+Horizon workers write four `float3` positions and a single palette index per
+quad, plus a shared material table. FFM passes these arrays to the runtime,
+which validates and copies them contiguously. The geometry budget accounts for
+these buffers and any replacement index buffer. The main mod and add-on use
+the matching source-built runtime and SDK.
 
 ## Build and settings
 

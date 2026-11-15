@@ -2,6 +2,7 @@
 package org.edtp.kavora.horizon;
 
 import org.edtp.kavora.render.RenderOrigin;
+import org.edtp.kavora.render.SceneCompletion;
 import org.edtp.kavora.horizon.voxel.*;
 import org.edtp.kavora.sdk.*;
 import org.edtp.kavora.asset.*;
@@ -15,6 +16,7 @@ import org.edtp.kavora.texture.BlockTextureManager;
 import it.unimi.dsi.fastutil.longs.*;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
@@ -27,10 +29,7 @@ import java.util.function.Predicate;
 
 /** Render-thread ownership of a voxel octree in the shared Remix scene. */
 public final class KavoraHorizon implements FarTerrainExtension {
-    private static final long NATIVE_WORK_NS = 1_500_000;
-    private static final int MAX_STAGING_BATCHES = 8,
-            UPLOAD_BYTES = 4 << 20,
-            RETIRE_BYTES = 4 << 20;
+    private static final int MAX_STAGING_BATCHES = 8;
 
     private static final boolean CULL_COVERED_PAGES =
             !Boolean.getBoolean("kavora.horizons.disableCoveredPageCulling");
@@ -45,7 +44,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
         final long[] coverageRuns;
         final int quadCount;
         CoverageQuadRuns.Plan target, applied;
-        boolean visible, clipped = true;
+        boolean visible, preparing, clipped = true;
 
         Page(KavoraInstance instance, KavoraQuadMesh original, TerrainMeshConverter.Page page) {
             this.instance = instance;
@@ -103,7 +102,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
         final ArrayList<Job> jobs = new ArrayList<>();
         final CompletableFuture<Boolean> future = new CompletableFuture<>();
         TerrainResidencyBudget.Reservation reservation;
-        long estimate, replaced, uploaded;
+        long estimate, replaced, uploaded, lastUploadScene;
         volatile boolean cancelled;
 
         Group(long[] keys, long[] replacedKeys) {
@@ -128,6 +127,8 @@ public final class KavoraHorizon implements FarTerrainExtension {
     private int beaconRadius;
     private final ProjectedError view = new ProjectedError();
     private final TerrainMeshStream.Budget staging = new TerrainMeshStream.Budget(MAX_STAGING_BATCHES);
+    private final TerrainSubmission submission = new TerrainSubmission(
+            (long) MAX_STAGING_BATCHES * TerrainMeshStream.BATCH_PAGES * TerrainMeshConverter.PAGE_BYTES);
     private final Matrix4f projection = new Matrix4f();
     private final float[] matrix = new float[16];
     private VoxelSession session;
@@ -137,6 +138,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
     private TerrainMaterialPalette palette;
     private MaterialCatalog.View materials;
     private RemixAPI api;
+    private SceneCompletion completion;
     private BlockTextureManager textures;
     private long generation, mutations, capacityRevision, changeSequence;
     private long uploadedTotal,
@@ -146,6 +148,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
             completedEstimate,
             completedBytes;
     private int failures, geometryMiB;
+    private boolean pruneFirst;
     private long restoredPrunedQuads;
     private boolean memoryBlocked;
 
@@ -154,7 +157,8 @@ public final class KavoraHorizon implements FarTerrainExtension {
     }
 
     @Override
-    public void tick(RemixAPI api, BlockTextureManager textures, ClientLevel world, Vec3 camera) {
+    public void tick(RemixAPI api, BlockTextureManager textures, ClientLevel world, Vec3 camera,
+                     SceneCompletion completion) {
         mutations = 0;
         if (!HorizonSettings.INSTANCE.enabled) {
             if (session != null) clearGraphics();
@@ -242,6 +246,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
         }
         this.api = api;
         this.textures = textures;
+        this.completion = Objects.requireNonNull(completion);
         coverage.update(camera, world);
         if (!store.ready()) return;
         selectBeacons(camera);
@@ -268,17 +273,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
                 }
         }
         palette.drain(16);
-        long deadline = System.nanoTime() + NATIVE_WORK_NS;
-        try (var ignored = ProfileScope.begin("Lod.Retire")) {
-            retirePages(false, deadline);
-        }
         prepareGroups();
-        try (var ignored = ProfileScope.begin("Lod.Upload")) {
-            upload(deadline);
-        }
-        tree.tick(selected);
-        selection.clear();
-        selection.addAll(selected);
     }
 
     private void invalidate(long key) {
@@ -369,12 +364,10 @@ public final class KavoraHorizon implements FarTerrainExtension {
         return bytes;
     }
 
-    private void upload(long deadline) {
-        long uploadedBytes = 0;
+    private void upload() {
         for (Group group : groups) {
             if (group.cancelled || group.reservation == null) continue;
             try {
-                boolean complete = true;
                 for (Job job : group.jobs) {
                     if (job.done) continue;
                     job.stream.resume();
@@ -382,56 +375,63 @@ public final class KavoraHorizon implements FarTerrainExtension {
                         job.batch = job.stream.poll();
                         if (job.batch == null) {
                             job.done = job.stream.isComplete();
-                            complete &= job.done;
                             continue;
                         }
                         job.page = 0;
                     }
                     var batch = job.batch.result;
-                    while (job.page < batch.pages.size()
-                            && uploadedBytes < UPLOAD_BYTES
-                            && System.nanoTime() < deadline) {
-                        var page = batch.pages.get(job.page++);
+                    while (job.page < batch.pages.size()) {
+                        var page = batch.pages.get(job.page);
                         long bytes = page.geometryBytes();
+                        if (!submission.upload(bytes)) break;
                         createPage(job.handle, page);
+                        job.page++;
                         job.handle.bytes += bytes;
                         group.reservation.uploaded(bytes);
-                        uploadedBytes += bytes;
                         group.uploaded += bytes;
                         uploadedTotal += bytes;
+                        group.lastUploadScene = submission.scene();
                     }
                     if (job.page == batch.pages.size()) {
                         job.batch.close();
                         job.batch = null;
                         job.done = job.stream.isComplete();
                     }
-                    complete &= job.done;
-                }
-                if (complete) {
-                    completedGroups++;
-                    completedEstimate += group.estimate;
-                    completedBytes += group.uploaded;
-                    for (Job job : group.jobs) {
-                        boolean dirty = job.stamp < changes.get(job.key);
-                        if (job.reused != null) {
-                            job.reused.dirty = dirty;
-                            continue;
-                        }
-                        job.handle.dirty = dirty;
-                        Handle old = handles.put(job.key, job.handle);
-                        job.handle = null;
-                        if (old != null) {
-                            setVisible(old, false);
-                            retiring.add(old);
-                        }
-                    }
-                    group.reservation.close();
-                    group.reservation = null;
-                    group.future.complete(true);
                 }
             } catch (RuntimeException | Error error) {
                 fail(group, error);
             }
+        }
+    }
+
+    private void publishGroups() {
+        for (Group group : groups) {
+            if (group.cancelled || group.reservation == null || !submission.submitted(group.lastUploadScene)) continue;
+            boolean ready = true;
+            for (Job job : group.jobs) {
+                ready &= job.done;
+            }
+            if (!ready || !submission.operation()) continue;
+            completedGroups++;
+            completedEstimate += group.estimate;
+            completedBytes += group.uploaded;
+            for (Job job : group.jobs) {
+                boolean dirty = job.stamp < changes.get(job.key);
+                if (job.reused != null) {
+                    job.reused.dirty = dirty;
+                    continue;
+                }
+                job.handle.dirty = dirty;
+                Handle old = handles.put(job.key, job.handle);
+                job.handle = null;
+                if (old != null) {
+                    setVisible(old, false);
+                    retiring.add(old);
+                }
+            }
+            group.reservation.close();
+            group.reservation = null;
+            group.future.complete(true);
         }
         groups.removeIf(group -> group.future.isDone());
     }
@@ -450,7 +450,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
         try {
             mesh =
                     new KavoraQuadMesh(material, page.vertexCount / 4, page.materialCount,
-                            page.vertices, page.attributes);
+                            page.vertices, page.attributes, page.materialIndices);
             page.transferOwnership();
             KavoraMeshStore.get().create(mesh);
             Transform transform = Transform.identity();
@@ -479,7 +479,20 @@ public final class KavoraHorizon implements FarTerrainExtension {
                                                     : InstanceInfoBlendEXT
                                                             .textureTimesVertexColor());
             KavoraInstanceStore.get().create(instance);
-            handle.pages.add(new Page(instance, mesh, page));
+            Page created = new Page(instance, mesh, page);
+            int overlap = coverage.classify(handle.key, created.bounds);
+            var trim = overlap == CoveredVolume.PARTIAL && !FORCE_COVERAGE_CLIPPING
+                    ? coverage.plan(handle.key, created.coverageRuns) : null;
+            // The untrimmed page is retained for recovery. Only prebuild the shape used for drawing.
+            if ((overlap != CoveredVolume.FULL || !CULL_COVERED_PAGES)
+                    && (trim == null || trim.removedQuads() == 0)) {
+                created.clipped = FORCE_COVERAGE_CLIPPING || overlap != CoveredVolume.NONE;
+                if (trim != null) created.clipped = trim.needsCoverage();
+                instance.setVoxelCoverageLevel(created.clipped ? 2 : 0)
+                        .setPrepareOnly(true).drawFast(api);
+                created.preparing = true;
+            }
+            handle.pages.add(created);
         } catch (RuntimeException | Error error) {
             if (instance != null) instance.destroy();
             if (mesh != null) {
@@ -553,30 +566,29 @@ public final class KavoraHorizon implements FarTerrainExtension {
             boolean clipped = FORCE_COVERAGE_CLIPPING || (target == null ? overlap != CoveredVolume.NONE
                     : target.needsCoverage() || waiting);
             if (!page.visible || page.clipped != clipped || stale != null) {
-                page.instance.setVoxelCoverageLevel(clipped ? 2 : 0).drawFast(api);
+                page.instance.setVoxelCoverageLevel(clipped ? 2 : 0).setPrepareOnly(false).drawFast(api);
                 page.clipped = clipped;
                 mutations++;
             }
-        } else if (page.visible) {
+        } else if (page.visible || page.preparing) {
             page.instance.hideFromScene(api);
             mutations++;
         }
+        page.preparing = false;
         page.visible = draw;
         if (stale != null) retirePrunedMesh(stale);
     }
 
     private void publishPrunedPages() {
         if (pruning.isEmpty()) return;
-        long deadline = System.nanoTime() + NATIVE_WORK_NS;
-        long uploaded = 0;
-        for (var pending = pruning.iterator(); pending.hasNext() && uploaded < UPLOAD_BYTES
-                && System.nanoTime() < deadline; ) {
+        for (var pending = pruning.iterator(); pending.hasNext(); ) {
             Page page = pending.next();
             var target = page.target;
             var previous = page.applied == null ? null : page.instance.getMesh();
             long bytes = (long) (page.quadCount - target.removedQuads()) * 6 * Short.BYTES;
             try (var reservation = budget.reserveTransition(bytes, previous == null ? 0 : previous.estimatedNativeBytes())) {
                 if (reservation == null) break;
+                if (!submission.upload(bytes)) break;
                 var mesh = page.original.subset(target.indices(page.coverageRuns, page.quadCount));
                 KavoraMeshStore.get().create(mesh);
                 boolean installed = false;
@@ -588,7 +600,6 @@ public final class KavoraHorizon implements FarTerrainExtension {
                 }
                 reservation.uploaded(bytes);
                 if (previous != null) retirePrunedMesh(previous);
-                uploaded += bytes;
                 page.applied = target;
                 page.clipped = target.needsCoverage();
                 mutations++;
@@ -604,11 +615,9 @@ public final class KavoraHorizon implements FarTerrainExtension {
         memoryBlocked = false;
     }
 
-    private void retirePages(boolean drain, long deadline) {
+    private void retirePages(boolean drain) {
         long retired = 0;
-        while (!retiring.isEmpty()
-                && (drain || retired < RETIRE_BYTES)
-                && (drain || System.nanoTime() < deadline)) {
+        while (!retiring.isEmpty()) {
             Handle handle = retiring.peek();
             if (handle.pages.isEmpty()) {
                 retiring.remove();
@@ -616,8 +625,10 @@ public final class KavoraHorizon implements FarTerrainExtension {
                     throw new IllegalStateException("Voxel retirement accounting");
                 continue;
             }
-            Page page = handle.pages.removeLast();
+            Page page = handle.pages.getLast();
             long bytes = page.bytes;
+            if (!drain && !submission.retire(bytes)) break;
+            handle.pages.removeLast();
             page.instance.destroy();
             page.original.destroy();
             handle.bytes -= bytes;
@@ -642,13 +653,30 @@ public final class KavoraHorizon implements FarTerrainExtension {
 
     @Override
     public void flushCoverage() {
-        if (api == null || session == null) return;
+        if (completion == null || api == null || session == null || !session.ready()) return;
+        int fps = Minecraft.getInstance().getFramerateLimitTracker().getFramerateLimit();
+        long target = fps > 0 && fps < Options.UNLIMITED_FRAMERATE_CUTOFF ? 1_000_000_000L / fps : 0;
+        submission.begin(completion, System.nanoTime(), target);
+        coverage.publish(api, near);
+        try (var ignored = ProfileScope.begin("Lod.Retire")) {
+            retirePages(false);
+        }
+        publishGroups();
+        tree.tick(selected);
+        selection.clear();
+        selection.addAll(selected);
         try (var ignored = ProfileScope.begin("Lod.Coverage")) {
-            coverage.publish(api, near);
             for (Handle handle : handles.values()) setVisible(handle, selection.contains(handle.key));
-            publishPrunedPages();
             // Near coverage and far replacements reach the same scene submission.
             tree.releaseRetired();
+        }
+        try (var ignored = ProfileScope.begin("Lod.Upload")) {
+            if (pruneFirst) publishPrunedPages();
+            upload();
+            if (!pruneFirst) publishPrunedPages();
+            pruneFirst = !pruneFirst;
+        } finally {
+            submission.finish();
         }
     }
 
@@ -814,6 +842,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
                 + ", pendingCoveragePages=" + pruning.size() + ", coverageMetadataBytes=" + runBytes
                 + ", subsetIndexBytes=" + indexBytes
                 + ", restoredPrunedTriangles=" + 2 * restoredPrunedQuads
+                + ", submissionInFlightBytes=" + submission.inFlight()
                 + ", unrefined="
                 + (tree == null ? 0 : tree.unrefinedNodes())
                 + ", waiting="
@@ -910,7 +939,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
         handles.clear();
         pruning.clear();
         restoredPrunedQuads = 0;
-        if (budget != null) retirePages(true, Long.MAX_VALUE);
+        if (budget != null) retirePages(true);
         if (api != null) api.setVoxelCoverage(0, 0, 0, 0, 0, 0, 0, null);
         coverage.clear();
         selected.clear();
@@ -924,6 +953,7 @@ public final class KavoraHorizon implements FarTerrainExtension {
         materials = null;
         memoryBlocked = false;
         api = null;
+        completion = null;
         textures = null;
     }
 

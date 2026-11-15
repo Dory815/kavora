@@ -164,7 +164,7 @@ public class KavoraRenderer {
             LOGGER.info("{} runtime interop initialized", backend);
             
             textureManager = new BlockTextureManager(remixApi);
-            chunkManager = new ChunkManager(remixApi, textureManager);
+            chunkManager = new ChunkManager(remixApi, textureManager, interop);
             firstPersonPass = new KavoraFirstPersonPass();
             lightManager = new LightManager(remixApi, textureManager, firstPersonPass);
             skyRenderer = new SkyRenderer(remixApi, benchmarkController, lightManager);

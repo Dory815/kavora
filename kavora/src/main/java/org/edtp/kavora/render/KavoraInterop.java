@@ -8,7 +8,7 @@ import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 /** Render-thread ownership of the runtime's scene, depth and transparent menu images. */
-public interface KavoraInterop extends AutoCloseable {
+public interface KavoraInterop extends SceneCompletion, AutoCloseable {
     void refreshImages();
     void acquireImages();
     /** Records ownership release. Submit the client encoder before completing the runtime frame. */

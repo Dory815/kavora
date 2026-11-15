@@ -9,6 +9,7 @@ import java.util.concurrent.Semaphore;
 
 /** Bounded worker production continues independently of the render thread's upload cadence. */
 final class TerrainMeshStream implements AutoCloseable {
+    static final int BATCH_PAGES = 4;
     static final class Budget {
         private final int limit;
         private final Semaphore slots;
@@ -79,7 +80,7 @@ final class TerrainMeshStream implements AutoCloseable {
         TerrainMeshConverter.Result result = null;
         Throwable error = null;
         try (var ignored = ProfileScope.beginJfrOnly("Lod.Expand")) {
-            result = cursor.nextBatch(4);
+            result = cursor.nextBatch(BATCH_PAGES);
         } catch (RuntimeException | Error thrown) {
             error = thrown;
         }

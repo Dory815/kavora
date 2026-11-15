@@ -149,6 +149,13 @@ public final class RemixBridgeContractTest {
                 new int[]{0}, new int[]{0}, new ByteBuffer[]{null}, new int[]{0},
                 new ByteBuffer[]{null}, new int[]{0}));
         equal(HANDLE, RemixBridge.createQuadSubset(123, HANDLE, new short[]{3, 3276}));
+        var positions = ByteBuffer.allocateDirect(8 * MeshQuadSurface.POSITION_STRIDE).order(ByteOrder.nativeOrder());
+        var quadMaterials = ByteBuffer.allocateDirect(2 * MeshQuadSurface.MATERIAL_STRIDE).order(ByteOrder.nativeOrder());
+        var materialIndices = ByteBuffer.allocateDirect(2 * Integer.BYTES).order(ByteOrder.nativeOrder());
+        positions.putFloat(23 * Float.BYTES, 1.5f);
+        materialIndices.putInt(0, 1);
+        equal(HANDLE, RemixBridge.createQuadMesh(123, new MeshQuadSurface[]{
+                new MeshQuadSurface(HANDLE, positions, quadMaterials, 2, 2, materialIndices)}));
         vertices.putFloat(HardcodedVertex.PREVIOUS_POSITION_OFFSET, -3.25f);
         equal(HANDLE, RemixBridge.createMesh(123, 1, new ByteBuffer[]{vertices}, new int[]{3},
                 new ByteBuffer[]{ByteBuffer.allocateDirect(12)}, new int[]{3}, new long[]{HANDLE},
@@ -182,8 +189,8 @@ public final class RemixBridgeContractTest {
         float[] transform = new float[12];
         transform[0] = 1;
         equal(0, RemixBridge.drawInstance(HANDLE, transform, 3, 1, 0));
-        equal(HANDLE, RemixBridge.sceneInstanceAdd(HANDLE, transform, 3, 1, 0));
-        equal(0, RemixBridge.sceneInstanceUpdate(HANDLE, HANDLE, transform, 3, 1, 0));
+        equal(HANDLE, RemixBridge.sceneInstanceAdd(HANDLE, transform, 3, 1, 0, true));
+        equal(0, RemixBridge.sceneInstanceUpdate(HANDLE, HANDLE, transform, 3, 1, 0, false));
         equal(0, RemixBridge.sceneInstanceRemove(HANDLE));
         equal(HANDLE, RemixBridge.createLight(123, 1, 2, 3, 0));
         long distant = RemixBridge.allocDistantLightChain(0, -1, 0, .5f, 1, 0, new Float3D(7, 8, 9));

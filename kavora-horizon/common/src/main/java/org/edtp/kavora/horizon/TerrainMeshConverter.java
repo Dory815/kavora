@@ -23,7 +23,9 @@ import java.util.function.IntFunction;
 final class TerrainMeshConverter {
     private static final TerrainMaterial.Side[] SIDES = TerrainMaterial.Side.values();
     static final int PAGE_BYTES = 256 << 10;
-    static final int PAGE_STAGING_BYTES = 2 * PAGE_BYTES;
+    private static final int PAGE_MATERIAL_INDEX_BYTES =
+            PAGE_BYTES / MeshQuadSurface.RESIDENT_QUAD_BYTES * Integer.BYTES;
+    static final int PAGE_STAGING_BYTES = 2 * PAGE_BYTES + PAGE_MATERIAL_INDEX_BYTES;
 
     record Bounds(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         boolean intersects(float x, float y, float z, float size) {
@@ -40,6 +42,7 @@ final class TerrainMeshConverter {
         final TerrainMaterial.SurfaceMaterial material;
         ByteBuffer vertices;
         ByteBuffer attributes;
+        ByteBuffer materialIndices;
         int vertexCount;
         int indexCount;
         int materialCount;
@@ -54,6 +57,7 @@ final class TerrainMeshConverter {
             vertices = DirectBufferPool.acquire(PAGE_BYTES).order(ByteOrder.LITTLE_ENDIAN);
             try {
                 attributes = DirectBufferPool.acquire(PAGE_BYTES).order(ByteOrder.LITTLE_ENDIAN);
+                materialIndices = DirectBufferPool.acquire(PAGE_MATERIAL_INDEX_BYTES).order(ByteOrder.LITTLE_ENDIAN);
             } catch (RuntimeException | Error failure) {
                 close();
                 throw failure;
@@ -61,7 +65,8 @@ final class TerrainMeshConverter {
         }
 
         boolean hasQuadCapacity() {
-            return vertices.position() + attributes.position() + 64 + MeshQuadSurface.MATERIAL_STRIDE <= PAGE_BYTES;
+            return vertices.position() + materialIndices.position() + attributes.position()
+                    + MeshQuadSurface.RESIDENT_QUAD_BYTES + MeshQuadSurface.MATERIAL_STRIDE <= PAGE_BYTES;
         }
 
         long geometryBytes() {
@@ -97,11 +102,13 @@ final class TerrainMeshConverter {
         void finish() {
             vertices.flip();
             attributes.flip();
+            materialIndices.flip();
         }
 
         void transferOwnership() {
             vertices = null;
             attributes = null;
+            materialIndices = null;
         }
 
         Bounds bounds() {
@@ -125,6 +132,10 @@ final class TerrainMeshConverter {
             if (attributes != null) {
                 DirectBufferPool.release(attributes);
                 attributes = null;
+            }
+            if (materialIndices != null) {
+                DirectBufferPool.release(materialIndices);
+                materialIndices = null;
             }
         }
     }
@@ -227,7 +238,9 @@ final class TerrainMeshConverter {
             }
             long bytes = 0;
             for (long[] count : totals.values()) {
-                long pages = (count[0] * 104 + PAGE_BYTES - 105) / (PAGE_BYTES - 104);
+                int maxQuadBytes = MeshQuadSurface.RESIDENT_QUAD_BYTES + MeshQuadSurface.MATERIAL_STRIDE;
+                long pages = (count[0] * maxQuadBytes + PAGE_BYTES - maxQuadBytes - 1)
+                        / (PAGE_BYTES - maxQuadBytes);
                 bytes += count[0] * MeshQuadSurface.RESIDENT_QUAD_BYTES
                         + Math.min(count[0], count[1] * pages) * MeshQuadSurface.MATERIAL_STRIDE;
             }
@@ -408,8 +421,8 @@ final class TerrainMeshConverter {
             int i = (reverse ? (4 - vertex) & 3 : vertex) * 3;
             page.include(p[i], p[i + 1], p[i + 2]);
             page.vertices.putFloat(p[i]).putFloat(p[i + 1]).putFloat(p[i + 2]);
-            page.vertices.putInt(materialIndex);
         }
+        page.materialIndices.putInt(materialIndex);
         page.vertexCount += 4;
         page.indexCount += 6;
     }

@@ -2840,6 +2840,9 @@ namespace dxvk {
       complete &= instance != nullptr;
 
       if (instance != nullptr) {
+        if (instance->setPreparationOnly(state.prepareOnly)) {
+          m_instanceManager.notifySceneChanged();
+        }
         instance->externalMaterialRevision = materialRevision;
         if (replacementInstance->root.getUntyped() == nullptr) {
           replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), submeshes.size(), nullptr);

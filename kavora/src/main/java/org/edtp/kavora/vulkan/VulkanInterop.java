@@ -126,6 +126,16 @@ public final class VulkanInterop implements KavoraInterop {
         if (!acquired) throw new IllegalStateException("Client image reads require runtime ownership release");
     }
     public long clientDoneValue() { return clientDoneValue; }
+    public long submittedScene() { return info.dxvkDoneSemaphore_ValueToWait; }
+
+    public long completedScene() {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var value = stack.mallocLong(1);
+            check(vkGetSemaphoreCounterValue(device, runtimeDone, value), "vkGetSemaphoreCounterValue(scene)");
+            return value.get(0);
+        }
+    }
+
     public boolean isSceneReady() { return info.frameStatus.isRaytraced(); }
     public int renderWidth() { return info.depth.width; }
     public int renderHeight() { return info.depth.height; }

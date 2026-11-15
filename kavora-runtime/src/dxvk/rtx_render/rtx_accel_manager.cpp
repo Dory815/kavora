@@ -800,6 +800,9 @@ namespace dxvk {
 
         m_uniqueDynamicBlas[blasEntry->dynamicBlasGroupIndex].instances.push_back(instance);
       } else {
+        if (instance->isPreparationOnly()) {
+          continue;
+        }
         // Make sure we don't double up on blas entries, this should only happen if theres a bug
         // TODO (REMIX-3996) will break the assumptions we make here about all instances in a BlasEntry having the same instancesToObject array
         assert(eyeOffset || blasEntry->dynamicBlasGroupIndex >= m_uniqueDynamicBlasCount ||
@@ -989,6 +992,9 @@ namespace dxvk {
       }
 
       for (RtInstance* rtInstance : uniqueBlasEntry.instances) {
+        if (rtInstance->isPreparationOnly()) {
+          continue;
+        }
         // Append an instance of this merged BLAS to the merged instance list
         if (rtInstance->surface.instancesToObject == nullptr) {
           addBlas(rtInstance, blasEntry, nullptr);

@@ -262,6 +262,7 @@ printf("MeshQuadSurface alignof %zu\n", __alignof(remixapi_MeshQuadSurface));
 printf("MeshQuadSurface material %zu\n", offsetof(remixapi_MeshQuadSurface, material));
 printf("MeshQuadSurface vertices %zu\n", offsetof(remixapi_MeshQuadSurface, vertices));
 printf("MeshQuadSurface materials %zu\n", offsetof(remixapi_MeshQuadSurface, materials));
+printf("MeshQuadSurface materialIndices %zu\n", offsetof(remixapi_MeshQuadSurface, materialIndices));
 printf("MeshQuadSurface quadCount %zu\n", offsetof(remixapi_MeshQuadSurface, quadCount));
 printf("MeshQuadSurface materialCount %zu\n", offsetof(remixapi_MeshQuadSurface, materialCount));
 printf("MeshInfoQuadsEXT sizeof %zu\n", sizeof(remixapi_MeshInfoQuadsEXT));
@@ -420,6 +421,7 @@ printf("InstanceInfo categoryFlags %zu\n", offsetof(remixapi_InstanceInfo, categ
 printf("InstanceInfo mesh %zu\n", offsetof(remixapi_InstanceInfo, mesh));
 printf("InstanceInfo transform %zu\n", offsetof(remixapi_InstanceInfo, transform));
 printf("InstanceInfo doubleSided %zu\n", offsetof(remixapi_InstanceInfo, doubleSided));
+printf("InstanceInfo prepareOnly %zu\n", offsetof(remixapi_InstanceInfo, prepareOnly));
 printf("LightInfoLightShaping sizeof %zu\n", sizeof(remixapi_LightInfoLightShaping));
 printf("LightInfoLightShaping alignof %zu\n", __alignof(remixapi_LightInfoLightShaping));
 printf("LightInfoLightShaping direction %zu\n", offsetof(remixapi_LightInfoLightShaping, direction));

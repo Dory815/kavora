@@ -16,6 +16,7 @@ import org.edtp.kavora.terrain.lod.NearSection;
 import org.edtp.kavora.terrain.lod.FarTerrainExtension;
 import org.edtp.kavora.terrain.lod.FarBeaconBeam;
 import org.edtp.kavora.terrain.lod.LodTerrainScene;
+import org.edtp.kavora.render.SceneCompletion;
 import org.edtp.kavora.profiling.ProfileScope;
 import org.edtp.kavora.profiling.PerformanceTimer;
 import org.edtp.kavora.light.LightEntry;
@@ -90,6 +91,7 @@ public class ChunkManager {
     private final TerrainNativeCallStats nativeCallStats = new TerrainNativeCallStats();
     private final TerrainAssetRetirementQueue retirementQueue = new TerrainAssetRetirementQueue(nativeCallStats);
     private final LodTerrainScene lodScene = new LodTerrainScene();
+    private final SceneCompletion sceneCompletion;
     private final Predicate<BlockLightKey> ownsBlockLight = this::ownsBlockLight;
     private final LinkedHashSet<Long> pendingLodRemovals = new LinkedHashSet<>();
     private final ArrayList<ColumnRenderState> dirtyBuildScratch = new ArrayList<>();
@@ -496,8 +498,13 @@ public class ChunkManager {
     // --- construction ---
 
     public ChunkManager(RemixAPI api, BlockTextureManager textures) {
+        this(api, textures, null);
+    }
+
+    public ChunkManager(RemixAPI api, BlockTextureManager textures, SceneCompletion sceneCompletion) {
         this.api = api;
         this.textures = textures;
+        this.sceneCompletion = sceneCompletion;
 
         terrain = new TerrainState(DEFAULT_LIGHT_CULL_CHUNKS * 16);
         meshBuilder = new BlockMeshBuilder();
@@ -643,7 +650,7 @@ public class ChunkManager {
             BlockTextureManager tex = textures;
             if (tex == null || !tex.isInitialized()) return;
             try (ProfileScope ignored = ProfileScope.begin("Lod.Tick")) {
-                lodScene.tick(api, tex, world, cam);
+                lodScene.tick(api, tex, world, cam, sceneCompletion);
             }
 
             if (cntCap == -1) {

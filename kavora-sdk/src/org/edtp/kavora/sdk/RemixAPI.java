@@ -629,9 +629,14 @@ public class RemixAPI {
     /** Adds an instance that remains in the scene until explicitly removed. */
     public long sceneInstanceAdd(long meshHandle, float[] transform,
                                  int categoryFlags, int doubleSided, long pNext) {
+        return sceneInstanceAdd(meshHandle, transform, categoryFlags, doubleSided, pNext, false);
+    }
+
+    public long sceneInstanceAdd(long meshHandle, float[] transform,
+                                 int categoryFlags, int doubleSided, long pNext, boolean prepareOnly) {
         checkInitialized();
         long handle = RemixBridge.sceneInstanceAdd(meshHandle, transform,
-                categoryFlags, doubleSided, pNext);
+                categoryFlags, doubleSided, pNext, prepareOnly);
         if (handle == 0) {
             throw new RemixException("SceneInstanceAdd failed", ErrorCode.GENERAL_FAILURE);
         }
@@ -642,9 +647,14 @@ public class RemixAPI {
     public void sceneInstanceUpdate(long sceneInstanceHandle,
                                     long meshHandle, float[] transform,
                                     int categoryFlags, int doubleSided, long pNext) {
+        sceneInstanceUpdate(sceneInstanceHandle, meshHandle, transform, categoryFlags, doubleSided, pNext, false);
+    }
+
+    public void sceneInstanceUpdate(long sceneInstanceHandle, long meshHandle, float[] transform,
+                                    int categoryFlags, int doubleSided, long pNext, boolean prepareOnly) {
         checkInitialized();
         int result = RemixBridge.sceneInstanceUpdate(sceneInstanceHandle,
-                meshHandle, transform, categoryFlags, doubleSided, pNext);
+                meshHandle, transform, categoryFlags, doubleSided, pNext, prepareOnly);
         if (result != ErrorCode.SUCCESS) {
             throw new RemixException("SceneInstanceUpdate failed", result);
         }

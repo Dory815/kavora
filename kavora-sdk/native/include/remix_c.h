@@ -644,12 +644,13 @@ extern "C" {
     uint32_t axis;
   } remixapi_QuadMaterial;
 
-  // Four 16-byte vertices per quad: float xyz followed by uint32 material-table index.
+  // Four float3 positions and one uint32 material-table index per quad.
   // Vertices are in cyclic winding order. Normals are geometric and indices are shared.
   typedef struct remixapi_MeshQuadSurface {
     remixapi_MaterialHandle material;
     const void* vertices;
     const remixapi_QuadMaterial* materials;
+    const uint32_t* materialIndices;
     uint32_t quadCount;
     uint32_t materialCount;
   } remixapi_MeshQuadSurface;
@@ -906,6 +907,7 @@ extern "C" {
     remixapi_MeshHandle            mesh;
     remixapi_Transform             transform;
     remixapi_Bool                  doubleSided;
+    remixapi_Bool                  prepareOnly; // Retained immutable geometry can build before it enters the TLAS.
   } remixapi_InstanceInfo;
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_DrawInstance)(

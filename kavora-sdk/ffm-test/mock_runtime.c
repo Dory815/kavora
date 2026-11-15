@@ -30,6 +30,12 @@ static remixapi_ErrorCode REMIXAPI_CALL mock_CreateMesh(
       const remixapi_MeshInfoQuadSubsetEXT* subset = info->pNext;
       CHECK(!info->surfaces_count && !info->surfaces_values && subset->sourceMesh == (void*)0x1234);
       CHECK(subset->quadCount == 2 && subset->quadIndices[0] == 3 && subset->quadIndices[1] == 3276);
+    } else if (info->pNext && *(const remixapi_StructType*)info->pNext == REMIXAPI_STRUCT_TYPE_MESH_INFO_QUADS_EXT) {
+      const remixapi_MeshInfoQuadsEXT* quads = info->pNext;
+      CHECK(!info->surfaces_count && !info->surfaces_values && quads->surfaceCount == 1);
+      CHECK(quads->surfaces[0].quadCount == 2 && quads->surfaces[0].materialCount == 2);
+      CHECK(((const float*)quads->surfaces[0].vertices)[23] == 1.5f);
+      CHECK(quads->surfaces[0].materialIndices[0] == 1 && quads->surfaces[0].materialIndices[1] == 0);
     } else if (info->pNext) {
       const remixapi_MeshInfoSharedBuffersEXT* shared=info->pNext;
       CHECK(!info->surfaces_count && !info->surfaces_values && shared->sType == 36 && shared->surfaceCount == 1);
@@ -236,10 +242,10 @@ static remixapi_ErrorCode REMIXAPI_CALL mock_ReleaseConfigLayer(
     remixapi_ConfigLayerHandle  handle) {  return REMIXAPI_ERROR_CODE_SUCCESS; }
 static remixapi_ErrorCode REMIXAPI_CALL mock_SceneInstanceAdd(
     const remixapi_InstanceInfo* info,
-    remixapi_SceneInstanceHandle* out_handle) { CHECK(info && info->sType == 13 && info->mesh == (void*)0x1234); *out_handle=(void*)0x1234; return REMIXAPI_ERROR_CODE_SUCCESS; }
+    remixapi_SceneInstanceHandle* out_handle) { CHECK(info && info->sType == 13 && info->mesh == (void*)0x1234 && info->prepareOnly == 1); *out_handle=(void*)0x1234; return REMIXAPI_ERROR_CODE_SUCCESS; }
 static remixapi_ErrorCode REMIXAPI_CALL mock_SceneInstanceUpdate(
     remixapi_SceneInstanceHandle handle,
-    const remixapi_InstanceInfo* info) { CHECK(handle == (void*)0x1234 && info && info->sType == 13); return REMIXAPI_ERROR_CODE_SUCCESS; }
+    const remixapi_InstanceInfo* info) { CHECK(handle == (void*)0x1234 && info && info->sType == 13 && info->prepareOnly == 0); return REMIXAPI_ERROR_CODE_SUCCESS; }
 static remixapi_ErrorCode REMIXAPI_CALL mock_SceneInstanceRemove(
     remixapi_SceneInstanceHandle handle) {  return REMIXAPI_ERROR_CODE_SUCCESS; }
 static remixapi_ErrorCode REMIXAPI_CALL mock_UpdateMaterial(

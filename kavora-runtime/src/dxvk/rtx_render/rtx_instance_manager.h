@@ -138,6 +138,15 @@ public:
   bool getCustomIndexBit(uint32_t oneBitMask) const;
   bool isHidden() const { return m_isHidden; }
   void setHidden(bool value) { m_isHidden = value; }
+  bool isPreparationOnly() const { return m_prepareOnly; }
+  bool setPreparationOnly(bool value) {
+    if (m_prepareOnly == value) {
+      return false;
+    }
+    m_prepareOnly = value;
+    m_blasDirty = true;
+    return true;
+  }
 
   bool usesUnorderedApproximations() const { return m_isUnordered; }
   MaterialDataType getMaterialType() const {
@@ -260,6 +269,7 @@ private:
   mutable bool m_isMarkedForGC = false;
 
   bool m_isHidden = false;
+  bool m_prepareOnly = false;
   bool m_isPlayerModel = false;
   bool m_isWorldSpaceUI = false;
   bool m_isUnordered = false;

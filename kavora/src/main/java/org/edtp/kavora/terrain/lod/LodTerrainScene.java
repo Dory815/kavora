@@ -6,6 +6,7 @@ package org.edtp.kavora.terrain.lod;
 
 import org.edtp.kavora.sdk.RemixAPI;
 import org.edtp.kavora.light.BlockLightKey;
+import org.edtp.kavora.render.SceneCompletion;
 import org.edtp.kavora.texture.BlockTextureManager;
 import java.util.List;
 import java.util.Set;
@@ -19,7 +20,8 @@ public final class LodTerrainScene implements AutoCloseable {
     private FarTerrainExtension extension;
     private boolean resolved;
 
-    public void tick(RemixAPI api, BlockTextureManager textures, ClientLevel world, Vec3 camera) {
+    public void tick(RemixAPI api, BlockTextureManager textures, ClientLevel world, Vec3 camera,
+                     SceneCompletion completion) {
         if (!resolved) {
             var factories = FabricLoader.getInstance().getEntrypoints(
                     FarTerrainExtension.ENTRYPOINT, FarTerrainExtension.Factory.class);
@@ -27,7 +29,7 @@ public final class LodTerrainScene implements AutoCloseable {
             if (!factories.isEmpty()) extension = java.util.Objects.requireNonNull(factories.getFirst().create());
             resolved = true;
         }
-        if (extension != null) extension.tick(api, textures, world, camera);
+        if (extension != null) extension.tick(api, textures, world, camera, completion);
     }
     public void recordNear(long column, Set<NearSection> sections) { if (extension != null) extension.recordNear(column, sections); }
     public void drawBlockLights(Vec3 camera, float threshold, Predicate<BlockLightKey> ownedByNear) {

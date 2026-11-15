@@ -30,16 +30,16 @@ class TerrainMeshConverterTest {
     private static ByteBuffer decoded(TerrainMeshConverter.Page page) {
         var out = ByteBuffer.allocate(page.vertexCount * HardcodedVertex.STORAGE_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
         for (int vertex = 0; vertex < page.vertexCount; vertex++) {
-            int q = (vertex & ~3) * 16;
-            float ax = page.vertices.getFloat(q + 16) - page.vertices.getFloat(q);
-            float ay = page.vertices.getFloat(q + 20) - page.vertices.getFloat(q + 4);
-            float az = page.vertices.getFloat(q + 24) - page.vertices.getFloat(q + 8);
-            float bx = page.vertices.getFloat(q + 32) - page.vertices.getFloat(q);
-            float by = page.vertices.getFloat(q + 36) - page.vertices.getFloat(q + 4);
-            float bz = page.vertices.getFloat(q + 40) - page.vertices.getFloat(q + 8);
+            int q = (vertex & ~3) * 12;
+            float ax = page.vertices.getFloat(q + 12) - page.vertices.getFloat(q);
+            float ay = page.vertices.getFloat(q + 16) - page.vertices.getFloat(q + 4);
+            float az = page.vertices.getFloat(q + 20) - page.vertices.getFloat(q + 8);
+            float bx = page.vertices.getFloat(q + 24) - page.vertices.getFloat(q);
+            float by = page.vertices.getFloat(q + 28) - page.vertices.getFloat(q + 4);
+            float bz = page.vertices.getFloat(q + 32) - page.vertices.getFloat(q + 8);
             float nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
             float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-            int v = vertex * 16, m = page.vertices.getInt(v + 12) * 40;
+            int v = vertex * 12, m = page.materialIndices.getInt(vertex / 4 * Integer.BYTES) * 40;
             int axis = page.attributes.getInt(m + 36);
             float s = page.vertices.getFloat(v + (axis + 1) % 3 * 4);
             float t = page.vertices.getFloat(v + (axis + 2) % 3 * 4);

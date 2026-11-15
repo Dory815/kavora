@@ -46,7 +46,7 @@ final class CoverageQuadRuns {
         float magnitude = Math.max(VoxelKey.size(key), Math.max(Math.abs(originX), Math.max(Math.abs(originY), Math.abs(originZ))));
         double margin = 16 * Math.ulp(magnitude + VoxelKey.size(key));
         for (int first = 0; first < vertexCount; first += 4) {
-            long bounds = bounds(vertices, first * MeshQuadSurface.VERTEX_STRIDE, margin);
+            long bounds = bounds(vertices, first * MeshQuadSurface.POSITION_STRIDE, margin);
             int last = runs.size() - 1;
             if (last >= 0 && (runs.getLong(last) & UNKNOWN) == bounds) {
                 runs.set(last, runs.getLong(last) + (1L << RANGE_BITS));
@@ -82,9 +82,9 @@ final class CoverageQuadRuns {
         for (int axis = 0; axis < 3; axis++) {
             int offset = first + axis * Float.BYTES;
             float a = vertices.getFloat(offset);
-            float b = vertices.getFloat(offset + MeshQuadSurface.VERTEX_STRIDE);
-            float c = vertices.getFloat(offset + 2 * MeshQuadSurface.VERTEX_STRIDE);
-            float d = vertices.getFloat(offset + 3 * MeshQuadSurface.VERTEX_STRIDE);
+            float b = vertices.getFloat(offset + MeshQuadSurface.POSITION_STRIDE);
+            float c = vertices.getFloat(offset + 2 * MeshQuadSurface.POSITION_STRIDE);
+            float d = vertices.getFloat(offset + 3 * MeshQuadSurface.POSITION_STRIDE);
             int low = (int) Math.floor((Math.min(Math.min(a, b), Math.min(c, d)) - margin) / 16) + FIELD_BIAS;
             int high = (int) Math.floor((Math.max(Math.max(a, b), Math.max(c, d)) + margin) / 16) + FIELD_BIAS + 1;
             if (low < 0 || high > FIELD_MASK) return UNKNOWN;

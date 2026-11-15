@@ -111,6 +111,7 @@ struct ExternalDrawState {
   CameraType::Enum cameraType {};
   CategoryFlags categories {};
   bool doubleSided {};
+  bool prepareOnly {};
   std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
   std::vector<Matrix4> gpuInstancingTransforms {};
 

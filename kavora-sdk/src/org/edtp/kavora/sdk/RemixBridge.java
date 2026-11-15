@@ -581,28 +581,32 @@ public final class RemixBridge {
         }
     }
     private static MemorySegment instance(SegmentAllocator arena, long meshHandle, float[] transform12,
-                                          int categoryFlags, int doubleSided, long pNext) {
+                                          int categoryFlags, int doubleSided, long pNext, boolean prepareOnly) {
         MemorySegment info = info(arena, "InstanceInfo", StructType.INSTANCE_INFO, pNext);
         put(info, "InstanceInfo", "mesh", meshHandle);
         put(info, "InstanceInfo", "categoryFlags", categoryFlags);
         put(info, "InstanceInfo", "doubleSided", doubleSided);
+        put(info, "InstanceInfo", "prepareOnly", prepareOnly ? 1 : 0);
         floats(info, "InstanceInfo", "transform", transform12);
         return info;
     }
     public static int drawInstance(long meshHandle, float[] transform12, int categoryFlags, int doubleSided, long pNext) {
         try (Scratch arena = scratch()) {
-            return call("DrawInstance", instance(arena, meshHandle, transform12, categoryFlags, doubleSided, pNext));
+            return call("DrawInstance", instance(arena, meshHandle, transform12, categoryFlags, doubleSided, pNext, false));
         }
     }
-    public static long sceneInstanceAdd(long meshHandle, float[] transform12, int categoryFlags, int doubleSided, long pNext) {
+    public static long sceneInstanceAdd(long meshHandle, float[] transform12, int categoryFlags,
+                                        int doubleSided, long pNext, boolean prepareOnly) {
         try (Scratch arena = scratch()) {
-            return create("SceneInstanceAdd", instance(arena, meshHandle, transform12, categoryFlags, doubleSided, pNext), arena);
+            return create("SceneInstanceAdd", instance(arena, meshHandle, transform12,
+                    categoryFlags, doubleSided, pNext, prepareOnly), arena);
         }
     }
     public static int sceneInstanceUpdate(long sceneInstanceHandle, long meshHandle, float[] transform12,
-                                           int categoryFlags, int doubleSided, long pNext) {
+                                          int categoryFlags, int doubleSided, long pNext, boolean prepareOnly) {
         try (Scratch arena = scratch()) {
-            return call("SceneInstanceUpdate", pointer(sceneInstanceHandle), instance(arena, meshHandle, transform12, categoryFlags, doubleSided, pNext));
+            return call("SceneInstanceUpdate", pointer(sceneInstanceHandle), instance(arena, meshHandle,
+                    transform12, categoryFlags, doubleSided, pNext, prepareOnly));
         }
     }
     public static int setConfigVariable(String key, String value) {
@@ -763,8 +767,10 @@ public final class RemixBridge {
                 var source = descriptions[i];
                 var target = surfaces.asSlice(i * stride, stride);
                 put(target, type, "material", source.material());
-                put(target, type, "vertices", direct(source.vertices(), (long) source.quadCount() * 64).address());
+                put(target, type, "vertices", direct(source.vertices(), source.vertices().remaining()).address());
                 put(target, type, "materials", direct(source.materials(), (long) source.materialCount() * 40).address());
+                put(target, type, "materialIndices", direct(source.materialIndices(),
+                        (long) source.quadCount() * Integer.BYTES).address());
                 put(target, type, "quadCount", source.quadCount());
                 put(target, type, "materialCount", source.materialCount());
             }

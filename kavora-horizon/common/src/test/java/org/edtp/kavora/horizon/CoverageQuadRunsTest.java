@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CoverageQuadRunsTest {
     @Test
     void coveredQuadsAreRemovedAndFringeQuadsKeepTheirOriginalIndices() {
-        ByteBuffer vertices = ByteBuffer.allocate(4 * 4 * MeshQuadSurface.VERTEX_STRIDE);
+        ByteBuffer vertices = ByteBuffer.allocate(4 * 4 * MeshQuadSurface.POSITION_STRIDE);
         quad(vertices, 1, 2);
         quad(vertices, 3, 4);
         quad(vertices, 15.5f, 16.5f);
@@ -41,9 +41,9 @@ class CoverageQuadRunsTest {
     }
 
     private static void quad(ByteBuffer vertices, float x0, float x1) {
-        vertices.putFloat(x0).putFloat(1).putFloat(3).putInt(0);
-        vertices.putFloat(x1).putFloat(1).putFloat(3).putInt(0);
-        vertices.putFloat(x1).putFloat(2).putFloat(3).putInt(0);
-        vertices.putFloat(x0).putFloat(2).putFloat(3).putInt(0);
+        vertices.putFloat(x0).putFloat(1).putFloat(3);
+        vertices.putFloat(x1).putFloat(1).putFloat(3);
+        vertices.putFloat(x1).putFloat(2).putFloat(3);
+        vertices.putFloat(x0).putFloat(2).putFloat(3);
     }
 }

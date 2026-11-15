@@ -15,23 +15,25 @@ public final class KavoraQuadMesh extends KavoraMesh {
     private final KavoraMaterial material;
     private final int quads, materialCount;
     private final long bytes;
-    private ByteBuffer vertices, attributes;
+    private ByteBuffer vertices, attributes, materialIndices;
 
     public KavoraQuadMesh(KavoraMaterial material, int quads, int materialCount,
-                         ByteBuffer vertices, ByteBuffer attributes) {
+                         ByteBuffer vertices, ByteBuffer attributes, ByteBuffer materialIndices) {
         super(new KavoraMeshSurface[0]);
         this.material = material;
         this.quads = quads;
         this.materialCount = materialCount;
         this.vertices = vertices;
         this.attributes = attributes;
+        this.materialIndices = materialIndices;
         bytes = (long) quads * MeshQuadSurface.RESIDENT_QUAD_BYTES
                 + (long) materialCount * MeshQuadSurface.MATERIAL_STRIDE;
     }
 
     @Override
     protected long doCreate(RemixAPI api, long hash) {
-        var surface = new MeshQuadSurface(material.getHandle(), vertices, attributes, quads, materialCount);
+        var surface = new MeshQuadSurface(material.getHandle(), vertices, attributes,
+                quads, materialCount, materialIndices);
         try { return api.createQuadMesh(hash, surface); }
         finally { Reference.reachabilityFence(this); }
     }
@@ -40,7 +42,8 @@ public final class KavoraQuadMesh extends KavoraMesh {
     protected void doDisposeData() {
         if (vertices != null) DirectBufferPool.release(vertices);
         if (attributes != null) DirectBufferPool.release(attributes);
-        vertices = attributes = null;
+        if (materialIndices != null) DirectBufferPool.release(materialIndices);
+        vertices = attributes = materialIndices = null;
         super.doDisposeData();
     }
 
