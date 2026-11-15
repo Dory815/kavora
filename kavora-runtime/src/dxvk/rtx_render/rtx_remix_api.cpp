@@ -686,7 +686,7 @@ namespace {
         );
       }
       if (auto src = pnext::find<remixapi_LightInfoDistantEXT>(&info)) {
-        return RtDistantLight::tryCreate(
+        auto light = RtDistantLight::tryCreate(
           tovec3(src->direction),
           DegToRad(src->angularDiameterDegrees * 0.5f),
           tovec3(info.radiance),
