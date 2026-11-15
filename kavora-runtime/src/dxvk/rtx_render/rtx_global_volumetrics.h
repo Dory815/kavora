@@ -63,7 +63,7 @@ namespace dxvk {
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, extinctionPerMeter, 0.06f, "Cloud extinction at unit density, per meter.",
       args.minValue = 0.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 60000.0f, "Cloud integration distance, independent of terrain distance.",
+    RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 12000.0f, "Cloud visibility distance, including the fade to the background sky.",
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, steps, 160u, "Spatial integration quality of the cloud field. Longer rays use proportionally more density samples.",
       args.minValue = 8u, args.maxValue = 256u);

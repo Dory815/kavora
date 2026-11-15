@@ -164,7 +164,7 @@
   "kavora.effect.clouds.density": "云密度",
   "kavora.effect.clouds.density.tip": "每方块的消光系数。密度越大，云层越不透明，自遮蔽越强。",
   "kavora.effect.clouds.distance": "云显示距离",
-  "kavora.effect.clouds.distance.tip": "云的积分距离，单位为方块，独立于地形视距。",
+  "kavora.effect.clouds.distance.tip": "云渐隐到天空背景的最远距离，单位为方块。",
   "kavora.effect.clouds.samples": "云采样精度",
   "kavora.effect.clouds.samples.tip": "提高数值可解析更细的云密度细节。更远的距离和更高的采样精度会增加 GPU 开销。",
   "kavora.effect.clouds.shadowSamples": "云自遮蔽采样",

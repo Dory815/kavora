@@ -39,7 +39,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
     const float next = grid.boundary(cell + 1);
     const float distance = grid.sampleAt(cell);
     const float3 position = origin + direction * distance;
-    const float extinction = cloudExtinction(args, position, CloudWeatherSampler, CloudBaseSampler,
+    const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
       CloudDetailSampler);
     if (extinction > 0)
     {

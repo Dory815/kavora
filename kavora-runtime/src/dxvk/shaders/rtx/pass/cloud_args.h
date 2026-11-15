@@ -39,7 +39,7 @@ CLOUD_PARAMETER struct CloudArgs {
   CLOUD_PARAMETER uint transportMode;
   CLOUD_PARAMETER uint skyResolution;
   CLOUD_PARAMETER float night;
-  CLOUD_PARAMETER uint padding;
+  CLOUD_PARAMETER float lightMaxDistance;
   CLOUD_PARAMETER vec3 previousWindDelta;
   CLOUD_PARAMETER uint padding2;
 };

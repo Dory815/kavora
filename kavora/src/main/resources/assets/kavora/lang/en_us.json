@@ -164,7 +164,7 @@
   "kavora.effect.clouds.density": "Cloud Density",
   "kavora.effect.clouds.density.tip": "Extinction per block. Higher density increases opacity and self-shadowing.",
   "kavora.effect.clouds.distance": "Cloud Distance",
-  "kavora.effect.clouds.distance.tip": "Cloud ray integration distance in blocks, independent of terrain render distance.",
+  "kavora.effect.clouds.distance.tip": "Distance in blocks over which clouds fade into the background sky.",
   "kavora.effect.clouds.samples": "Cloud Sampling Quality",
   "kavora.effect.clouds.samples.tip": "Higher values resolve finer density detail. Longer distances and finer sampling increase GPU cost.",
   "kavora.effect.clouds.shadowSamples": "Self-shadow Samples",

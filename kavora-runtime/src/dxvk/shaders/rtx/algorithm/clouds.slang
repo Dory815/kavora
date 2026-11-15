@@ -53,13 +53,13 @@ float2 cloudOuterInterval(CloudArgs args, float3 origin, float3 direction, float
     return 0;
   }
   const float2 outer = cloudSphereRoots(args, origin, direction, args.baseHeight + args.thickness);
-  return float2(max(0.0f, outer.x), min(min(distance, args.maxDistance), outer.y));
+  return float2(max(0.0f, outer.x), min(distance, outer.y));
 }
 
 // View integration consumes the nearest continuous interval of the shell.
 public float2 cloudInterval(CloudArgs args, float3 origin, float3 direction, float distance)
 {
-  const float2 outer = cloudOuterInterval(args, origin, direction, distance);
+  const float2 outer = cloudOuterInterval(args, origin, direction, min(distance, args.maxDistance));
   if (outer.y <= outer.x)
   {
     return 0;
@@ -86,6 +86,14 @@ public float cloudExtinction(CloudArgs args, float3 position, Sampler2D<float4> 
 {
   return args.extinction * cloudDensity(cloudDensityParameters(args), position, weatherSampler,
     baseSampler, detailSampler);
+}
+
+[ForceInline]
+public float cloudViewExtinction(CloudArgs args, float3 position, float distance,
+  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+{
+  const float visibility = 1.0f - smoothstep(0.5f, 1.0f, distance / args.maxDistance);
+  return visibility * cloudExtinction(args, position, weatherSampler, baseSampler, detailSampler);
 }
 
 public float cloudSampleSpacing(CloudArgs args, float3 direction)
@@ -138,7 +146,8 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
   float previous = grid.interval.x;
   for (uint cell = 0; previous < end; cell++) {
     const float next = min(end, grid.boundary(cell + 1));
-    const float extinction = cloudExtinction(args, origin + direction * grid.sampleAt(cell), weatherSampler,
+    const float sampleDistance = grid.sampleAt(cell);
+    const float extinction = cloudViewExtinction(args, origin + direction * sampleDistance, sampleDistance, weatherSampler,
       baseSampler, detailSampler);
     transmittance *= exp(-extinction * (next - previous));
     if (transmittance < kOpaqueCloudTransmittance) {
@@ -152,7 +161,7 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
 float cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float distance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
-  float2 interval = cloudOuterInterval(args, origin, direction, distance);
+  float2 interval = cloudOuterInterval(args, origin, direction, min(distance, args.lightMaxDistance));
   if (interval.y <= interval.x)
   {
     return 0;

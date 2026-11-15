@@ -634,6 +634,8 @@ namespace dxvk {
       : Vector3(cameraPosition.x, 0, cameraPosition.z);
     clouds.planetRadius = 6360000.0f * cloudWorldScale;
     clouds.maxDistance = CloudOptions::maxDistanceMeters() * cloudWorldScale;
+    // Preserve the celestial light path when the camera's cloud range is shortened.
+    clouds.lightMaxDistance = 60000.0f * cloudWorldScale;
     // Water droplets have negligible absorption in the visible spectrum.
     clouds.albedo = 1.0f;
     clouds.steps = CloudOptions::steps();
