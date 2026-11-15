@@ -148,6 +148,7 @@ public final class RemixBridgeContractTest {
                 new ByteBuffer[]{ByteBuffer.allocateDirect(12)}, new int[]{3}, new long[]{HANDLE},
                 new int[]{0}, new int[]{0}, new ByteBuffer[]{null}, new int[]{0},
                 new ByteBuffer[]{null}, new int[]{0}));
+        equal(HANDLE, RemixBridge.createQuadSubset(123, HANDLE, new short[]{3, 3276}));
         vertices.putFloat(HardcodedVertex.PREVIOUS_POSITION_OFFSET, -3.25f);
         equal(HANDLE, RemixBridge.createMesh(123, 1, new ByteBuffer[]{vertices}, new int[]{3},
                 new ByteBuffer[]{ByteBuffer.allocateDirect(12)}, new int[]{3}, new long[]{HANDLE},

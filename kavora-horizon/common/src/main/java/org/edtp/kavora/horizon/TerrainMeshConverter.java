@@ -43,6 +43,7 @@ final class TerrainMeshConverter {
         int vertexCount;
         int indexCount;
         int materialCount;
+        long[] coverageRuns;
         private final List<Map<MaterialCatalog.Layer, Integer>> palette =
                 List.of(new HashMap<>(), new HashMap<>(), new HashMap<>());
         private float minX = Float.POSITIVE_INFINITY, minY = minX, minZ = minX;
@@ -147,6 +148,7 @@ final class TerrainMeshConverter {
      * Compact voxel faces stay on the CPU; only the next upload batch expands to Remix vertices.
      */
     static final class Cursor {
+        private final long key;
         private final long[] quads;
         private final Int2ObjectOpenHashMap<long[]> counts = new Int2ObjectOpenHashMap<>();
         private final Int2ObjectOpenHashMap<MaterialCatalog.Face> faces =
@@ -168,7 +170,7 @@ final class TerrainMeshConverter {
             this.quads = mesh.quads();
             this.cancelled = cancelled;
             this.waterTileSize = waterTileSize;
-            long key = mesh.key();
+            key = mesh.key();
             originX = org.edtp.kavora.horizon.voxel.VoxelKey.blockX(key);
             originY = org.edtp.kavora.horizon.voxel.VoxelKey.blockY(key);
             originZ = org.edtp.kavora.horizon.voxel.VoxelKey.blockZ(key);
@@ -305,7 +307,10 @@ final class TerrainMeshConverter {
                             }
                             return false;
                         });
-                for (Page finished : result.pages) finished.finish();
+                for (Page finished : result.pages) {
+                    finished.finish();
+                    finished.coverageRuns = CoverageQuadRuns.pack(key, finished.vertices, finished.vertexCount);
+                }
                 return result;
             } catch (RuntimeException | Error failure) {
                 result.close();

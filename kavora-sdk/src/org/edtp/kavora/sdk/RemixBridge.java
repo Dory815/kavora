@@ -779,6 +779,23 @@ public final class RemixBridge {
         }
     }
 
+    public static long createQuadSubset(long hash, long sourceMesh, short[] quads) {
+        if (sourceMesh == 0 || quads.length == 0 || quads.length > MeshQuadSurface.MAX_QUADS)
+            throw new IllegalArgumentException("Invalid quad subset");
+        try (Scratch arena = scratch()) {
+            MemorySegment indices = arena.allocate((long) quads.length * Short.BYTES, Short.BYTES);
+            indices.copyFrom(MemorySegment.ofArray(quads));
+            String type = "MeshInfoQuadSubsetEXT";
+            MemorySegment extension = info(arena, type, StructType.MESH_INFO_QUAD_SUBSET_EXT, 0);
+            put(extension, type, "sourceMesh", sourceMesh);
+            put(extension, type, "quadIndices", indices.address());
+            put(extension, type, "quadCount", quads.length);
+            MemorySegment mesh = info(arena, "MeshInfo", StructType.MESH_INFO, extension.address());
+            put(mesh, "MeshInfo", "hash", hash);
+            return create("CreateMesh", mesh, arena);
+        }
+    }
+
     public static long createMesh(long hash, int surfaceCount, ByteBuffer[] vertexBuffers, int[] vertexCounts,
             ByteBuffer[] indexBuffers, int[] indexCounts, long[] materialHandles, int[] flags,
             int[] bonesPerVertex, ByteBuffer[] blendWeightBuffers, int[] blendWeightCounts,

@@ -270,6 +270,13 @@ printf("MeshInfoQuadsEXT sType %zu\n", offsetof(remixapi_MeshInfoQuadsEXT, sType
 printf("MeshInfoQuadsEXT pNext %zu\n", offsetof(remixapi_MeshInfoQuadsEXT, pNext));
 printf("MeshInfoQuadsEXT surfaces %zu\n", offsetof(remixapi_MeshInfoQuadsEXT, surfaces));
 printf("MeshInfoQuadsEXT surfaceCount %zu\n", offsetof(remixapi_MeshInfoQuadsEXT, surfaceCount));
+printf("MeshInfoQuadSubsetEXT sizeof %zu\n", sizeof(remixapi_MeshInfoQuadSubsetEXT));
+printf("MeshInfoQuadSubsetEXT alignof %zu\n", __alignof(remixapi_MeshInfoQuadSubsetEXT));
+printf("MeshInfoQuadSubsetEXT sType %zu\n", offsetof(remixapi_MeshInfoQuadSubsetEXT, sType));
+printf("MeshInfoQuadSubsetEXT pNext %zu\n", offsetof(remixapi_MeshInfoQuadSubsetEXT, pNext));
+printf("MeshInfoQuadSubsetEXT sourceMesh %zu\n", offsetof(remixapi_MeshInfoQuadSubsetEXT, sourceMesh));
+printf("MeshInfoQuadSubsetEXT quadIndices %zu\n", offsetof(remixapi_MeshInfoQuadSubsetEXT, quadIndices));
+printf("MeshInfoQuadSubsetEXT quadCount %zu\n", offsetof(remixapi_MeshInfoQuadSubsetEXT, quadCount));
 printf("CameraInfoParameterizedEXT sizeof %zu\n", sizeof(remixapi_CameraInfoParameterizedEXT));
 printf("CameraInfoParameterizedEXT alignof %zu\n", __alignof(remixapi_CameraInfoParameterizedEXT));
 printf("CameraInfoParameterizedEXT sType %zu\n", offsetof(remixapi_CameraInfoParameterizedEXT, sType));

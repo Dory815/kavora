@@ -508,6 +508,14 @@ public class RemixAPI {
         return handle;
     }
 
+    /** Shares the packed source page's vertices and materials. The native call copies the sorted quad indices. */
+    public long createQuadSubset(long hash, long sourceMesh, short[] quads) {
+        checkInitialized();
+        long handle = RemixBridge.createQuadSubset(hash, sourceMesh, quads);
+        if (handle == 0) throw new RemixException("CreateQuadSubset failed", ErrorCode.GENERAL_FAILURE);
+        return handle;
+    }
+
     public long createMesh(MeshInfo info) {
         checkInitialized();
         int n = info.surfaces != null ? info.surfaces.length : 0;

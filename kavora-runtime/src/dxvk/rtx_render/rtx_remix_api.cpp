@@ -1232,6 +1232,28 @@ namespace {
     static std::atomic<uint64_t> nextMesh { 0 };
     auto handle = reinterpret_cast<remixapi_MeshHandle>(++nextMesh);
 
+    if (auto* subset = pnext::find<remixapi_MeshInfoQuadSubsetEXT>(info)) {
+      if (info->surfaces_count || info->surfaces_values || !subset->sourceMesh || !subset->quadIndices ||
+          !subset->quadCount || subset->quadCount > dxvk::kQuadIndexVertexCount / 4 ||
+          pnext::find<remixapi_MeshInfoQuadsEXT>(info) || pnext::find<remixapi_MeshInfoSharedBuffersEXT>(info)) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
+      const auto* end = subset->quadIndices + subset->quadCount;
+      if (std::adjacent_find(subset->quadIndices, end, std::greater_equal<uint16_t>{}) != end ||
+          end[-1] >= dxvk::kQuadIndexVertexCount / 4) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
+      const auto indexHash = hack_getNextGeomHash();
+      auto quads = std::vector<uint16_t>(subset->quadIndices, end);
+      std::lock_guard lock { s_mutex };
+      remixDevice->EmitCs([handle, source = subset->sourceMesh, indexHash,
+          quads = std::move(quads)](dxvk::DxvkContext* ctx) {
+        registerQuadSubset(ctx, handle, source, quads, indexHash);
+      });
+      *out_handle = handle;
+      return REMIXAPI_ERROR_CODE_SUCCESS;
+    }
+
     auto allocatedSurfaces = std::vector<dxvk::RasterGeometry> {};
     if (auto* quads = pnext::find<remixapi_MeshInfoQuadsEXT>(info)) {
       if (info->surfaces_count || info->surfaces_values || !quads->surfaces || !quads->surfaceCount

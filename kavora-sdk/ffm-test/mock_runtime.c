@@ -26,7 +26,11 @@ static remixapi_ErrorCode REMIXAPI_CALL mock_CreateMesh(
     const remixapi_MeshInfo*  info,
     remixapi_MeshHandle*      out_handle) {
     CHECK(info && info->sType == 12);
-    if (info->pNext) {
+    if (info->pNext && *(const remixapi_StructType*)info->pNext == REMIXAPI_STRUCT_TYPE_MESH_INFO_QUAD_SUBSET_EXT) {
+      const remixapi_MeshInfoQuadSubsetEXT* subset = info->pNext;
+      CHECK(!info->surfaces_count && !info->surfaces_values && subset->sourceMesh == (void*)0x1234);
+      CHECK(subset->quadCount == 2 && subset->quadIndices[0] == 3 && subset->quadIndices[1] == 3276);
+    } else if (info->pNext) {
       const remixapi_MeshInfoSharedBuffersEXT* shared=info->pNext;
       CHECK(!info->surfaces_count && !info->surfaces_values && shared->sType == 36 && shared->surfaceCount == 1);
       CHECK(shared->surfaces[0].vertexBuffer == (void*)0x7777 && shared->surfaces[0].vertexOffset == 64 && shared->surfaces[0].vertexCount == 4);

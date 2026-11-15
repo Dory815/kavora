@@ -172,6 +172,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_GLINT_EXT               = 53,
     REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_WATER_EXT               = 54,
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT         = 56,
+    REMIXAPI_STRUCT_TYPE_MESH_INFO_QUAD_SUBSET_EXT             = 57,
     // NOTE: always leave ',' after the number, so the git diff is cleaner!
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
@@ -660,6 +661,16 @@ extern "C" {
     const remixapi_MeshQuadSurface* surfaces;
     uint32_t surfaceCount;
   } remixapi_MeshInfoQuadsEXT;
+
+  // Extends an empty MeshInfo with an index-only view of a retained single-quad-surface mesh.
+  // CreateMesh copies the strictly increasing, zero-based quad indices.
+  typedef struct remixapi_MeshInfoQuadSubsetEXT {
+    remixapi_StructType sType;
+    void* pNext;
+    remixapi_MeshHandle sourceMesh;
+    const uint16_t* quadIndices;
+    uint32_t quadCount;
+  } remixapi_MeshInfoQuadSubsetEXT;
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_CreateSharedBuffer)(remixapi_SharedBufferInfo* info);
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_CommitSharedBuffers)(const remixapi_SharedBufferCommitInfo* info);

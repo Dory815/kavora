@@ -91,3 +91,42 @@
     ctx->copyBuffer(buffer, 0, geometry.positionBuffer.buffer(), 0, info.size);
     geometry.positionBuffer = dxvk::RasterBuffer { dxvk::DxvkBufferSlice(buffer), 0, 12, VK_FORMAT_R32G32B32_SFLOAT };
   }
+
+  void registerQuadSubset(dxvk::DxvkContext* ctx, remixapi_MeshHandle handle,
+      remixapi_MeshHandle source, const std::vector<uint16_t>& quads, XXH64_hash_t indexHash) {
+    auto& assets = ctx->getCommonObjects()->getSceneManager().getAssetReplacer();
+    auto surfaces = assets->accessExternalMesh(source);
+    if (surfaces->size() != 1 || !surfaces->front().quadAttributes ||
+        surfaces->front().sharedQuadIndexPattern != dxvk::QuadIndexPattern::TriangleFan ||
+        quads.back() >= surfaces->front().vertexCount / 4) {
+      dxvk::Logger::err("Remix API quad subset requires an original packed quad surface and valid indices");
+      return;
+    }
+
+    auto geometry = surfaces->front();
+    const auto& pattern = dxvk::kQuadIndexPatterns[0];
+    std::vector<uint16_t> indices(quads.size() * pattern.size());
+    auto next = indices.begin();
+    for (const auto quad : quads) {
+      for (const auto corner : pattern) {
+        *next++ = uint16_t(quad * 4 + corner);
+      }
+    }
+
+    const auto bytes = indices.size() * sizeof(uint16_t);
+    auto info = geometry.positionBuffer.buffer()->info();
+    info.size = dxvk::align(bytes, dxvk::CACHE_LINE_SIZE);
+    info.access = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_SHADER_READ_BIT;
+    auto buffer = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      dxvk::DxvkMemoryStats::Category::RTXAccelerationStructure, "Remix quad subset indices");
+    ctx->writeToBuffer(buffer, 0, bytes, indices.data());
+    geometry.indexBuffer = dxvk::RasterBuffer { dxvk::DxvkBufferSlice(buffer, 0, bytes), 0,
+      sizeof(uint16_t), VK_INDEX_TYPE_UINT16 };
+    geometry.indexCount = uint32_t(indices.size());
+    geometry.sharedQuadIndexPattern = dxvk::QuadIndexPattern::None;
+    geometry.hashes[dxvk::HashComponents::Indices] = indexHash;
+    geometry.hashes.precombine();
+    std::vector<dxvk::RasterGeometry> subset;
+    subset.push_back(std::move(geometry));
+    assets->registerExternalMesh(handle, std::move(subset));
+  }

@@ -48,4 +48,37 @@ public final class KavoraQuadMesh extends KavoraMesh {
     public long estimatedNativeBytes() {
         return bytes;
     }
+
+    public KavoraMesh subset(short[] indices) {
+        return new IndexSubset(getHandle(), indices);
+    }
+
+    private static final class IndexSubset extends KavoraMesh {
+        private final long source;
+        private final long bytes;
+        private short[] indices;
+
+        IndexSubset(long source, short[] indices) {
+            super(new KavoraMeshSurface[0]);
+            this.source = source;
+            this.indices = indices;
+            bytes = (long) indices.length * 6 * Short.BYTES;
+        }
+
+        @Override
+        protected long doCreate(RemixAPI api, long hash) {
+            return api.createQuadSubset(hash, source, indices);
+        }
+
+        @Override
+        protected void doDisposeData() {
+            indices = null;
+            super.doDisposeData();
+        }
+
+        @Override
+        public long estimatedNativeBytes() {
+            return bytes;
+        }
+    }
 }

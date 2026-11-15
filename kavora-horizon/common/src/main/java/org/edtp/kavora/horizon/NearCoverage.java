@@ -93,6 +93,13 @@ final class NearCoverage {
                 (int) Math.floor((z1 + margin) / 16) + 1 - originZ);
     }
 
+    CoverageQuadRuns.Plan plan(long key, long[] runs) {
+        int x = (VoxelKey.blockX(key) >> 4) - originX;
+        int y = (VoxelKey.blockY(key) >> 4) - originY;
+        int z = (VoxelKey.blockZ(key) >> 4) - originZ;
+        return CoverageQuadRuns.plan(runs, volume, x, y, z);
+    }
+
     void clear() {
         if (data != null) MemoryUtil.memFree(data);
         data = null;

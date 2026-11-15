@@ -535,6 +535,9 @@ namespace dxvk {
         if (sharedIndices) {
           assert(input.isTopologyRaytraceReady() && indexBufferType == VK_INDEX_TYPE_UINT16 && output.indexCount <= kQuadIndexCount);
           output.indexCacheBuffer = m_device->getCommon()->metaGeometryUtils().getQuadIndexBuffer(ctx, input.sharedQuadIndexPattern);
+        } else if (input.quadAttributes) {
+          assert(input.isTopologyRaytraceReady() && indexBufferType == VK_INDEX_TYPE_UINT16);
+          output.indexCacheBuffer = input.indexBuffer.buffer();
         } else {
           info.size = align(output.indexCount * indexStride, CACHE_LINE_SIZE);
           output.indexCacheBuffer = m_device->createBuffer(info, memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure, "Index Cache Buffer");
@@ -544,7 +547,7 @@ namespace dxvk {
           }
         }
 
-        const auto indexSlice = sharedIndices
+        const auto indexSlice = input.quadAttributes || sharedIndices
           ? DxvkBufferSlice(output.indexCacheBuffer, 0, output.indexCount * indexStride)
           : DxvkBufferSlice(output.indexCacheBuffer);
         output.indexBuffer = RaytraceBuffer(indexSlice, 0, indexStride, indexBufferType);

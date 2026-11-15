@@ -249,6 +249,12 @@ final class RemixLayouts {
                 ADDRESS.withName("pNext"),
                 ADDRESS.withName("surfaces"),
                 JAVA_INT.withName("surfaceCount"));
+        define("MeshInfoQuadSubsetEXT",
+                JAVA_INT.withName("sType"),
+                ADDRESS.withName("pNext"),
+                ADDRESS.withName("sourceMesh"),
+                ADDRESS.withName("quadIndices"),
+                JAVA_INT.withName("quadCount"));
         define("CameraInfoParameterizedEXT",
                 JAVA_INT.withName("sType"),
                 ADDRESS.withName("pNext"),

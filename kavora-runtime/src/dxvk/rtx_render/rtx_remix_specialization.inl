@@ -112,6 +112,7 @@ namespace pnext::detail {
     remixapi_SharedBufferCommitInfo,
     remixapi_MeshInfoSharedBuffersEXT,
     remixapi_MeshInfoQuadsEXT,
+    remixapi_MeshInfoQuadSubsetEXT,
     remixapi_TextureMipChainEXT,
     remixapi_TextureImmutableEXT,
     remixapi_InstanceInfoVoxelCoverageEXT,
@@ -159,6 +160,7 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum<remixapi_SharedBufferCommitInfo> = REMIXAPI_STRUCT_TYPE_SHARED_BUFFER_COMMIT_INFO;
   template<> constexpr auto ToEnum<remixapi_MeshInfoSharedBuffersEXT> = REMIXAPI_STRUCT_TYPE_MESH_INFO_SHARED_BUFFERS_EXT;
   template<> constexpr auto ToEnum<remixapi_MeshInfoQuadsEXT> = REMIXAPI_STRUCT_TYPE_MESH_INFO_QUADS_EXT;
+  template<> constexpr auto ToEnum<remixapi_MeshInfoQuadSubsetEXT> = REMIXAPI_STRUCT_TYPE_MESH_INFO_QUAD_SUBSET_EXT;
   template<> constexpr auto ToEnum<remixapi_TextureMipChainEXT> = REMIXAPI_STRUCT_TYPE_TEXTURE_MIP_CHAIN_EXT;
   template<> constexpr auto ToEnum<remixapi_TextureImmutableEXT> = REMIXAPI_STRUCT_TYPE_TEXTURE_IMMUTABLE_EXT;
 
@@ -170,6 +172,7 @@ namespace pnext::detail {
   template<> struct Root<remixapi_FrameGenerationCapabilitiesEXT> { using Type = remixapi_VulkanInteropInfo; };
   template<> struct Root<remixapi_MeshInfoSharedBuffersEXT> { using Type = remixapi_MeshInfo; };
   template<> struct Root<remixapi_MeshInfoQuadsEXT> { using Type = remixapi_MeshInfo; };
+  template<> struct Root<remixapi_MeshInfoQuadSubsetEXT> { using Type = remixapi_MeshInfo; };
   template<> struct Root<remixapi_TextureMipChainEXT> { using Type = remixapi_TextureFromMemoryInfo; };
   template<> struct Root<remixapi_TextureImmutableEXT> { using Type = remixapi_TextureFromMemoryInfo; };
   template<>           struct Root< remixapi_MaterialInfoPortalEXT          >{ using Type = remixapi_MaterialInfo;              };
