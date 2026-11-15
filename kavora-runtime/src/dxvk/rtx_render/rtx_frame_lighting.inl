@@ -69,7 +69,7 @@ namespace dxvk {
   }
 
   __forceinline void RtxFramePipeline::recordCloudSky(RtxContext& ctx, const FrameResources& rtOutput) {
-    ctx.m_common->metaGlobalVolumetrics().dispatchCloudSky(&ctx, rtOutput.m_raytraceArgs.volumeArgs.clouds);
+    ctx.m_common->metaGlobalVolumetrics().dispatchCloudSky(&ctx, rtOutput.m_raytraceArgs.volumeArgs);
   }
 
   __forceinline void RtxFramePipeline::recordPrimaryTraversal(RtxContext& ctx, const FrameResources& rtOutput) {

@@ -90,6 +90,14 @@ public final class CloudRenderer {
         this.volumetricState = new VolumetricCloudState((key, value) -> api.setConfigVariable(key, value));
     }
 
+    public boolean hasVolumetricClouds(EnvironmentSnapshot environment, CloudStatus cloudStatus) {
+        return proceduralClouds && areCloudsVisible(environment, cloudStatus);
+    }
+
+    private static boolean areCloudsVisible(EnvironmentSnapshot environment, CloudStatus cloudStatus) {
+        return cloudStatus != CloudStatus.OFF && environment.cloudAlpha > 0 && Float.isFinite(environment.cloudHeight);
+    }
+
     /** Publishes cloud state or classic cloud instances for the supplied world and camera. */
     public void render(ClientLevel world, Vec3 cameraPos, EnvironmentSnapshot environment, CloudStatus cloudStatus) {
         resetFrameStats();
@@ -99,8 +107,7 @@ public final class CloudRenderer {
         }
         double frameGameTime = clock.animationGameTime(environment.gameTime);
         float cloudHeight = environment.cloudHeight;
-        boolean visible = cloudStatus != CloudStatus.OFF
-                && environment.cloudAlpha > 0 && Float.isFinite(cloudHeight);
+        boolean visible = areCloudsVisible(environment, cloudStatus);
         if (proceduralClouds && visible) {
             volumetricState.update(frameGameTime / 20.0, cloudHeight + cloudsHeight, environment.rain, environment.thunder);
             return;

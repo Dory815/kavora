@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
@@ -20,6 +21,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,6 +46,14 @@ public final class NativeExtractor {
     private static final String VERSION_MARKER = ".kavora-version";
     private static final String RTX_CONF = "rtx.conf";
     private static final String TEXTURES_DIR = "textures";
+    private static final String WEATHER_PROFILES = "rtx-remix/mods/minecraft-logic/confs/weather";
+
+    // Recognize both line endings of the shipped weather profiles with display overrides.
+    private static final Map<String, Set<String>> OLD_WEATHER_DEFAULTS = Map.of(
+            "rain.conf", Set.of("0760e6291bbee483b8eec2a74c6fb16ece0c3613957db8d98612abe18075cb7d",
+                    "cfe634d3f4fe7c75f5c277ebf6e9c61ae60da1faf0a24eeb33ede9abe191de6c"),
+            "thunder.conf", Set.of("c4a32e583a03db01fe3e651242bcdd3958276514f0658ea536105bbe3151c0d1",
+                    "4665fa826f424832fcabde869d5799a098b7fc0a1a33c88d90abc2156882ceea"));
 
     /** Deletes a retired SDK on a daemon thread, off the mod-init path. */
     private static final Executor RETIRED_SDK_CLEANUP = task -> {
@@ -131,7 +141,8 @@ public final class NativeExtractor {
      *
      * <p>A current marker skips the SDK copy only while {@code kavora-runtime/d3d9.dll}
      * is present. Missing author-owned files, {@code rtx.conf}, and runtime
-     * textures are restored on every launch without overwriting existing files.
+     * textures are restored on every launch. Weather defaults are refreshed
+     * when their installed contents match a superseded shipped copy.
      * Recovering a small conf must not drag the whole SDK payload with it.
      *
      * <p>The version marker is written only after the copy and both staged
@@ -280,12 +291,31 @@ public final class NativeExtractor {
 
     private static void extractAuthorPayload(Path nativeRoot, Path gameDir, AtomicInteger fileCount,
                                              AtomicLong totalBytes, AtomicInteger keptCount) throws IOException {
+        refreshWeatherProfiles(nativeRoot.resolve(WEATHER_PROFILES), gameDir.resolve(WEATHER_PROFILES));
         try (var topStream = Files.list(nativeRoot)) {
             for (Path entry : (Iterable<Path>) topStream::iterator) {
                 String name = entry.getFileName().toString();
                 if (Files.isDirectory(entry) && !name.startsWith("kavora-runtime-") && !TEXTURES_DIR.equals(name)) {
                     extractTree(entry, gameDir.resolve(name), fileCount, totalBytes, keptCount);
                 }
+            }
+        }
+    }
+
+    static void refreshWeatherProfiles(Path bundled, Path installed) throws IOException {
+        for (var entry : OLD_WEATHER_DEFAULTS.entrySet()) {
+            Path source = bundled.resolve(entry.getKey());
+            Path target = installed.resolve(entry.getKey());
+            if (!Files.isRegularFile(source) || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+                    || !entry.getValue().contains(sha256(target))) {
+                continue;
+            }
+            Path staging = Files.createTempFile(installed, entry.getKey(), ".staging");
+            try {
+                Files.copy(source, staging, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                Files.deleteIfExists(staging);
             }
         }
     }

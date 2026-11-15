@@ -601,7 +601,8 @@ namespace dxvk {
     auto& clouds = volumeArgs.clouds;
     clouds.enable = CloudOptions::sceneEnabled();
     clouds.transportMode = CloudOptions::transportMode();
-    clouds.skyResolution = CloudOptions::skyResolution();
+    // World-space view rays integrate clouds directly. Fog lighting only needs a low-frequency sky map.
+    clouds.skyResolution = clouds.transportMode == 1 ? CloudOptions::skyResolution() : 64u;
     clouds.up = RtxOptions::zUp() ? Vector3(0, 0, 1) : Vector3(0, 1, 0);
     const float cloudTime = CloudOptions::worldTimeSeconds() * CloudOptions::windSpeed();
     const Vector3 windOffset = RtxOptions::zUp()
@@ -752,8 +753,9 @@ namespace dxvk {
     return volumeArgs;
   }
 
-  void RtxGlobalVolumetrics::dispatchCloudSky(RtxContext* ctx, const CloudArgs& clouds) {
-    if (!clouds.enable || clouds.transportMode != 1) {
+  void RtxGlobalVolumetrics::dispatchCloudSky(RtxContext* ctx, const VolumeArgs& volume) {
+    const auto& clouds = volume.clouds;
+    if (!clouds.enable || (clouds.transportMode != 1 && !volume.enable)) {
       m_cloudSky.reset();
       m_cloudSkyDistanceMoment.reset();
       return;

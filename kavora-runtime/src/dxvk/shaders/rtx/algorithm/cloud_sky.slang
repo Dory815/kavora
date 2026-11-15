@@ -21,17 +21,26 @@ public float2 cloudSkyUv(CloudArgs args, float3 direction)
     clamp(acos(clamp(local.y, -1.0f, 1.0f)) / kCloudSkyPi, halfTexel, 1.0f - halfTexel));
 }
 
-public float4 sampleCloudSky(CloudArgs args, Sampler2D<float4> sky, float3 direction)
+public float4 sampleCloudSkyMap(CloudArgs args, Sampler2D<float4> sky, float3 direction)
 {
-  if (!args.enable || args.transportMode != 1)
+  if (!args.enable)
   {
     return float4(0, 0, 0, 1);
   }
   return sky.SampleLevel(cloudSkyUv(args, direction), 0);
 }
 
+public float4 sampleCloudSky(CloudArgs args, Sampler2D<float4> sky, float3 direction)
+{
+  return args.transportMode == 1 ? sampleCloudSkyMap(args, sky, direction) : float4(0, 0, 0, 1);
+}
+
+public float3 composeCloudSky(float4 cloud, float3 background)
+{
+  return cloud.rgb + cloud.a * background;
+}
+
 public float3 applyCloudSky(CloudArgs args, Sampler2D<float4> sky, float3 direction, float3 background)
 {
-  const float4 cloud = sampleCloudSky(args, sky, direction);
-  return cloud.rgb + cloud.a * background;
+  return composeCloudSky(sampleCloudSky(args, sky, direction), background);
 }

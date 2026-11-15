@@ -55,6 +55,40 @@ class NativeExtractorTest {
     }
 
     @Test
+    void refreshesUneditedWeatherDefaultsAndPreservesCustomizedOnes(@TempDir Path tmp) throws IOException {
+        Path bundled = Files.createDirectory(tmp.resolve("bundled"));
+        Path installed = Files.createDirectory(tmp.resolve("installed"));
+        String original = """
+                # Rain look: authors fog distance and colour, lifts shadows, and caps auto
+                # exposure so a bright sky does not expose the scene down.
+                # Strength follows the vanilla rain gradient, which ramps over about five seconds.
+                # Authoring guide: ../../README.md
+
+                # Fog settings
+                rtx.volumetrics.transmittanceMeasurementDistanceMeters = 10.0
+                rtx.volumetrics.transmittanceColor = 0.996, 0.996, 0.996
+
+                # Tonemap adjustments (fix crunchy shadows)
+                rtx.localtonemap.shadows = 1.75
+
+                # Drop max EV so we don't expose down too much looking at the sky.
+                rtx.autoExposure.evMaxValue = -1.0
+                """;
+        String revised = "rtx.volumetrics.transmittanceMeasurementDistanceMeters = 10.0\n";
+        Files.writeString(bundled.resolve("rain.conf"), revised);
+        Path rain = installed.resolve("rain.conf");
+        Files.writeString(rain, original.replace("\n", "\r\n"));
+
+        NativeExtractor.refreshWeatherProfiles(bundled, installed);
+        assertEquals(revised, Files.readString(rain));
+
+        String custom = original.replace("10.0", "12.5");
+        Files.writeString(rain, custom);
+        NativeExtractor.refreshWeatherProfiles(bundled, installed);
+        assertEquals(custom, Files.readString(rain));
+    }
+
+    @Test
     void extractTreeWithoutAKeptCountReplacesExistingFiles(@TempDir Path tmp) throws IOException {
         Path src = Files.createDirectories(tmp.resolve("src"));
         Path dst = Files.createDirectories(tmp.resolve("dst"));

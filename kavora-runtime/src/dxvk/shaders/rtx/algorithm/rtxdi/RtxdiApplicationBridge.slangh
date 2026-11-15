@@ -1008,7 +1008,6 @@ bool RAB_VolumeReSTIR_TraceNEEVisibility(
     volumeVisibilityContext.minimalRayInteraction, volumeInteraction.volumeInteraction, volumeVisibilityContext.ray, lightSample.position);
   
   const VisibilityResult visibility = evalVolumeNEEVisibility(
-    lightSample,
     sampledTransportPortalIndex,
     visibilityRay);
 

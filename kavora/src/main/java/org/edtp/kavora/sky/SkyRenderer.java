@@ -176,7 +176,8 @@ public class SkyRenderer {
     // ====================================================================
 
     /** Publishes the sky after the frame's celestial lights and weather layers have been resolved. */
-    public void render(ClientLevel world, Vec3 cameraPos, EnvironmentSnapshot environment, ConfLayerDriver confLayers) {
+    public void render(ClientLevel world, Vec3 cameraPos, EnvironmentSnapshot environment, ConfLayerDriver confLayers,
+                       boolean volumetricClouds) {
         if (world == null || !enabled) {
             nightSky.disable();
             return;
@@ -191,7 +192,7 @@ public class SkyRenderer {
 
         float[] fixedRadiance = fixedSkyRadiance(environment.skybox);
         if (fixedRadiance == null) {
-            renderAtmosphericSky(world, cameraPos, environment, confLayers);
+            renderAtmosphericSky(world, cameraPos, environment, confLayers, volumetricClouds);
         } else {
             if (environment.skybox == DimensionType.Skybox.END) {
                 nightSky.updateEnd(clock.animationGameTime(environment.gameTime) * 0.05);
@@ -219,31 +220,26 @@ public class SkyRenderer {
             ClientLevel world,
             Vec3 cameraPos,
             EnvironmentSnapshot environment,
-            ConfLayerDriver confLayers) {
+            ConfLayerDriver confLayers,
+            boolean volumetricClouds) {
         float skyAngle;
         LightManager.SkyLightState lightState;
         float[] sunDirection;
-        WeatherDomeState weather;
+        WeatherDomeState weather = WeatherDomeState.CLEAR;
         try (ProfileScope ignored = ProfileScope.begin("Sky.Prepare")) {
             skyAngle = environment.sunAngle;
-            ConfLayerDriver.WeatherStrengths weatherStrengths =
-                    confLayers != null && confLayers.isActive()
-                            ? confLayers.weatherStrengths()
-                            : new ConfLayerDriver.WeatherStrengths(
-                                    environment.rain,
-                                    environment.thunder);
             lightState = lights.getSkyLightState();
             sunDirection = LightManager.computeSunDirection(skyAngle);
-            float celestialIntensity =
-                    lightState.weatherDomeRadiance();
-            weather = weatherDomeState(
-                    weatherStrengths.rain(),
-                    weatherStrengths.thunder(),
-                    Math.max(
-                            celestialIntensity,
-                            RAIN_DOME_MIN_INTENSITY),
-                    celestialIntensity
-                            * LightManager.THUNDER_SKY_INTENSITY);
+            // The procedural cloud layer scatters the atmospheric sky and celestial light itself.
+            if (!volumetricClouds) {
+                ConfLayerDriver.WeatherStrengths strengths = confLayers != null && confLayers.isActive()
+                        ? confLayers.weatherStrengths()
+                        : new ConfLayerDriver.WeatherStrengths(environment.rain, environment.thunder);
+                float celestialIntensity = lightState.weatherDomeRadiance();
+                weather = weatherDomeState(strengths.rain(), strengths.thunder(),
+                        Math.max(celestialIntensity, RAIN_DOME_MIN_INTENSITY),
+                        celestialIntensity * LightManager.THUNDER_SKY_INTENSITY);
+            }
         }
 
         try (ProfileScope ignored = ProfileScope.begin("Sky.Celestial")) {

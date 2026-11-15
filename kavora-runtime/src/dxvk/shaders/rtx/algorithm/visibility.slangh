@@ -320,7 +320,8 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   // ViewModel instances are not to occlude anything but rays originating from a ViewModel surface
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
-  bool clearOpaqueHitAttenuation = true)
+  bool clearOpaqueHitAttenuation = true,
+  bool includeCloudExtinction = true)
 {
   // Exclude the portals from the ray mask because we have special handling for them.
   rayMask &= ~OBJECT_MASK_PORTAL;
@@ -422,7 +423,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       }
       result.hitDistance = rayQuery.CommittedRayT();
       result.hasOpaqueHit = true;
-      if (!clearOpaqueHitAttenuation)
+      if (!clearOpaqueHitAttenuation && includeCloudExtinction)
       {
         result.attenuation *= cloudVisibilityTransmittance(cb.volumeArgs.clouds, visibilityRay.origin,
           visibilityRay.direction, rayQuery.CommittedRayT(), CloudWeatherSampler, CloudBaseSampler,
@@ -436,9 +437,12 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       break;
     }
 
-    result.attenuation *= cloudVisibilityTransmittance(cb.volumeArgs.clouds, visibilityRay.origin,
-      visibilityRay.direction, visibilityRay.tMax, CloudWeatherSampler, CloudBaseSampler,
-      CloudDetailSampler);
+    if (includeCloudExtinction)
+    {
+      result.attenuation *= cloudVisibilityTransmittance(cb.volumeArgs.clouds, visibilityRay.origin,
+        visibilityRay.direction, visibilityRay.tMax, CloudWeatherSampler, CloudBaseSampler,
+        CloudDetailSampler);
+    }
 
     if (expectedRayPortalIndex != invalidRayPortalIndex)
     {

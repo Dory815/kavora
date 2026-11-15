@@ -8,7 +8,7 @@ call beforeGeometry effects.beginParticles world partialTick
 call beforeGeometry effects.recordLights world camera partialTick
 call afterGeometry effects.retireBlockDamage
 call afterGeometry effects.recordBlockOutline
-call afterGeometry effects.recordSky world camera position partialTick
+call afterGeometry effects.recordSky client world camera position partialTick
 call afterGeometry effects.recordClouds client world camera position partialTick
 call beforeSubmit org.edtp.kavora.render.KavoraWaterRipples.captureRain world position partialTick
 call beforeSubmit effects.recordRainGround scene world position partialTick

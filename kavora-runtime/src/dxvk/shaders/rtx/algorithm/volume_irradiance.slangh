@@ -9,7 +9,7 @@ import "rtx/algorithm/clouds.slang";
 
 float3 volumeLightAttenuation(Ray ray)
 {
-  // Visibility already includes cloud extinction along this light path.
+  // Cloud transport is already accounted for by the sky map or analytic light visibility.
   return calcVolumetricAttenuation(cb.volumeArgs, none, false, ray.tMax, ray.origin, ray.direction);
 }
 
@@ -86,8 +86,10 @@ SphericalHarmonic sampleVolumeLights(inout RAB_RandomSamplerState random, uint3 
       direction = sampleVolumeSkyDirection(cell, sample.solidAnglePdf);
       sample.position = volume.position + direction;
       sample.normal = -direction;
-      sample.radiance = sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness,
+      const float3 dome = sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness,
         VolumeSkyProbe, VolumeSkySampler, direction);
+      sample.radiance = cb.volumeArgs.enable
+        ? composeCloudSky(sampleCloudSkyMap(cb.volumeArgs.clouds, CloudSkySampler, direction), dome) : dome;
       if (!any(sample.radiance > 0))
       {
         continue;
@@ -133,7 +135,8 @@ SphericalHarmonic sampleVolumeLights(inout RAB_RandomSamplerState random, uint3 
       direction = shadowRay.direction;
     }
 
-    VisibilityResult visibility = evalVolumeNEEVisibility(rayQuery, sample, invalidRayPortalIndex, shadowRay);
+    // Sky radiance already includes cloud scattering and extinction. Geometry still occludes it.
+    VisibilityResult visibility = evalVolumeNEEVisibility(rayQuery, invalidRayPortalIndex, shadowRay, !isSky);
     if (visibility.hasOpaqueHit)
     {
       continue;

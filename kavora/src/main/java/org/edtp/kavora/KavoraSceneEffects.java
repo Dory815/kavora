@@ -82,7 +82,7 @@ final class KavoraSceneEffects {
         }
     }
 
-    void recordSky(ClientLevel world, Camera camera, Vec3 position, float partialTick) {
+    void recordSky(Minecraft client, ClientLevel world, Camera camera, Vec3 position, float partialTick) {
         environmentCaptured = false;
         metrics.begin(metrics.perfSky);
         try (ProfileScope skyScope = ProfileScope.begin("Sky")) {
@@ -90,7 +90,8 @@ final class KavoraSceneEffects {
                 environment.capture(world, camera, partialTick);
                 environmentCaptured = true;
             }
-            sky.render(world, position, environment, layers);
+            sky.render(world, position, environment, layers,
+                    KavoraMod.isWorldActive() && clouds.hasVolumetricClouds(environment, client.options.getCloudStatus()));
         } catch (Exception e) {
             LOGGER.error("Error rendering sky", e);
         } finally {
