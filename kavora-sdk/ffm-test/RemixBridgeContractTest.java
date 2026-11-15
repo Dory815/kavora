@@ -111,6 +111,11 @@ public final class RemixBridgeContractTest {
         equal(0x400000004L, clientFrame.presentationEpoch);
         equal(0x500000005L, clientFrame.renderedFrames);
         equal(0x600000006L, clientFrame.generatedFrames);
+        equal(0, clientFrame.frameGenerationEnabled ? 1 : 0);
+        clientFrame.provideHudlessColor = true;
+        clientFrame.hudlessImage = 0x11223344L;
+        equal(0, RemixBridge.present(HANDLE, 0, 0, 0x123456789abcdef0L, 0, clientFrame));
+        equal(1, clientFrame.frameGenerationEnabled ? 1 : 0);
         equal(HANDLE, RemixBridge.createMaterial(123, 0x1111, 0, 0, 0, 7.5f,
                 1, 2, 3, 2, 3, 4, 1, 1, 1, 0));
         long water = RemixBridge.allocWaterSurfaceExt();

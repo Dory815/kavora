@@ -6,6 +6,8 @@ package org.edtp.kavora.vulkan;
 
 import com.mojang.renderpearl.api.device.GpuSurface;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.backend.api.CommandEncoderBackend;
 import com.mojang.renderpearl.backend.api.GpuSurfaceBackend;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
@@ -32,6 +34,8 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
     private final long readySemaphore;
     private GpuSurface.Configuration configuration;
     private VulkanGpuTexture source;
+    private GpuTexture hudless;
+    private GpuTexture hudlessSource;
     private boolean presentPending;
     private int memorySampleFrame;
     private long deviceLocalUsageBytes, deviceLocalBudgetBytes;
@@ -52,6 +56,7 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
         frame.device = device.address();
         frame.sourceReadySemaphore = readySemaphore;
         frame.bottomUp = true;
+        frame.provideHudlessColor = true;
         present.hwndOverride = NativeRuntime.windowHandle();
         present.vulkanFrame = frame;
         active = this;
@@ -64,6 +69,7 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
     }
 
     @Override public void acquireNextTexture() {
+        hudlessSource = null;
         if (frame.sourceConsumedSemaphore != 0) {
             encoder().waitSemaphore(frame.sourceConsumedSemaphore, frame.sourceConsumedValue, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
         }
@@ -81,12 +87,39 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
         frame.height = source.getHeight(0);
         frame.format = com.mojang.renderpearl.backend.vulkan.VulkanConst.toVk(source.getFormat());
         frame.vsync = configuration.presentMode() == GpuSurface.PresentMode.FIFO;
-        var client = net.minecraft.client.Minecraft.getInstance();
-        frame.allowFrameGeneration = client.level != null && !client.isPaused()
-                && client.gui.screen() == null && client.gui.overlay() == null && KavoraMod.isRtxEnabled();
+        frame.allowFrameGeneration = allowFrameGeneration();
+        frame.hudlessImage = hudlessSource == source ? ((VulkanGpuTexture) hudless).vkImage() : 0;
         ((VulkanCommandEncoder) encoder).signalSemaphore(readySemaphore, ++frame.sourceReadyValue, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
         presentPending = true;
         if ((++memorySampleFrame & 63) == 0) sampleMemoryBudget();
+    }
+
+    private static boolean allowFrameGeneration() {
+        var client = net.minecraft.client.Minecraft.getInstance();
+        return client.level != null && !client.isPaused()
+                && client.gui.screen() == null && client.gui.overlay() == null && KavoraMod.isRtxEnabled();
+    }
+
+    /** Captures the finished scene at the point where Minecraft starts drawing the 2D GUI. */
+    public static void captureHudless(GpuTexture color) {
+        NativeVulkanSurface surface = active;
+        if (surface == null || !surface.frame.frameGenerationEnabled || !allowFrameGeneration()) return;
+        surface.recordHudless(color);
+    }
+
+    private void recordHudless(GpuTexture color) {
+        int width = color.getWidth(0);
+        int height = color.getHeight(0);
+        var gpu = RenderSystem.getDevice();
+        if (hudless == null || hudless.getWidth(0) != width || hudless.getHeight(0) != height
+                || hudless.getFormat() != color.getFormat()) {
+            closeHudless();
+            hudless = gpu.createTexture("Frame generation pre-UI color",
+                    GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING,
+                    color.getFormat(), width, height, 1, 1);
+        }
+        gpu.createCommandEncoder().copyTextureToTexture(color, hudless, 0, 0, 0, 0, 0, width, height);
+        hudlessSource = color;
     }
 
     @Override public void present() {
@@ -99,6 +132,7 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
             throw new IllegalStateException("Runtime did not acknowledge the client presentation image");
         }
         presentPending = false;
+        if (!frame.frameGenerationEnabled) closeHudless();
     }
 
     public static long presentationEpoch() { return active == null ? 0 : active.frame.presentationEpoch; }
@@ -156,8 +190,25 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
         if (source == null) return;
         waitForConsumer();
         frame.image = 0;
+        // The zero-image call releases views and clears the public result fields.
+        long consumedSemaphore = frame.sourceConsumedSemaphore, consumedValue = frame.sourceConsumedValue;
+        boolean frameGenerationEnabled = frame.frameGenerationEnabled;
         if (NativeRuntime.isStarted()) NativeRuntime.api().present(present);
+        frame.sourceConsumedSemaphore = consumedSemaphore;
+        frame.sourceConsumedValue = consumedValue;
+        frame.frameGenerationEnabled = frameGenerationEnabled;
         source = null;
+    }
+
+    private void closeHudless() {
+        if (hudless == null) return;
+        if (frame.hudlessImage != 0) {
+            releaseSource();
+            frame.hudlessImage = 0;
+        }
+        hudless.close();
+        hudless = null;
+        hudlessSource = null;
     }
 
     private void waitFor(long semaphore, long value) {
@@ -171,6 +222,7 @@ public final class NativeVulkanSurface implements GpuSurfaceBackend {
     @Override public void close() {
         if (closed) return;
         releaseSource();
+        closeHudless();
         if (frame.sourceReadyValue != 0) waitFor(readySemaphore, frame.sourceReadyValue);
         vkDestroySemaphore(device, readySemaphore, null);
         closed = true;

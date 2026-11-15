@@ -25,6 +25,7 @@
 struct remixapi_dxvk_InteropInfo;
 struct remixapi_VulkanInteropInfo;
 struct remixapi_VulkanClientFrameInfoEXT;
+struct remixapi_VulkanClientHudlessInfoEXT;
 // NV-DXVK end
 
 #include "d3d9_device_child.h"
@@ -234,6 +235,7 @@ namespace dxvk {
     // NV-DXVK start: Present a composed host frame without ending the RTX scene twice.
     struct ClientPresentImage {
       Rc<DxvkImageView> view;
+      Rc<DxvkImageView> hudless;
       VkSemaphore readySemaphore;
       uint64_t readyValue;
       VkSemaphore consumedSemaphore;
@@ -244,13 +246,15 @@ namespace dxvk {
     struct ClientInterpolationSlot {
       Rc<DxvkImageView> motionVectors;
       Rc<DxvkImageView> depth;
+      Rc<DxvkImageView> hudless;
     };
     std::vector<ClientInterpolationSlot> m_clientInterpolationSlots;
     bool m_clientInterpolationHistory = false;
     uint32_t m_lastClientInterpolationFrame = 0;
     uint64_t m_clientPresentationEpoch = 0;
     uint32_t m_clientInterpolationCount = 0;
-    DxvkFrameInterpolationInfo PrepareClientInterpolation(uint32_t imageIndex, DxvkFrameInterpolationInfo info);
+    DxvkFrameInterpolationInfo PrepareClientInterpolation(uint32_t imageIndex, const ClientPresentImage& image,
+                                                          VkRect2D srcRect, VkRect2D dstRect);
     void PresentImage(UINT PresentInterval, const ClientPresentImage* clientImage = nullptr);
     // NV-DXVK end
     
@@ -361,6 +365,7 @@ namespace dxvk {
     uint32_t m_interopShaderCompileCount = 0;
     Rc<RtxSemaphore> m_clientFrameConsumed;
     Rc<DxvkImageView> m_clientFrameView;
+    Rc<DxvkImageView> m_clientHudlessView;
     uint64_t m_clientFrameGeneration = 0;
     uint64_t m_clientFrameConsumedValue = 0;
     DxvkFrameInterpolationInfo m_clientFrameInterpolation {};
@@ -391,7 +396,8 @@ namespace dxvk {
     bool hasInterop() const { return m_interopEnabled; }
     bool hasPendingInteropFrame() const { return m_interopSubmitted; }
     HRESULT completeInterop(uint64_t clientDoneValue);
-    HRESULT presentClientFrame(::remixapi_VulkanClientFrameInfoEXT& frame, bool rtxFramePrepared);
+    HRESULT presentClientFrame(::remixapi_VulkanClientFrameInfoEXT& frame, ::remixapi_VulkanClientHudlessInfoEXT* hudless,
+                               bool rtxFramePrepared);
     void getInteropInfo(::remixapi_dxvk_InteropInfo& info) const;
     void getVulkanInteropInfo(::remixapi_VulkanInteropInfo& info) const;
     // NV-DXVK end

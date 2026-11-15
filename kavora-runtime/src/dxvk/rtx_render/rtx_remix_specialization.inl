@@ -108,6 +108,7 @@ namespace pnext::detail {
     remixapi_VulkanInteropInfo,
     remixapi_FrameGenerationCapabilitiesEXT,
     remixapi_VulkanClientFrameInfoEXT,
+    remixapi_VulkanClientHudlessInfoEXT,
     remixapi_SharedBufferInfo,
     remixapi_SharedBufferCommitInfo,
     remixapi_MeshInfoSharedBuffersEXT,
@@ -166,10 +167,12 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum<remixapi_TextureImmutableEXT> = REMIXAPI_STRUCT_TYPE_TEXTURE_IMMUTABLE_EXT;
 
   template<> constexpr auto ToEnum<remixapi_VulkanClientFrameInfoEXT> = REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_FRAME_INFO_EXT;
+  template<> constexpr auto ToEnum<remixapi_VulkanClientHudlessInfoEXT> = REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_HUDLESS_INFO_EXT;
   template<> constexpr auto ToEnum<remixapi_FrameGenerationCapabilitiesEXT> = REMIXAPI_STRUCT_TYPE_FRAME_GENERATION_CAPABILITIES_EXT;
 
   template< typename T > struct Root                                         { using Type = T; /* by default, a root is self */ };
   template<> struct Root<remixapi_VulkanClientFrameInfoEXT> { using Type = remixapi_PresentInfo; };
+  template<> struct Root<remixapi_VulkanClientHudlessInfoEXT> { using Type = remixapi_PresentInfo; };
   template<> struct Root<remixapi_FrameGenerationCapabilitiesEXT> { using Type = remixapi_VulkanInteropInfo; };
   template<> struct Root<remixapi_MeshInfoSharedBuffersEXT> { using Type = remixapi_MeshInfo; };
   template<> struct Root<remixapi_MeshInfoQuadsEXT> { using Type = remixapi_MeshInfo; };

@@ -125,11 +125,17 @@ static remixapi_ErrorCode REMIXAPI_CALL mock_Present(const remixapi_PresentInfo*
   CHECK(info->clientDoneSemaphore_ValueToWait == 0x123456789abcdef0ULL);
   if (info->pNext) {
     remixapi_VulkanClientFrameInfoEXT* frame = info->pNext;
-    CHECK(frame->sType == 44 && !frame->pNext);
+    CHECK(frame->sType == 44);
     CHECK(frame->device == 0xabcdef && frame->image == 0x99887766 && frame->imageGeneration == 0x100000001ULL);
     CHECK(frame->width == 1920 && frame->height == 1080 && frame->format == 37);
     CHECK(frame->bottomUp == 1 && frame->vsync == 0 && frame->allowFrameGeneration == 0);
     CHECK(frame->sourceReadySemaphore == 0x12345 && frame->sourceReadyValue == 0x200000002ULL);
+    if (frame->pNext) {
+      remixapi_VulkanClientHudlessInfoEXT* hudless = frame->pNext;
+      CHECK(hudless->sType == REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_HUDLESS_INFO_EXT && !hudless->pNext);
+      CHECK(hudless->hudlessImage == 0x11223344ULL);
+      hudless->frameGenerationEnabled = 1;
+    }
     frame->sourceConsumedSemaphore = 0xf000;
     frame->sourceConsumedValue = 0x300000003ULL;
       frame->presentationEpoch = 0x400000004ULL;

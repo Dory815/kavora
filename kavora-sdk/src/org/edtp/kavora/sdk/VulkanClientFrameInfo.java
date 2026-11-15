@@ -30,4 +30,10 @@ public final class VulkanClientFrameInfo {
     public long presentationEpoch;
     public long renderedFrames;
     public long generatedFrames;
+    /** Opt into foreground UI separation for this presenter. */
+    public boolean provideHudlessColor;
+    /** Optional borrowed pre-UI color with the same format, extent and lifetime as image. */
+    public long hudlessImage;
+    /** Set by the presenter when the next frame can benefit from a pre-UI image. */
+    public boolean frameGenerationEnabled;
 }

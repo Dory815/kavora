@@ -295,6 +295,7 @@ namespace dxvk {
                   const RtxFrameGenerationCamera& camera,
                   Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
                   Rc<DxvkImageView> colorBuffer,
+                  Rc<DxvkImageView> hudlessColor,                       // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                   Rc<DxvkImageView> primaryScreenSpaceMotionVector,    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                   Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                   uint32_t interpolatedFrameIndex,                     // starts at 0

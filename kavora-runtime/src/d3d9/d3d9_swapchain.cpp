@@ -1276,7 +1276,7 @@ namespace dxvk {
       DxvkFrameInterpolationInfo clientInterpolation {};
       if (clientImage) {
         if (m_dlfgPresenter != nullptr && clientImage->interpolation.valid()) {
-          clientInterpolation = PrepareClientInterpolation(imageIndex, clientImage->interpolation);
+          clientInterpolation = PrepareClientInterpolation(imageIndex, *clientImage, srcRect, dstRect);
         } else {
           m_clientInterpolationHistory = false;
         }
@@ -1374,25 +1374,29 @@ namespace dxvk {
   }
 
   // NV-DXVK start: Snapshot FG inputs into the acquired virtual backbuffer's lifetime.
-  DxvkFrameInterpolationInfo D3D9SwapChainEx::PrepareClientInterpolation(uint32_t imageIndex, DxvkFrameInterpolationInfo info) {
+  DxvkFrameInterpolationInfo D3D9SwapChainEx::PrepareClientInterpolation(uint32_t imageIndex,
+      const ClientPresentImage& clientImage, VkRect2D srcRect, VkRect2D dstRect) {
+    DxvkFrameInterpolationInfo info = clientImage.interpolation;
     auto& slot = m_clientInterpolationSlots.at(imageIndex);
-    auto prepareInput = [this](const Rc<DxvkImageView>& source, Rc<DxvkImageView>& destination, const char* name) {
-      const auto& sourceInfo = source->imageInfo();
-      if (!destination.ptr() || destination->imageInfo().extent != sourceInfo.extent ||
-          destination->imageInfo().format != sourceInfo.format) {
+    auto prepareInput = [this](VkExtent3D extent, VkFormat format, VkImageUsageFlags viewUsage,
+                              Rc<DxvkImageView>& destination, const char* name) {
+      if (!destination.ptr() || destination->imageInfo().extent != extent ||
+          destination->imageInfo().format != format) {
         DxvkImageCreateInfo image {};
         image.type = VK_IMAGE_TYPE_2D;
-        image.format = sourceInfo.format;
+        image.format = format;
         image.sampleCount = VK_SAMPLE_COUNT_1_BIT;
-        image.extent = sourceInfo.extent;
+        image.extent = extent;
         image.numLayers = 1;
         image.mipLevels = 1;
-        image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | viewUsage;
         if (!env::getEnvVar("RTX_DLFG_CAPTURE_PATH").empty()) {
           image.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         }
-        image.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-        image.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        image.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+          | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        image.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
+          | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
         image.layout = VK_IMAGE_LAYOUT_GENERAL;
         auto resource = m_device->createImage(image, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1400,7 +1404,7 @@ namespace dxvk {
         DxvkImageViewCreateInfo view {};
         view.type = VK_IMAGE_VIEW_TYPE_2D;
         view.format = image.format;
-        view.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        view.usage = viewUsage;
         view.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
         view.numLevels = 1;
         view.numLayers = 1;
@@ -1408,8 +1412,18 @@ namespace dxvk {
         m_clientInterpolationHistory = false;
       }
     };
-    prepareInput(info.motionVectors, slot.motionVectors, "ClientFrame::motionVectors");
-    prepareInput(info.depth, slot.depth, "ClientFrame::depth");
+    constexpr auto guideUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+    prepareInput(info.motionVectors->imageInfo().extent, info.motionVectors->imageInfo().format, guideUsage,
+      slot.motionVectors, "ClientFrame::motionVectors");
+    prepareInput(info.depth->imageInfo().extent, info.depth->imageInfo().format, guideUsage,
+      slot.depth, "ClientFrame::depth");
+    if (clientImage.hudless != nullptr) {
+      const auto& display = m_imageViews.at(imageIndex)->imageInfo();
+      prepareInput(display.extent, display.format, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        slot.hudless, "ClientFrame::hudless");
+      m_blitter->presentImage(m_context.ptr(), slot.hudless, dstRect, clientImage.hudless, srcRect, clientImage.bottomUp);
+      info.hudless = slot.hudless;
+    }
 
     // The same virtual backbuffer acquire protects both the transfer and compute writes.
     if (info.foregroundGuide != nullptr) {

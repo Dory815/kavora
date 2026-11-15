@@ -6,6 +6,7 @@ package org.edtp.kavora;
 
 import org.edtp.kavora.render.RenderOrigin;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import org.edtp.kavora.sdk.CameraInfo;
 import org.edtp.kavora.sdk.CameraInfoParameterizedEXT;
 import org.edtp.kavora.sdk.CameraType;
@@ -627,6 +628,10 @@ public class KavoraRenderer {
 
     public void finishDirectRender() {
         presentation.finishDirectRender();
+    }
+
+    public void captureHudless(GpuTexture color) {
+        presentation.captureHudless(color);
     }
 
     /** Records the shared-image release in Minecraft's frame submission. */

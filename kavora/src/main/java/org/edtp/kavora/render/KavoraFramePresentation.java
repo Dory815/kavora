@@ -5,11 +5,13 @@
 package org.edtp.kavora.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import org.edtp.kavora.profiling.ProfileScope;
 import org.edtp.kavora.sdk.PresentInfo;
 import org.edtp.kavora.sdk.RemixAPI;
 import org.edtp.kavora.sdk.SubmitInfo;
 import org.edtp.kavora.sdk.VulkanClientFrameInfo;
+import org.edtp.kavora.vulkan.NativeVulkanSurface;
 
 /**
  * Render-thread owner of the Submit/Present pair. The early scene hook submits
@@ -74,6 +76,10 @@ public final class KavoraFramePresentation implements AutoCloseable {
 
     public void endWindowRender() {
         renderingWindowFrame = false;
+    }
+
+    public void captureHudless(GpuTexture color) {
+        if (renderingWindowFrame && submitted) NativeVulkanSurface.captureHudless(color);
     }
 
     /** Completes a scene whose caller owns no outer window frame. */

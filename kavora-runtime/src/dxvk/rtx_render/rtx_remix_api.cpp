@@ -2309,11 +2309,19 @@ namespace {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     remixapi_VulkanClientFrameInfoEXT* clientFrame = nullptr;
+    remixapi_VulkanClientHudlessInfoEXT* hudless = nullptr;
     for (void* next = info ? info->pNext : nullptr; next; next = pnext::detail::getPNext(next)) {
-      if (pnext::detail::getStructType(next) != REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_FRAME_INFO_EXT || clientFrame) {
+      const auto type = pnext::detail::getStructType(next);
+      if (type == REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_FRAME_INFO_EXT && !clientFrame) {
+        clientFrame = static_cast<remixapi_VulkanClientFrameInfoEXT*>(next);
+      } else if (type == REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_HUDLESS_INFO_EXT && !hudless) {
+        hudless = static_cast<remixapi_VulkanClientHudlessInfoEXT*>(next);
+      } else {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
-      clientFrame = static_cast<remixapi_VulkanClientFrameInfoEXT*>(next);
+    }
+    if (hudless && (!clientFrame || (clientFrame->image && hudless->hudlessImage == clientFrame->image))) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     auto presenter = remixDevice->GetExternalPresenter();
     if (clientFrame) {
@@ -2325,7 +2333,7 @@ namespace {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
       if (!clientFrame->image) {
-        return SUCCEEDED(presenter->presentClientFrame(*clientFrame, false))
+        return SUCCEEDED(presenter->presentClientFrame(*clientFrame, hudless, false))
           ? REMIXAPI_ERROR_CODE_SUCCESS : REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
       }
     }
@@ -2337,7 +2345,7 @@ namespace {
     HRESULT hr = S_OK;
     if (rtxFramePrepared) hr = presenter->completeInterop(info->clientDoneSemaphore_ValueToWait);
     if (SUCCEEDED(hr)) {
-      if (clientFrame && presenter) hr = presenter->presentClientFrame(*clientFrame, rtxFramePrepared);
+      if (clientFrame && presenter) hr = presenter->presentClientFrame(*clientFrame, hudless, rtxFramePrepared);
       else if (!interop) hr = remixDevice->Present(NULL, NULL, info ? info->hwndOverride : NULL, NULL);
     }
     if (FAILED(hr)) {

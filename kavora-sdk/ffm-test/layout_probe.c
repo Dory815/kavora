@@ -654,6 +654,12 @@ printf("VulkanClientFrameInfoEXT sourceConsumedValue %zu\n", offsetof(remixapi_V
 printf("VulkanClientFrameInfoEXT presentationEpoch %zu\n", offsetof(remixapi_VulkanClientFrameInfoEXT, presentationEpoch));
 printf("VulkanClientFrameInfoEXT renderedFrames %zu\n", offsetof(remixapi_VulkanClientFrameInfoEXT, renderedFrames));
 printf("VulkanClientFrameInfoEXT generatedFrames %zu\n", offsetof(remixapi_VulkanClientFrameInfoEXT, generatedFrames));
+printf("VulkanClientHudlessInfoEXT sizeof %zu\n", sizeof(remixapi_VulkanClientHudlessInfoEXT));
+printf("VulkanClientHudlessInfoEXT alignof %zu\n", __alignof(remixapi_VulkanClientHudlessInfoEXT));
+printf("VulkanClientHudlessInfoEXT sType %zu\n", offsetof(remixapi_VulkanClientHudlessInfoEXT, sType));
+printf("VulkanClientHudlessInfoEXT pNext %zu\n", offsetof(remixapi_VulkanClientHudlessInfoEXT, pNext));
+printf("VulkanClientHudlessInfoEXT hudlessImage %zu\n", offsetof(remixapi_VulkanClientHudlessInfoEXT, hudlessImage));
+printf("VulkanClientHudlessInfoEXT frameGenerationEnabled %zu\n", offsetof(remixapi_VulkanClientHudlessInfoEXT, frameGenerationEnabled));
 printf("VulkanInteropInfo sizeof %zu\n", sizeof(remixapi_VulkanInteropInfo));
 printf("VulkanInteropInfo alignof %zu\n", __alignof(remixapi_VulkanInteropInfo));
 printf("VulkanInteropInfo sType %zu\n", offsetof(remixapi_VulkanInteropInfo, sType));

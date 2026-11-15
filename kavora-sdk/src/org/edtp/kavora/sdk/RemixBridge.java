@@ -397,9 +397,14 @@ public final class RemixBridge {
         try (Scratch arena = scratch()) {
             if (hwndOverride == 0) return call("Present", MemorySegment.NULL);
             MemorySegment client = MemorySegment.NULL;
+            MemorySegment hudless = MemorySegment.NULL;
             if (frame != null) {
                 String type = "VulkanClientFrameInfoEXT";
-                client = info(arena, type, StructType.VULKAN_CLIENT_FRAME_INFO_EXT, 0);
+                if (frame.provideHudlessColor) {
+                    hudless = info(arena, "VulkanClientHudlessInfoEXT", StructType.VULKAN_CLIENT_HUDLESS_INFO_EXT, 0);
+                    put(hudless, "VulkanClientHudlessInfoEXT", "hudlessImage", frame.hudlessImage);
+                }
+                client = info(arena, type, StructType.VULKAN_CLIENT_FRAME_INFO_EXT, hudless.address());
                 put(client, type, "device", frame.device);
                 put(client, type, "image", frame.image);
                 put(client, type, "imageGeneration", frame.imageGeneration);
@@ -426,6 +431,8 @@ public final class RemixBridge {
                 frame.presentationEpoch = client.get(JAVA_LONG, offset("VulkanClientFrameInfoEXT", "presentationEpoch"));
                 frame.renderedFrames = client.get(JAVA_LONG, offset("VulkanClientFrameInfoEXT", "renderedFrames"));
                 frame.generatedFrames = client.get(JAVA_LONG, offset("VulkanClientFrameInfoEXT", "generatedFrames"));
+                frame.frameGenerationEnabled = frame.provideHudlessColor && hudless.get(JAVA_INT,
+                        offset("VulkanClientHudlessInfoEXT", "frameGenerationEnabled")) != 0;
             }
             return result;
         }

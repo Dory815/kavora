@@ -190,7 +190,8 @@ namespace dxvk {
     return S_OK;
   }
 
-  HRESULT D3D9SwapchainExternal::presentClientFrame(remixapi_VulkanClientFrameInfoEXT& frame, bool rtxFramePrepared) {
+  HRESULT D3D9SwapchainExternal::presentClientFrame(remixapi_VulkanClientFrameInfoEXT& frame,
+      remixapi_VulkanClientHudlessInfoEXT* hudless, bool rtxFramePrepared) {
     if (frame.device != reinterpret_cast<uint64_t>(m_device->handle())) {
       return D3DERR_INVALIDCALL;
     }
@@ -203,6 +204,7 @@ namespace dxvk {
       }
       m_device->waitForIdle();
       m_clientFrameView = nullptr;
+      m_clientHudlessView = nullptr;
       m_clientFrameGeneration = 0;
       return S_OK;
     }
@@ -223,9 +225,7 @@ namespace dxvk {
       frame.sourceConsumedValue = m_clientFrameConsumedValue;
       return S_OK;
     }
-    const auto imageHandle = reinterpret_cast<VkImage>(frame.image);
-    if (!m_clientFrameView.ptr() || m_clientFrameView->image()->handle() != imageHandle ||
-        m_clientFrameGeneration != frame.imageGeneration) {
+    auto borrowColor = [this, &frame](uint64_t handle) {
       DxvkImageCreateInfo image {};
       image.type = VK_IMAGE_TYPE_2D;
       image.format = VkFormat(frame.format);
@@ -239,7 +239,7 @@ namespace dxvk {
       image.tiling = VK_IMAGE_TILING_OPTIMAL;
       image.layout = VK_IMAGE_LAYOUT_GENERAL;
       image.initialLayout = VK_IMAGE_LAYOUT_GENERAL;
-      auto borrowed = m_device->createImageFromVkImage(image, imageHandle);
+      auto borrowed = m_device->createImageFromVkImage(image, reinterpret_cast<VkImage>(handle));
       DxvkImageViewCreateInfo view {};
       view.type = VK_IMAGE_VIEW_TYPE_2D;
       view.format = image.format;
@@ -247,8 +247,15 @@ namespace dxvk {
       view.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
       view.numLevels = 1;
       view.numLayers = 1;
-      m_clientFrameView = m_device->createImageView(borrowed, view);
+      return m_device->createImageView(borrowed, view);
+    };
+    if (m_clientFrameGeneration != frame.imageGeneration) {
+      m_clientFrameView = nullptr;
+      m_clientHudlessView = nullptr;
       m_clientFrameGeneration = frame.imageGeneration;
+    }
+    if (!m_clientFrameView.ptr() || m_clientFrameView->image()->handle() != reinterpret_cast<VkImage>(frame.image)) {
+      m_clientFrameView = borrowColor(frame.image);
     }
     const bool vsync = frame.vsync != 0 && !m_context->isDLFGEnabled();
     const VkExtent2D surfaceExtent {
@@ -278,11 +285,21 @@ namespace dxvk {
     }
     const uint64_t consumedValue = ++m_clientFrameConsumedValue;
     ClientPresentImage image {
-      m_clientFrameView, reinterpret_cast<VkSemaphore>(frame.sourceReadySemaphore), frame.sourceReadyValue,
+      m_clientFrameView, {}, reinterpret_cast<VkSemaphore>(frame.sourceReadySemaphore), frame.sourceReadyValue,
       m_clientFrameConsumed->handle(), consumedValue, frame.bottomUp != 0, {}
     };
-    if (rtxFramePrepared && frame.allowFrameGeneration && m_clientFrameInterpolation.valid() &&
+    const bool frameGenerationEnabled = m_dlfgPresenter != nullptr;
+    if (hudless) hudless->frameGenerationEnabled = frameGenerationEnabled;
+    if (frameGenerationEnabled && (!hudless || hudless->hudlessImage) && rtxFramePrepared &&
+        frame.allowFrameGeneration && m_clientFrameInterpolation.valid() &&
         m_clientFrameInterpolation.frameId == m_interopFrameId) {
+      if (hudless) {
+        const auto hudlessHandle = reinterpret_cast<VkImage>(hudless->hudlessImage);
+        if (!m_clientHudlessView.ptr() || m_clientHudlessView->image()->handle() != hudlessHandle) {
+          m_clientHudlessView = borrowColor(hudless->hudlessImage);
+        }
+        image.hudless = m_clientHudlessView;
+      }
       image.interpolation = m_clientFrameInterpolation;
     }
     PresentImage(vsync ? 1 : 0, &image);

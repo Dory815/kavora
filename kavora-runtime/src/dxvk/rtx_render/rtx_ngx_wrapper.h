@@ -365,6 +365,7 @@ namespace dxvk {
       VkCommandBuffer clientCommandList,
       Rc<DxvkImageView> interpolatedOutput,
       Rc<DxvkImageView> compositedColorBuffer,
+      Rc<DxvkImageView> hudlessColorBuffer,
       Rc<DxvkImageView> motionVectors,
       Rc<DxvkImageView> depth,
       const RtxFrameGenerationCamera& camera,

@@ -482,6 +482,7 @@ namespace dxvk {
                                             present.frameInterpolation.camera,
                                             m_swapchainImageViews[swapchainImage.index],
                                             m_backbufferViews[present.acquiredImageIndex],
+                                            present.frameInterpolation.hudless,
                                             present.frameInterpolation.motionVectors,
                                             present.frameInterpolation.depth,
                                             interpolatedFrameIndex,
@@ -774,6 +775,12 @@ namespace dxvk {
                               present.frameInterpolation.depthLayout,
                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+          if (present.frameInterpolation.hudless != nullptr) {
+            barriers.addBarrier(present.frameInterpolation.hudless->image()->handle(),
+                                VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_NONE, VK_ACCESS_SHADER_READ_BIT,
+                                VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+          }
+
           barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
 
@@ -828,6 +835,12 @@ namespace dxvk {
                                 VK_ACCESS_SHADER_WRITE_BIT,
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                 present.frameInterpolation.depthLayout);
+
+            if (present.frameInterpolation.hudless != nullptr) {
+              barriers.addBarrier(present.frameInterpolation.hudless->image()->handle(),
+                                  VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_NONE,
+                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
+            }
 
             barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
           }
@@ -1416,6 +1429,7 @@ namespace dxvk {
                           const RtxFrameGenerationCamera& camera,
                           Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
                           Rc<DxvkImageView> colorBuffer,                       // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                          Rc<DxvkImageView> hudlessColor,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                           Rc<DxvkImageView> primaryScreenSpaceMotionVector,    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                           Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                           uint32_t interpolatedFrameIndex,                     // starts at 0
@@ -1492,6 +1506,7 @@ namespace dxvk {
 
     commandList->trackResource<DxvkAccess::Write>(outputImage);
     commandList->trackResource<DxvkAccess::Read>(colorBuffer);
+    if (hudlessColor != nullptr) commandList->trackResource<DxvkAccess::Read>(hudlessColor);
 
     {
       ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG evaluate");
@@ -1502,6 +1517,7 @@ namespace dxvk {
                                                     commandList->getCmdBuffer(),
                                                     outputImage,
                                                     colorBuffer,
+                                                    hudlessColor,
                                                     primaryScreenSpaceMotionVector,
                                                     primaryDepth,
                                                     camera,

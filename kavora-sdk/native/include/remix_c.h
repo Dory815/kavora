@@ -174,6 +174,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_SUBMIT_INFO_RAIN_GROUND_EXT           = 55,
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CLOUD_RADIANCE_EXT         = 56,
     REMIXAPI_STRUCT_TYPE_MESH_INFO_QUAD_SUBSET_EXT             = 57,
+    REMIXAPI_STRUCT_TYPE_VULKAN_CLIENT_HUDLESS_INFO_EXT         = 58,
     // NOTE: always leave ',' after the number, so the git diff is cleaner!
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
@@ -1483,6 +1484,16 @@ extern "C" {
     uint64_t renderedFrames;
     uint64_t generatedFrames;
   } remixapi_VulkanClientFrameInfoEXT;
+
+  // Optional PresentInfo extension used alongside VulkanClientFrameInfoEXT.
+  typedef struct remixapi_VulkanClientHudlessInfoEXT {
+    remixapi_StructType sType;
+    void* pNext;
+    // Optional pre-UI color, with the same format, extent, orientation and synchronization as image.
+    uint64_t hudlessImage;
+    // Output. Whether the presenter requests pre-UI color for the next frame.
+    uint32_t frameGenerationEnabled;
+  } remixapi_VulkanClientHudlessInfoEXT;
 
   typedef struct remixapi_VulkanInteropInfo {
     remixapi_StructType sType;

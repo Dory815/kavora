@@ -1012,6 +1012,7 @@ namespace dxvk
                                                           VkCommandBuffer clientCommandList,
                                                           Rc<DxvkImageView> interpolatedOutput,
                                                           Rc<DxvkImageView> compositedColorBuffer,
+                                                          Rc<DxvkImageView> hudlessColorBuffer,
                                                           Rc<DxvkImageView> motionVectors,
                                                           Rc<DxvkImageView> depth,
                                                           const RtxFrameGenerationCamera& camera,
@@ -1027,12 +1028,17 @@ namespace dxvk
     }
 
     auto ngxColorBuffer = ViewToResourceVK(compositedColorBuffer, true);
+    NVSDK_NGX_Resource_VK ngxHudless {};
     auto ngxMVec = ViewToResourceVK(motionVectors, false);
     auto ngxDepth = ViewToResourceVK(depth, false);
     auto ngxOutput = ViewToResourceVK(interpolatedOutput, true);
 
     NVSDK_NGX_VK_DLSSG_Eval_Params evalParams = {};
     evalParams.pBackbuffer = &ngxColorBuffer;
+    if (hudlessColorBuffer != nullptr) {
+      ngxHudless = ViewToResourceVK(hudlessColorBuffer, false);
+      evalParams.pHudless = &ngxHudless;
+    }
     evalParams.pMVecs = &ngxMVec;
     evalParams.pDepth = &ngxDepth;
     evalParams.pOutputInterpFrame = &ngxOutput;
