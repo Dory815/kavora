@@ -109,7 +109,11 @@ struct SphericalHarmonic : IHarmonic
     shY *= scalar;
     CoCg *= scalar;
   }
+}
 
+// Slang 2026.20 crashes when lowering this additional member in the IHarmonic implementation.
+extension SphericalHarmonic
+{
   // Reduces "ringing" problem common with SH (lower k for more aggressive filter) 
   // ref: https://www.ppsloan.org/publications/StupidSH36.pdf
   [mutating] void hanningFilter(const float k) 
