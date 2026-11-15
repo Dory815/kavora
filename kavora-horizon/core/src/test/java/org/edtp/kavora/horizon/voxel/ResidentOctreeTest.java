@@ -20,6 +20,7 @@ class ResidentOctreeTest {
         final ArrayList<long[]> replaced = new ArrayList<>();
         final ArrayList<CompletableFuture<Boolean>> completions = new ArrayList<>();
         double area = 10000;
+        double centeredArea = 10000;
         long capacity;
         boolean pressure;
 
@@ -58,6 +59,10 @@ class ResidentOctreeTest {
 
         public double area(long key) {
             return area;
+        }
+
+        public double centeredArea(long key) {
+            return centeredArea;
         }
 
         public double splitArea() {
@@ -175,6 +180,34 @@ class ResidentOctreeTest {
         tree.tick(selected);
         assertEquals(List.of(world.root), selected);
         tree.releaseRetired();
+        assertEquals(Set.of(world.root), world.resident);
+    }
+
+    @Test
+    void offscreenChildrenStayResidentUntilTheParentFootprintShrinks() {
+        World world = new World();
+        ResidentOctree tree = new ResidentOctree(world);
+        LongList selected = new LongArrayList();
+        tree.tick(selected);
+        world.complete(0, true);
+        tree.tick(selected);
+        world.complete(1, true);
+        tree.tick(selected);
+        tree.releaseRetired();
+
+        world.area = -1;
+        tree.tick(selected);
+        assertEquals(2, world.requests.size());
+        assertEquals(8, selected.size());
+
+        world.centeredArea = 100;
+        tree.tick(selected);
+        assertArrayEquals(new long[] {world.root}, world.requests.get(2));
+        assertEquals(8, selected.size());
+        world.complete(2, true);
+        tree.tick(selected);
+        tree.releaseRetired();
+        assertEquals(List.of(world.root), selected);
         assertEquals(Set.of(world.root), world.resident);
     }
 

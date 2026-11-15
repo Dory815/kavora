@@ -27,6 +27,17 @@ class ProjectedErrorTest {
     }
 
     @Test
+    void centeredAreaDecreasesWithDistanceBehindTheCamera() {
+        ProjectedError view = new ProjectedError();
+        view.set(16, 16, 0, perspective(), 1920, 1080);
+        long near = VoxelKey.of(0, 0, 0, 1);
+        long far = VoxelKey.of(0, 0, 0, 32);
+        assertEquals(-1, view.area(far));
+        assertTrue(view.centeredArea(near) > 64 * 64);
+        assertTrue(view.centeredArea(far) < 64 * 64 * .5);
+    }
+
+    @Test
     void aBoxContainingTheCameraStillRequiresRefinement() {
         ProjectedError view = new ProjectedError();
         view.set(16, 16, 16, perspective(), 1920, 1080);

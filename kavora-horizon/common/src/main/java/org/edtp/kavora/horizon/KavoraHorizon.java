@@ -201,6 +201,10 @@ public final class KavoraHorizon implements FarTerrainExtension {
                                     return view.area(key);
                                 }
 
+                                public double centeredArea(long key) {
+                                    return view.centeredArea(key);
+                                }
+
                                 public double splitArea() {
                                     return (double) HorizonSettings.INSTANCE.nodePixels
                                             * HorizonSettings.INSTANCE.nodePixels;

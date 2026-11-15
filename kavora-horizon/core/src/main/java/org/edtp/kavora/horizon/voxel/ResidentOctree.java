@@ -20,6 +20,7 @@ public final class ResidentOctree implements AutoCloseable {
         boolean within(long key);
 
         double area(long key);
+        double centeredArea(long key);
 
         double splitArea();
 
@@ -223,8 +224,7 @@ public final class ResidentOctree implements AutoCloseable {
                     && (!blocked || node.blockedKind != MERGE)
                     && childrenAreLeaves(node)
                     && !hasActiveDescendant(node)
-                    && area < threshold * (backend.memoryPressure() ? 1 : .5)
-                    && (area >= 0 || backend.memoryPressure()))
+                    && belowMergeThreshold(node.key, area, threshold))
                 candidates.add(new Candidate(node, MERGE, Double.MAX_VALUE / 2));
             for (Node child : node.children) visit(child, selected, ancestorActive || node.active);
             return;
@@ -256,6 +256,14 @@ public final class ResidentOctree implements AutoCloseable {
             candidates.add(new Candidate(node, SPLIT, area));
         else if (backend.dirty(node.key) && (!blocked || node.blockedKind != REFRESH))
             candidates.add(new Candidate(node, REFRESH, Math.max(0, area)));
+    }
+
+    private boolean belowMergeThreshold(long key, double area, double threshold) {
+        boolean pressure = backend.memoryPressure();
+        if (area >= 0) return area < threshold * (pressure ? 1 : .5);
+        // Off-screen geometry can still be hit by secondary rays. Keep its detail until
+        // its angular footprint shrinks as the player moves away.
+        return pressure || backend.centeredArea(key) < threshold * .5;
     }
 
     /** Release after the caller has published this tick's new visibility set. */

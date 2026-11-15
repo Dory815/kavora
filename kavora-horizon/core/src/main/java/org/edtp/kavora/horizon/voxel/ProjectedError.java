@@ -5,6 +5,7 @@ package org.edtp.kavora.horizon.voxel;
 public final class ProjectedError {
     private final float[] matrix = new float[16];
     private double x, y, z;
+    private double focalPixelsSquared;
     private int width, height;
 
     public void set(double x, double y, double z, float[] matrix, int width, int height) {
@@ -14,6 +15,11 @@ public final class ProjectedError {
         this.width = width;
         this.height = height;
         System.arraycopy(matrix, 0, this.matrix, 0, 16);
+        // The view rotation preserves the lengths of the projection's first two rows.
+        double horizontal = Math.hypot(Math.hypot(matrix[0], matrix[4]), matrix[8]) * width * .5;
+        double vertical = Math.hypot(Math.hypot(matrix[1], matrix[5]), matrix[9]) * height * .5;
+        double focalPixels = Math.max(horizontal, vertical);
+        focalPixelsSquared = focalPixels * focalPixels;
     }
 
     public double area(long key) {
@@ -47,6 +53,18 @@ public final class ProjectedError {
         if (front < 8) return Double.POSITIVE_INFINITY;
         if (minX > 1 || maxX < -1 || minY > 1 || maxY < -1) return -1;
         return (maxX - minX) * (maxY - minY) * width * height * .25;
+    }
+
+    /** Bounds the projected area if the camera were pointed at the node. */
+    public double centeredArea(long key) {
+        double halfEdge = VoxelKey.size(key) * .5;
+        double dx = VoxelKey.blockX(key) + halfEdge - x;
+        double dy = VoxelKey.blockY(key) + halfEdge - y;
+        double dz = VoxelKey.blockZ(key) + halfEdge - z;
+        double radiusSquared = 3 * halfEdge * halfEdge;
+        double tangentDistanceSquared = dx * dx + dy * dy + dz * dz - radiusSquared;
+        if (tangentDistanceSquared <= 0) return Double.POSITIVE_INFINITY;
+        return 4 * radiusSquared * focalPixelsSquared / tangentDistanceSquared;
     }
 
     public boolean within(long key, int radius) {
