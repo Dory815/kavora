@@ -46,10 +46,16 @@ jobs:
           python3 kavora-runtime/tests/rtx/unit/test_cloud_transport.py \
             --dump "$RUNNER_TEMP/cloud-transport"
 
-      - name: Render cloud-rich morphology matrix
+      - name: Fetch pre-redesign shader baseline
+        run: |
+          git fetch --no-tags origin 469319c7df2fa37a4920cda2cef682cf251c8269
+          git worktree add --detach "$RUNNER_TEMP/cloud-reference" 469319c7df2fa37a4920cda2cef682cf251c8269
+
+      - name: Render cloud-rich morphology A/B matrix
         run: |
           python3 kavora-runtime/tests/rtx/unit/render_cloud_morphology_matrix.py \
             --repo "$GITHUB_WORKSPACE" \
+            --reference-shader-root "$RUNNER_TEMP/cloud-reference/kavora-runtime/src/dxvk/shaders" \
             --output "$RUNNER_TEMP/cloud-morphology" \
             --cache-dir "$RUNNER_TEMP/cloud-morphology-cache" \
             --width 256 \
