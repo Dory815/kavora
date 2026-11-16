@@ -235,3 +235,19 @@ or wind-aligned streets depending on the weather regime. They also argue
 against globally forcing one such pattern. The current weather field's
 isotropic Perlin groups are a useful baseline, but a future wind-aware street
 component should be conditional and weakly mixed with other organizations.
+
+For a fixed-input baseline/candidate comparison, create a worktree at the
+pre-redesign commit and pass its shader directory as
+`--reference-shader-root`. For example:
+
+```powershell
+git worktree add .scratch/cloud-baseline 469319c7df2fa37a4920cda2cef682cf251c8269
+python kavora-runtime/tests/rtx/unit/render_cloud_morphology_matrix.py `
+  --output .scratch/cloud-ab `
+  --reference-shader-root .scratch/cloud-baseline/kavora-runtime/src/dxvk/shaders
+```
+
+This renders both variants with the same scenario inputs and writes separate
+`reference/` and `candidate/` result directories. It still does not include
+the complete Minecraft presentation path unless the atmosphere fixture and
+other required game inputs are supplied.
