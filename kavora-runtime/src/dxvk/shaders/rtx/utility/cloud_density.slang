@@ -189,7 +189,7 @@ float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudT
     return 0;
   }
 
-  // A continuous, stratiform layer forms beneath the taller cloud cells as rain sets in.
+  // A shallow stratiform contribution develops beneath taller cells as rain sets in.
   const float layerThickness = cloudOvercastThickness(args, cloudType);
   const float height = heightAboveBase / layerThickness;
   const float profile = cloudHeightProfile(height, 0.16f, 0.65f, heightFootprint / layerThickness);
