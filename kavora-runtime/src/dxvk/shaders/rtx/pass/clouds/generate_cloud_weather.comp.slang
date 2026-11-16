@@ -36,10 +36,9 @@ void main(uint2 id : SV_DispatchThreadID)
   // A weak cellular term breaks smooth blobs into open/closed cloud cells.
   const float deckCells = cloudWorley(float3(uv, 0.0f), 8, kCloudNoiseSeed + 237, true);
   const float deckNoise = 0.55f * regional
-    + 0.20f * cloudPerlin(float3(uv * 8.0f, 0.83f), 8, kCloudNoiseSeed + 233)
-    + 0.12f * cloudPerlin(float3(uv * 16.0f, 0.23f), 16, kCloudNoiseSeed + 239)
-    + 0.08f * cloudPerlin(float3(uv * 32.0f, 0.61f), 32, kCloudNoiseSeed + 243)
-    + 0.05f * (deckCells - 0.5f);
+    + 0.22f * cloudPerlin(float3(uv * 8.0f, 0.83f), 8, kCloudNoiseSeed + 233)
+    + 0.15f * cloudPerlin(float3(uv * 16.0f, 0.23f), 16, kCloudNoiseSeed + 239)
+    + 0.08f * (deckCells - 0.5f);
   const float deckCoverage = smoothstep(-0.40f, 0.10f, deckNoise);
 
   // Cloud family varies over broad weather regions, not independently per cell.
