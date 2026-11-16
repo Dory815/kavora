@@ -68,10 +68,10 @@ code is part of the game's production rendering pipeline.
 
 | CPU-adapted check | Result |
 | --- | --- |
-| 48 cloud-type / Y-up or Z-up / wind-wrap cases | Pass; final maximum density difference 0.0004468. |
-| 40 cloud-type / coverage / axis seam cases | Pass; maximum density change across 3.125 cm is 0.0041083. |
+| 48 cloud-type / Y-up or Z-up / wind-wrap cases | Pass; final maximum density difference 0.0004625. |
+| 40 cloud-type / coverage / axis seam cases | Pass; maximum density change across 3.125 cm is 0.0041091. |
 | Full generated-weather wrap | Pass under the existing absolute/relative tolerance; maximum difference 0.0006968. |
-| Independent families | Pass; capped sum and empty-mask behavior, with fixture density centroids 734.87 m and 1237.80 m. |
+| Independent families | Pass; capped sum and empty-mask behavior, with fixture density centroids 734.97 m and 1237.82 m. |
 | 18 constant-mask / footprint cases | Pass; maximum density difference zero. |
 | 20 scale/thickness configurations, 81,920 positions | Pass; finite bounded density and enclosing-shell support. |
 | 2,160 clipped-ramp moment cases | Pass against independent double-precision integration; maximum absolute error 1.244e-7. |
@@ -79,6 +79,8 @@ code is part of the game's production rendering pipeline.
 | 62,208 full-range view-ray prefixes | Pass; finite bounded transmission, monotone prefix extension and disabled-field behavior. |
 | Six visual-plan unit tests | Pass in ordinary Python, including failed/timeout/stale render rejection. |
 
+Constant-mask fixtures use float32 texture values, matching the RGBA32 test
+fixtures. Generated noise/weather use their production storage quantization.
 Baseline failures are retained in the archive rather than replaced by candidate
 results. Full-range tests cover 12 locations, observers below/inside/above the
 clouds, three weather states, four budgets and 1.7/12/24/96 km prefixes. Opaque
@@ -113,7 +115,7 @@ body is conditional on its height profile. Logical calls are not equivalent to
 texel traffic, register pressure or GPU time.
 
 Equal-query CPU measurements with four workers and three repetitions showed
-approximately 1.05x to 1.89x baseline query time across the tested weather and
+approximately 1.01x to 1.91x baseline query time across two runs over the tested weather and
 footprint cases. The filtered cases are more expensive. These timings are noisy
 CPU diagnostics and must not be presented as game FPS or as a successful GPU
 performance budget. The archive retains individual cases and sampler counts.
