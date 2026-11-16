@@ -64,6 +64,9 @@ def check_morphology_configuration():
     assert "regionalAmount * deckCoverage" in weather
     assert "CloudWeather[id] = float4(regionalAmount * cumulusCoverage" in weather
     assert "lerp(cumulusCoverage, deckCoverage, stratiformBlend)" in density
+    assert "mipVarianceScale = 0.25f * saturate(lod * 0.25f)" in density
+    assert "cumulusMean * (1.0f - cumulusMean) * mipVarianceScale" in density
+    assert "deckMean * (1.0f - deckMean) * mipVarianceScale" in density
     assert "const float variance = max(weather.g - weather.r * weather.r, 0.0f)" not in density
     assert "smoothstep(0.20f, 0.62f, column.type)" in density, "cloud type must select parent-body scale"
     assert "lerp(float(kCloudBasePeriod), 8.0f, stratiform)" in density
