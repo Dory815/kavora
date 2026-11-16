@@ -287,3 +287,35 @@ existing base/detail volumes and ray transport, with their distinct
 occupancy, family-dependent body scale and vertical shaping. Further work must
 separate their 3D silhouette/erosion where the visual matrix demonstrates that
 the shared shape field remains limiting.
+
+
+## Natural-photo morphology anchors
+
+Use the following open/public meteorological references to judge shape and
+distribution, not color/exposure matching:
+
+- Met Office, *Cloud Types for Observers*, especially the stratocumulus
+  examples: patches and layers of rounded masses or rolls, often merging at
+  their edges, sometimes arranged in parallel bands, and sometimes broken by
+  visible gaps.
+  https://www.metoffice.gov.uk/binaries/content/assets/metofficegovuk/pdf/research/library-and-archive/library/publications/weather--climate-guides/cloud_types_for_observers_rev_2014.pdf
+- ETH Zurich / Institute for Atmospheric and Climate Sciences teaching plate:
+  an oblique view showing altocumulus sheets/bands coexisting with separate
+  cumulus masses in the same sky.
+  https://ethz.ch/content/dam/ethz/special-interest/usys/iac/iac-dam/documents/edu/courses/cloud_microphysics/CMP_HS_2024_Zamin/CMP_Fall_2024_Kanji.pdf
+- Hereon / German Weather Service teaching material: a comparative photograph
+  of stratus, broken stratocumulus and vertically developed cumulus in spatial
+  relationship.
+  https://www.hereon.de/imperia/md/assets/clm/neu_the3.4.pdf
+- Wikimedia Commons, *White Cumulus Clouds against Blue Sky*: a wide 16:9
+  fair-weather reference with separated puffy masses and broad blue gaps.
+  https://commons.wikimedia.org/wiki/File:White_Cumulus_Clouds_against_Blue_Sky.jpg
+- Wolkenatlas, *Cumulus congestus*: a tall cauliflower-like body with strong
+  vertical growth, a comparatively dark base and a bright, structured crown.
+  https://www.meteo-julianadorp.nl/wolkenatlas/Cumulus-congestus.html
+
+These references make an important distinction visible: cloud-rich skies do
+not mean a uniformly filled noise texture. Stratocumulus can occupy most of
+the sky while retaining irregular holes, rounded rolls and banding; cumulus
+can coexist in front of or below broad sheets; congestus should be a relatively
+rare vertical accent rather than the default shape everywhere.
