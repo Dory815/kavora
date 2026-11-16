@@ -73,6 +73,23 @@ Sildur's documents selectable default, 2D and volumetric cloud modes, including 
 
 No Sildur's source or assets are copied.
 
+### SEUS Renewed
+
+Official site: https://www.seusrenewed.com/
+
+SEUS Renewed presents volumetric clouds as one part of a coherent realistic sky, alongside atmospheric fog, a believable horizon and dynamic sunlight. The useful comparison is the complete landscape and horizon transition, not just a close-up cloud silhouette. Its public feature description is not a technical account of the cloud density algorithm, so no implementation detail is inferred from it.
+
+No SEUS source or assets are copied.
+
+### Sildur's Vibrant Shaders
+
+Official site: https://sildurs-shaders.github.io/
+Official changelog: https://sildurs-shaders.github.io/changelogs/
+
+Sildur's exposes cloud representation as a deliberate choice: default Minecraft clouds, 2D clouds, volumetric lighting/cloud treatment, and combined volumetric-plus-2D modes have appeared in its options. Its changelog also records that cloud calculations were optimized to avoid being evaluated twice for sky and water. The useful lesson for Kavora is to separate representation and composition from transport, and to avoid duplicate cloud evaluation across consumers.
+
+No Sildur's source or assets are copied.
+
 ### BSL and AstraLex
 
 Project references:
