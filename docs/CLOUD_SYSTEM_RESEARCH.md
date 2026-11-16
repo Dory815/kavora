@@ -160,9 +160,10 @@ Visual matrix: sparse cumulus; broken cumulus at 30-60% apparent coverage;
 cloud-rich cumulus at 60-85%; irregular stratocumulus deck; mixed cumulus/deck;
 humid congestus; cirrus over low clouds; rain/overcast transition. Review
 side-lit, sunward, antisolar, horizon, zenith, sunset and twilight views. The
-transport tests also cast a ring of 10-degree horizon rays through broken and
-cloud-rich deck weather, rejecting both a uniformly clear horizon and a
-continuous opaque band.
+transport tests also cast 10-degree horizon rays from 12 regional origins
+through broken and cloud-rich deck weather, rejecting a uniformly clear or
+uniformly cloud-filled local horizon field. The full-distance horizon band is
+checked in the rendered A/B matrix.
 
 Structural diagnostics: sky coverage, connected-component size distribution,
 multi-scale spatial autocorrelation, edge-length distribution, per-family
