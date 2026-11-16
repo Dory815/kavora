@@ -41,6 +41,8 @@ def main():
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=288)
     parser.add_argument("--repeat", type=int, default=3)
+    parser.add_argument("--views", default="top,45,horizon",
+                        help="Comma-separated preview views; defaults to top, oblique and horizon")
     parser.add_argument("--skip-radiance", action="store_true",
                         help="Render opacity only when no atmosphere fixture is available")
     args = parser.parse_args()
@@ -66,7 +68,7 @@ def main():
                 "--height", str(args.height),
                 "--repeat", str(args.repeat),
                 "--warmup",
-                "--views", "top,zenith,45,horizon,zenith90",
+                "--views", args.views,
                 "--layers", "low",
                 "--low-base", "800",
                 "--low-thickness", "1500",
