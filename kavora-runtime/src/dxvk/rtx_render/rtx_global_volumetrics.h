@@ -63,7 +63,7 @@ namespace dxvk {
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, thicknessMeters, 1500.0f, "Maximum cumulus thickness. Local weather determines the height of each formation.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, shapeScaleMeters, 1024.0f, "Period of the base shape volume. Low-cloud weather spans 128 periods, high-cloud weather spans 32, and erosion detail spans one sixteenth period.",
+    RTX_OPTION_ARGS("rtx.clouds", float, shapeScaleMeters, 1024.0f, "Cloud field scale in meters. The base volume spans 2 scale units, low weather 64, high weather 32, and erosion detail one eighth.",
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, extinctionPerMeter, 0.03f, "Cloud extinction at unit density, per meter.",
       args.minValue = 0.0f);
@@ -79,9 +79,9 @@ namespace dxvk {
       args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, highMaxDistanceMeters, 96000.0f, "High-cloud visibility distance, including its fade to the background sky.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", uint32_t, steps, 160u, "Spatial integration quality of the cloud field. Longer rays use proportionally more density samples.",
-      args.minValue = 8u, args.maxValue = 256u);
-    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow quality. Controls spatial sampling and a bounded low-cloud query budget, plus high-cloud integration cells.",
+    RTX_OPTION_ARGS("rtx.clouds", uint32_t, steps, 384u, "Maximum view integration cells per cloud-layer interval. Short rays use fewer cells.",
+      args.minValue = 8u, args.maxValue = 512u);
+    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow quality. Controls shared optical-depth volume resolution and bounded local integration.",
       args.minValue = 1u, args.maxValue = 16u);
   };
 
@@ -339,8 +339,9 @@ namespace dxvk {
     VolumeArgs getVolumeArgs(CameraManager const& cameraManager, FogState const& fogState, bool enablePortalVolumes);
 
     void dispatch(class RtxContext* ctx, uint32_t numActiveFroxelVolumes);
-    // Publishes radiance, transmittance and the first opacity moment of each sky ray.
+    // Prepares shared cloud lighting and publishes sky radiance, transmittance and opacity moments.
     void dispatchCloudSky(class RtxContext* ctx, const VolumeArgs& volume);
+    Rc<DxvkImageView> getCloudLightOpticalDepth(uint32_t light) const { return m_cloudLightOpticalDepth[light].view; }
     Rc<DxvkImageView> getCloudAmbient() const { return m_cloudAmbient.view; }
     Rc<DxvkImageView> getCloudSky() const { return m_cloudSky.view; }
     Rc<DxvkImageView> getCloudSkyDistanceMoment() const { return m_cloudSkyDistanceMoment.view; }
@@ -369,6 +370,9 @@ namespace dxvk {
     virtual void releaseDownscaledResource() override;
 
   private:
+    void dispatchCloudLighting(class RtxContext* ctx, const CloudArgs& clouds);
+
+    Resources::Resource m_cloudLightOpticalDepth[2];
     Resources::Resource m_cloudAmbient;
     Resources::Resource m_cloudSky;
     Resources::Resource m_cloudSkyDistanceMoment;

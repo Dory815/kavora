@@ -38,41 +38,53 @@ limitations are recorded in
 
 ## Low-cloud morphology
 
-The low layer follows the weather/shape/detail separation described in
-[Schneider and Vos, 2015](https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn).
-The implementation and texture weights are authored here. Inverse-Worley
-feature centers add convex billows to a broader Perlin envelope. A periodic
-detail field displaces those billows and erodes their boundaries, so smaller
-lobes remain attached to the main cloud instead of appearing only as detached
-fragments. No Beer-Powder brightness term is used.
+The low layer separates regional distribution, connected cloud bodies and
+surface billows. It follows the hierarchy described in
+[Schneider and Vos, 2015](https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn)
+and studied in [Revelation](https://github.com/HaringPro/Revelation/tree/d5911393856d9dd97375b46a1a088e6b8fddd755),
+revision `d5911393856d9dd97375b46a1a088e6b8fddd755` (Apache-2.0).
+Revelation uses an authored coverage/type map, a vertical-profile lookup and
+a two-kilometre base volume. Here the field is independently generated from
+Kavora's existing noise, analytical profiles and filtered density moments.
+No Revelation source blocks, density formula, noise assets, cloud maps or
+profile lookups are included. No Beer-Powder brightness term is used.
 
-The low weather tile organizes regional cloud groups and clear corridors.
-At the default shape scale its coverage octaves span 8192, 4096, 2048 and
-1024 meters. A 512-meter cell field adds smaller updraft groups. The finest
-coverage octave and cell field have eight and four weather texels per cell,
-respectively. Cloud type changes over larger 16384- and 8192-meter scales.
+The low weather tile spans 64 shape-scale units. Broad moisture octaves at
+32768 and 16384 metres gate the regions that can form clouds. Separate updraft
+fields at 2048, 1024 and 512 metres form connected bodies and smaller groups
+within those regions. This replaces the evenly distributed fine Worley clumps;
+three-dimensional noise supplies the body's convex billows rather than
+selecting isolated little clouds. Type varies continuously over 4096- and
+2048-metre fields, so nearby groups need not all have the same development.
+These are input-field scales, not fixed cloud diameters.
 
-A separate vector phase varies the base volume within each region. Four
-integer hashes define the corners of a lattice with four shape periods per
-cell, and quintic interpolation joins them with continuous first and second
-derivatives. Each component stays within one quarter of a shape period:
-4096-meter lattice cells and up to 256 meters of displacement at the default
-scale. The largest component derivative is `0.5 * 1.875 / 4 = 0.234375`.
-The horizontal derivative row sum remains below one, preventing folds of the
-horizontal coordinate mapping. This field is independent of coverage and
-weather controls, follows the same world advection, and is cached with the
-local column for density and illumination. It is a bounded procedural shape
-variation, not a simulated wind velocity or a thermodynamic cloud model.
+Local allowed thickness is
+`thickness * (0.22 + 0.78 * smoothstep(0.1, 0.9, type)) * (0.4 + 0.6 * coverage)`.
+The continuous height profile and final density threshold determine the actual
+occupied top. The shared condensation base remains 800 metres with the usual
+192-metre host cloud height and 608-metre offset; it is not randomized between
+neighbouring columns. The 1500-metre configured thickness remains the shell's
+upper bound. This permits shallow and moderately developed bodies while
+retaining a coherent base, instead of turning the field into independently
+extruded terrain columns.
 
-Coverage controls occupancy separately from the condensation ramp. The height
-profile and erosion are applied before the density threshold; decreasing
-regional coverage therefore opens the sky without turning every remaining
-cloud into transparent smoke. Vertical noise coordinates are relative to the
-cloud base, so changing altitude moves the same field instead of silently
-selecting another three-dimensional noise slice. The default condensation offset
-is 608 meters above the host cloud height: an 800-meter base with the usual
-192-meter host height. A 1500-meter maximum thickness still bounds the layer;
-local weather determines each formation's smaller actual height.
+The base volume spans two shape-scale units, with billow inputs at 512, 256,
+128, 64 and 32 metres by default. A smaller detail field displaces and erodes
+its surface without dominating the parent body. Erosion strength is reduced,
+and the condensation transition is widened from 0.04 to 0.08 to keep attached
+small lobes and soft boundaries. Coverage remains separate from this transition;
+opening a dry region does not make every surviving core transparent. Noise
+height remains relative to the cloud base, so changing altitude moves the
+field rather than silently selecting a different volume slice.
+
+Four hashes at each lattice cell's corners vary the volume's phase. Quintic
+interpolation keeps its first and second derivatives continuous. The phase
+lattice spans four base-volume periods: 8192-metre cells and up to 512 metres
+of displacement per component at default settings. Its maximum component
+derivative remains `0.5 * 1.875 / 4 = 0.234375`; the horizontal derivative row
+sum stays below one, preventing folds. The lattice follows wind and the
+64-kilometre weather wrap, including negative coordinates. This is bounded
+procedural variation, not a fluid or thermodynamic simulation.
 
 The default unit-density extinction is 0.03 per meter. Separating coverage
 from condensation increased density inside the retained cores; keeping the
@@ -92,7 +104,13 @@ unequal connected lobes, mostly white sunlit bodies with local soft gray
 undersides, irregular blue openings, and a continuous near/middle/far size
 hierarchy. Mixed cumulus/stratocumulus photographs also retain locally darker
 cloud bases; the review does not require every shaded face to become white.
-Numerical density moments are filtering checks, not a visual acceptance criterion.
+[Janne Naukkarinen's lake scene](https://commons.wikimedia.org/wiki/File:Cumulus_mediocris_3.JPG)
+and [Kreuzschnabel's spring scene](https://commons.wikimedia.org/wiki/File:Cumulus_mediocris-1.jpg)
+also constrain connected bodies, different development heights and broad blue
+openings. Their camera fields of view, exposure and cloud distances are not
+matched to the diagnostic renderer; image occupancy is not a physical size
+measurement. Numerical density moments are filtering checks, not a visual
+acceptance criterion.
 
 ## Density and filtering
 
@@ -105,12 +123,13 @@ device. All three have complete mip chains, built by the cloud noise filter:
 | Erosion | 32 cubed | RGBA8 | Three detail frequencies |
 | Weather | 1024 square | RGBA16F | Coverage and its square, cumulus type, finished high-cloud density |
 
-The base period defaults to 1024 meters. Erosion occupies one sixteenth of that
-period. Low-cloud weather occupies 128 base periods (131072 meters by default),
-and high-cloud weather occupies 32. Camera motion neither regenerates noise nor
+The scale option defaults to 1024 metres. The base volume spans two scale
+units (2048 metres); erosion spans one sixteenth of that volume period
+(128 metres). Low-cloud weather spans 64 scale units (65536 metres), and
+high-cloud weather spans 32 (32768 metres). Camera motion neither regenerates noise nor
 publishes a different density field. Wind translates both layers in the same
 world frame, with a shared wrap at the larger of these power-of-two periods.
-The low shape phase has the same 128-period wrap. These are finite periodic
+The low shape phase has the same 64-scale-unit wrap. These are finite periodic
 fields; a sufficiently large orthographic map can still expose the full repeat.
 
 Clouds have two non-overlapping curved shells. The lower shell contains
@@ -246,46 +265,87 @@ distance. Full clear-sky radiance remains the cloud lighting environment;
 view rays begin with an exterior boundary that excludes the integrated air.
 See [air-transport.md](air-transport.md) for ownership, units and approximations.
 
-The shared `CloudRayGrid` resolves nearby clouds at the spatial budget and
-grows cells geometrically once the projected pixel footprint is wider. Its
-forward boundaries and inverse cell lookup are shared by view transmission,
-atmosphere segments and the sky pass. Prefix checkpoints and clipped tails
-therefore retain the same samples. Density filtering uses the actual cell span
-and pixel cone, including the final partial cell.
+The shared `CloudRayGrid` has a strict cell budget for each complete shell
+interval. Short intervals retain their spatial spacing; long intervals use a
+linear-plus-quadratic distance map within the same budget. Forward boundaries
+and inverse lookup are shared by view transmission, atmosphere segments and
+the sky pass. Prefix checkpoints and clipped tails keep the original samples.
+Density filtering uses the actual cell span and pixel cone, including the last
+partial cell. A curved shell can produce two intervals, and there are two
+layers; the configured budget is per interval, not for the sum of all four.
 
-Low-cloud self-shadowing integrates optical depth toward the sun and moon on
-a fixed distance grid anchored at the ray origin. With the default shape scale
-and Ultra quality, each 64-meter cell has two Gaussian nodes; each node
-represents one fixed 32-meter half-cell. The shell entry selects the existing
-support index rather than moving the grid. Shell boundaries, finite endpoints
-and the local illumination boundary clip only integration weights. Samples
-and their density and height footprints stay fixed. The local and exterior
-optical depths therefore partition the same positive sampled field.
+### Shared low-cloud lighting
 
-Low-light rays skip complete supports strictly below the cloud base. For a
-support of length `s`, the radial height footprint is at most `s` when
-`s <= 2 * radius`. A conservative radius bound guards this condition. The ray
-then intersects a smaller sphere at `baseHeight - s`; supports entirely inside
-that sphere satisfy the density's exact zero-profile condition with at least
-half a support of radial margin. Skipping advances the existing support index
-without moving nodes, filtering or weights. The boundary supports remain
-evaluated, and an invalid radius bound disables the optimization.
+`RtxGlobalVolumetrics` builds low-cloud optical-depth data before primary
+traversal, alongside the existing cloud-sky preparation. The shader calculation
+lives in `cloud_lighting_cache.slang`; its entry point owns descriptor bindings
+and output writes. The common bindings and the composite adapter publish the
+same images to camera, PSR, reflection, transmission and visibility consumers.
+There is no second cloud density model or screen-space shadow history.
 
-Ordinary density lookups are filtered to at most one base texel across the
-light ray: a cell-sized isotropic mip would mix neighboring off-ray clouds
-into otherwise clear sunlight paths. Height-profile integration uses each
-sample's vertical support. Very small custom shape scales can exceed the
-finite query budget; only then does the fixed support widen, with an additional
-continuous density filter for the unresolved width. That budget fallback loses
-shadow detail and is not equivalent in precision to an unlimited fine trace.
-It leaves the default grid and its filtering unchanged.
+Each active celestial light has a light-aligned R32F prefix volume. A thread
+integrates one entire light column and writes cumulative optical depth at its
+nodes. The grid encloses the current view's low shell and surface-shadow origins,
+with the configured light range beyond them. Its extent follows the light
+orientation, while its allocation depends on quality and whether the far
+cascade is needed. R32F retains the
+precision needed to subtract finite intervals from long, opaque prefixes.
+Cells wholly outside the low shell are skipped conservatively. Within occupied
+cells, bounded two-point Gaussian quadrature resolves density along the ray;
+its footprint does not gather an entire transverse cache cell of off-ray cloud.
 
-The high shell retains fixed exponential cells with two-point quadrature when
-wide enough. It uses its maximum chord above the lower atmosphere and a smaller
-cell budget. Both layers keep one grid across the inner clear-air gap, so a new
-grazing intersection cannot reset the far segment's samples. Each sample
-evaluates only the current layer. No shadow volume or separate shadow history
-is allocated. Real low-sun shadow motion remains in the geometry.
+Up to 24 kilometres of low-cloud visibility, one grid serves each light. Longer
+view ranges retain this full-resolution near field and add a second grid at
+half the resolution on every axis. The near grid still includes the complete
+60-kilometre light path; increasing view distance therefore does not coarsen
+nearby self-shadowing. The two logical grids share one 3D image, stacked in
+depth. Half-resolution columns occupy only their valid U/V region. Queries
+stay between each grid's own endpoint texel centres and cannot filter across
+the packed boundary. Between 18 and 24 kilometres from the camera anchor, a
+smooth weight blends transmitted energy. A near-field query participates only
+when its complete finite interval fits within the near grid. The 24-kilometre
+near radius is explicitly converted from metres by the host, independent of
+the artistic shape scale.
+
+A lookup subtracts the two endpoints separately in each of four neighbouring
+light columns, then interpolates **transmittance** between those columns.
+Interpolating optical depth before exponentiation would incorrectly darken
+unresolved clear paths. The returned effective depth is converted back with a
+stable shifted logarithm. Filtering transmitted energy makes these effective
+depths non-additive: `CloudOpticalDepth` keeps `local`, `external` and `total`
+separate, and single scattering and visibility use `total` directly.
+
+The near beam retains a bounded fine integration in the original density
+field. Its range is the larger of one quarter of the shape scale and the
+widest cache cell in world units, so a coarse table cannot replace local
+cloud detail inside its own footprint. It replaces that interval in the
+cache query; the remaining interval is queried directly, without subtracting
+two already-filtered effective depths. The finite-side multiple-scattering
+closure can request the same bounded correction in the reverse direction.
+The local sample count remains bounded by light quality, including at the
+default 96-kilometre view range. It does not repeat a 60-kilometre density march at each occupied view sample.
+
+Surface light sampling retains the sampled direction of the solar or lunar
+disk for this local correction. A small celestial disk, up to 0.02 radians in
+angular radius, shares its central-axis far shadow. Larger source cones and
+rays outside the cache domain use a bounded, filtered fallback. Volume
+illumination retains its existing central-direction celestial approximation.
+This finite angular/spatial filtering is an approximation, particularly around
+thin distant occluders; it does not replace surface path tracing or geometry
+visibility.
+
+Diffuse illumination keeps the original bounded, local radial-column
+integration. Its samples share the prepared weather/phase column and preserve
+small concavities and attached billows in the two-stream closure. A coarse
+view-wide column texture was rejected because its transverse footprint flattened
+those features. Only directional shadow prefixes are cached. They are rebuilt
+from the current density and light state each frame, so camera cuts, wind and
+sunset do not depend on stale light history.
+
+The high shell retains its bounded exponential light cells and two-point
+quadrature for wide cells. Its morphology and density field are independent of
+the low-cloud cache. Both layers still participate in the shared extinction and
+in-scattering calculation. Real low-sun shadow motion remains in the geometry.
 
 Single scattering uses a normalized dual-lobe Henyey-Greenstein phase function
 and the measured optical depth toward each light. Diffuse illumination uses a
@@ -378,69 +438,93 @@ The requested sky-map mode applies only to hosts without that extension:
 
 | Profile | Requested transport without physical air | Map height | View quality | Light quality |
 | --- | --- | ---: | ---: | ---: |
-| Ultra | World volume | 1024 when map mode is selected | 160 | 16 |
-| High | Sky map | 1024 | 128 | 12 |
-| Medium | Sky map | 640 | 96 | 8 |
-| Low | Sky map | 384 | 64 | 4 |
+| Ultra | World volume | 1024 when map mode is selected | 384 | 16 |
+| High | Sky map | 1024 | 256 | 12 |
+| Medium | Sky map | 640 | 160 | 8 |
+| Low | Sky map | 384 | 96 | 4 |
 
 Maps have a 2:1 aspect ratio. World-volume mode can generate a separate
-64-pixel-high map for fog illumination. View quality controls spatial spacing,
-so long rays can take more samples than the quality value. At the default
-1024-meter shape period, the low-layer base spacing is 8 meters at Ultra, down
-from 16 meters before this rework. Light quality controls spatial resolution,
-not the actual density-query count. At Ultra, low-layer shadow paths of
-0.25, 1, 5 and 60 kilometers require up to 8, 32, 157 and 1875 density evaluations
-at the default scale. The previous sparse exponential quadrature used up to
-124 evaluations but could miss entire narrow clouds. This is a substantial
-sampling-cost increase. Visibility can terminate once transmittance is below
-`1e-8`. The illumination trace retains the additional depth needed by the local
-column closure; near-horizontal light can require the full range even through
-occupied clouds. The 1875-query bound must not be interpreted as an empty-ray
-case alone. An out-of-column evaluation returns after its weather lookup;
-occupied samples also read base and detail textures.
-The conservative inner-shell skip removes those queries when their entire
-filtered support is below the base. It adds an analytic sphere intersection
-and index-range check. Rays without that clear interval retain the full cost;
-the worst-case query bounds are unchanged.
-Preparing a column with nonzero cumulus coverage adds four integer hashes and
-quintic interpolation for its shape phase, with no additional texture lookup.
-The vertical lighting samples reuse that prepared phase. Empty coverage skips
-the hash calculation. This arithmetic is additional work, even though texture
-memory and the number of density queries are unchanged.
-Splitting the local boundary adds no queries. A finite-side solve can add up
-to 32 queries for its 1024-meter reverse ray, giving a default low-layer maximum
-of 1907 queries per celestial light before early termination. Light visibility
-does not need that reverse trace. The upper layer uses half the light-quality
-value, with a minimum of four cells and at most two queries per cell.
+64-pixel-high map for fog illumination. View quality is a true upper bound on
+cells per shell interval. At the default shape scale the nearest low-cloud
+spacing is approximately 3.33 metres at Ultra; distant cells widen smoothly to fit the
+budget, with density filtered to their actual span. Lower profiles reduce
+these budgets without selecting a different morphology or scattering model.
 
-The low-layer forward trace has an explicit cap of `256 * lightSteps` queries:
-4096, 3072, 2048 and 1024 for Ultra, High, Medium and Low. Its support is at least
-the full configured shadow range divided by one less than that cap. This
-limit depends on the full range, never the current shell exit or prefix length,
-so clipping cannot relocate the grid. At the standard 60-kilometer range the
-cap affects shape scales smaller than about 469 meters; ordinary default
-sampling remains below it. This prevents extreme user scales from creating
-unbounded GPU work. The fallback's extra filtering widens continuously with
-the square root of the additional squared support width.
+The 384-cell Ultra baseline was selected after full-resolution comparisons
+showed regular integration bands at 160 and residual bands at 256. This raises
+the bounded view budget; it does not restore the unbounded nested shadow loop.
+The native and Java defaults agree, and custom view budgets range from 8 to 512.
+Settings schema 6 updates an unedited stock profile only when its saved cloud
+budget matches the former tier. Custom profiles and explicitly edited values
+are preserved. Before/after previews use their respective released Ultra
+budgets (old spacing parameter 160, new cell limit 384), with the same camera,
+cloud ranges, light, weather and display settings.
 
-Diffuse-column sampling uses the light-cell budget with a minimum of two.
-Ultra, High, Medium and Low therefore use 16, 12, 8 and 4 samples per occupied
-low-cloud cell. One shared weather lookup and two base/detail lookups per
-sample add at most 33 texture reads at Ultra. The high layer uses two density
-samples. Both celestial lights and the sky reuse
-the same column. No additional volume texture or lighting history is allocated.
-The environment integral uses one 256-thread workgroup and 8192 texture reads
-per frame, shared across all quality levels. Its output contains one RGBA32F
-texel, with allocation overhead determined by the driver. Each cloud ray reads
-that cached texel instead of repeating a hemisphere integration.
+The old nested loop could issue 1875 forward density queries per occupied
+view sample at the default 60-kilometre light range, plus a vertical column and
+reverse local beam. Its early-out included a plane-parallel depth divided by
+the solar elevation cosine; near sunset this could retain the entire long
+trace even through occupied clouds. The previous view-quality setting also
+controlled spacing rather than a total cell count. Splitting command submission
+cannot reduce that repeated shader work. The shared prefixes remove this long
+per-sample loop from camera and PSR paths alike.
 
-The three noise textures and their mip chains occupy about 20.0 MiB before
-driver allocation overhead. They are independent of output resolution. Motion
+Let `N = 16 * clamp(lightSteps, 4, 16)`. Each directional image contains
+`N * (N / 2) * N` R32F values at view ranges up to 24 kilometres. With the far
+cascade, physical depth becomes `N + N / 2`; only the valid half-resolution
+columns of the extra region are generated. The owner reuses matching allocations
+and releases inactive light images. One active light costs 32 / 48 MiB at Ultra
+(single / two cascades); two lights cost 64 / 96 MiB, before driver overhead.
+The corresponding two-light totals for High, Medium and Low are 27 / 40.5,
+8 / 12 and 1 / 1.5 MiB. This is new storage in exchange for sharing long-path
+work across all viewing and visibility rays.
+
+Prefix construction has a finite budget independent of output resolution.
+Each directional grid has `N * (N / 2) * (N - 1)` segments, each with at most
+`max(1, lightSteps / 2)` Gaussian pairs before shell skipping. At Ultra this is
+at most 133,693,440 density queries for the near grid of each active light. The
+half-resolution far grid adds at most 16,646,144 queries, making 150,339,584
+per active light when both grids are needed, a 12.45% increase. This work is
+shared by the whole frame. These are worst-case bounds: off-shell segments skip density and empty weather
+can skip the base/detail lookups. Cache generation must be included when
+comparing performance, rather than timing only the subsequent ray dispatch.
+
+At an occupied low-cloud view sample, an in-domain celestial beam uses at most
+`max(2, lightSteps)` local density queries, or 16 at Ultra. The finite-side
+solve may add 16 in the reverse direction. The 18–24 kilometre transition
+region can evaluate both cascades, doubling these bounded local beam queries.
+The radial column is still shared. Each cached interval uses at most sixteen
+integer texel loads (four U/V columns, two endpoints, two depth nodes) and
+interpolates transmitted energy. Explicit depth interpolation avoids touching
+uninitialized packed padding even through a hardware filter's zero-weight tap. A visibility or unsplit
+query needs one interval; a beam split between local and external blockers
+needs up to three intervals, including the independent complete beam. The
+local radial column retains `max(2, lightSteps)` density samples, or 16 at
+Ultra, shared by both celestial lights and the sky. An uncached low-light ray is
+limited to `max(4, 2 * lightSteps)` density queries, or 32 at Ultra, with explicit
+filtering for its wider supports. The fallback loses fine distant shadow
+detail; it never restarts the old 1875-query path.
+
+The upper layer uses half the light-quality value, with a minimum of four
+cells and up to two queries per cell or clipped part. Its local vertical
+profile uses two density samples. The environment integral remains one
+256-thread workgroup with 8192 environment reads per frame, shared across all
+quality levels. Its output is one RGBA32F texel. No per-pixel sky-hemisphere
+integration is added.
+
+The three source noise textures and their mip chains still occupy about
+20.0 MiB before driver allocation overhead. The morphology change adds no
+texture allocation or density sampler. `Resources::prepareCloudNoise` returns
+when the base LUT is already valid; its three generators and 22 mip dispatches
+run once per resource lifetime, not once per frame or camera movement. A low
+cloud density query still performs at most one weather, one base and one
+detail lookup. An empty column can skip both 3D reads. Noise octave and Worley
+neighbourhood loops stay in the bake, outside the ray integrators. They are independent of output resolution. Motion
 guides add one word per primary atmosphere record and one per checkpoint. At
 1920 by 1080 internal resolution with the Ultra checkpoint layout this adds
 about 19.8 MiB to path storage. These are storage calculations, not measured
-GPU performance. Denser shadow integration, the extra cloud layer and larger
-map budgets require hardware profiling before assigning a frame-time cost.
+GPU performance. The shared prefix construction, local corrections and view budgets require
+hardware profiling before assigning a frame-time cost.
 High-density evaluation needs one weather-texture lookup. Placement and atlas
 sampling are confined to the once-per-device generator, which visits at most
 24 packets rather than the former 36. The pinned atlas reference is released
@@ -457,6 +541,7 @@ in the Python environment used by the test, then run from `kavora-runtime`:
 
 ```sh
 python tests/rtx/unit/test_cloud_transport.py
+python tests/rtx/unit/test_cloud_lighting.py
 python tests/rtx/unit/test_cloud_scattering.py --device vulkan
 python tests/rtx/unit/test_atmosphere_moments.py
 ```
@@ -469,14 +554,16 @@ and thick layers with the independent height-profile integral. Constant-field
 checks compare spherical-shell column depth across view angles, pixel
 footprints and sampling budgets. They do not validate
 game presentation, temporal reconstruction quality or GPU frame time.
-Low-cloud checks exercise the shared 128-period wind wrap, negative
+Low-cloud checks exercise the shared 64-scale-unit wind wrap, negative
 coordinates, phase bounds, continuity and derivative bounds at the phase
 lattice boundaries, and independence from coverage and weather controls.
-Fixed light-support checks exercise clipped-prefix linearity, local/exterior
-partition invariance, unchanged default quality grids and full-range traces
-at the smallest supported shape scales. Empty-support checks evaluate the
-production profile bound at every skipped node, including below-horizon rays,
-translated origins, Z-up and the radius-bound fallback.
+Lighting-cache tests exercise prefix differences against constant-density
+analytic intervals, forward/reverse rays, out-of-domain
+fallbacks, finite celestial disks and a fine independent density integration.
+They test the actual production cache builders, not a substitute Python density
+model. Filtered effective depths are not assumed to be additive. View-grid
+checks enforce the configured interval budget and verify prefix/inverse
+consistency across long grazing rays.
 The scattering test checks sky quadrature normalization and angular moments
 in several up frames. It compares the production boundary and beam solutions
 with independent integrals, exercises reflective-terrain, finite-domain,
@@ -507,6 +594,12 @@ The default map is 32 kilometers wide. `--origin`, `--wind`, `--coverage`,
 different revision's shader directory for a matched comparison. Generated
 textures are cached by their shader and atlas-byte fingerprint. A test-only `--noise-seed`
 override exercises other realizations of the same generator.
+`--max-distance` and `--high-max-distance` independently fix the two view ranges;
+pass both when comparing a 24-kilometre scene. `--warmup --repeat 3` excludes
+the first dispatch from repeated timing and records the shared lighting build
+separately from ray dispatch/readback. The preview executes the production
+prefix builders and retains their source hashes. Software-Vulkan timings
+characterize this diagnostic workload, not hardware GPU frame time.
 `--sun-elevation` and `--sun-azimuth` select diagnostic light direction;
 `--sun-irradiance-rgb` and `--ambient-rgb` select diagnostic illumination.
 `--high-base`,

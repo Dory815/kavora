@@ -31,12 +31,16 @@
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/clouds/cloud_ambient_binding_indices.h"
+#include "rtx/pass/clouds/cloud_lighting_binding_indices.h"
+#include "rtx/pass/clouds/cloud_lighting_cache.h"
 #include "rtx/pass/clouds/cloud_sky_binding_indices.h"
 #include "rtx/pass/volumetrics/volume_integrate_binding_indices.h"
 #include "rtx/pass/volumetrics/volume_filter_binding_indices.h"
 
 #include <rtx_shaders/volume_integrate_rayquery_raygen.h>
 #include <rtx_shaders/generate_cloud_ambient.h>
+#include <rtx_shaders/generate_cloud_light_sun.h>
+#include <rtx_shaders/generate_cloud_light_moon.h>
 #include <rtx_shaders/generate_cloud_sky.h>
 #include <rtx_shaders/volume_filter.h>
 #include <rtx_shaders/volume_restir_initial.h>
@@ -53,6 +57,28 @@ namespace dxvk {
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
+    class GenerateCloudSunShader : public ManagedShader {
+      SHADER_SOURCE(GenerateCloudSunShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_light_sun)
+      BINDLESS_ENABLED()
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+        RW_TEXTURE3D(CLOUD_LIGHTING_BINDING_OUTPUT)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(GenerateCloudSunShader);
+
+    class GenerateCloudMoonShader : public ManagedShader {
+      SHADER_SOURCE(GenerateCloudMoonShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_light_moon)
+      BINDLESS_ENABLED()
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+        RW_TEXTURE3D(CLOUD_LIGHTING_BINDING_OUTPUT)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(GenerateCloudMoonShader);
+
     class GenerateCloudAmbientShader : public ManagedShader {
       SHADER_SOURCE(GenerateCloudAmbientShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_ambient)
       BINDLESS_ENABLED()
@@ -669,6 +695,7 @@ namespace dxvk {
     clouds.highMaxDistance = CloudOptions::highMaxDistanceMeters() * cloudWorldScale;
     // Preserve the celestial light path when the camera's cloud range is shortened.
     clouds.lightMaxDistance = 60000.0f * cloudWorldScale;
+    clouds.lightingNearDistance = 24000.0f * cloudWorldScale;
     // Water droplets have negligible absorption in the visible spectrum.
     clouds.albedo = 1.0f;
     clouds.steps = CloudOptions::steps();
@@ -789,8 +816,50 @@ namespace dxvk {
     return volumeArgs;
   }
 
+  void RtxGlobalVolumetrics::dispatchCloudLighting(RtxContext* ctx, const CloudArgs& clouds) {
+    if (!clouds.enable || clouds.extinction <= 0 || clouds.thickness <= 0) {
+      m_cloudLightOpticalDepth[0].reset();
+      m_cloudLightOpticalDepth[1].reset();
+      return;
+    }
+    const uint32_t resolution = CLOUD_LIGHTING_RESOLUTION_PER_STEP
+      * std::clamp(clouds.lightSteps, uint32_t(CLOUD_LIGHTING_MIN_QUALITY), uint32_t(CLOUD_LIGHTING_MAX_QUALITY));
+    const bool farCascade = clouds.lightingNearDistance > 0 && clouds.maxDistance > clouds.lightingNearDistance;
+    const uint32_t depth = resolution + (farCascade ? resolution / 2 : 0);
+    const VkExtent3D lightExtent { resolution, resolution / CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR, depth };
+    Rc<DxvkContext> resourceContext = ctx;
+    ctx->bindCommonRayTracingResources();
+    ctx->bindResourceView(BINDING_CLOUD_SUN_DEPTH_INPUT, nullptr, nullptr);
+    ctx->bindResourceView(BINDING_CLOUD_MOON_DEPTH_INPUT, nullptr, nullptr);
+    for (uint32_t lightIndex = 0; lightIndex < 2; lightIndex++) {
+      const auto& light = clouds.lights[lightIndex];
+      bool active = light.irradiance.x > 0 || light.irradiance.y > 0 || light.irradiance.z > 0;
+      if (light.hasRadianceProfile) {
+        for (const auto& sample : light.radianceProfile) {
+          active |= sample.x > 0 || sample.y > 0 || sample.z > 0;
+        }
+      }
+      auto& opticalDepth = m_cloudLightOpticalDepth[lightIndex];
+      if (!active) {
+        opticalDepth.reset();
+        continue;
+      }
+      if (!opticalDepth.isValid() || opticalDepth.image->info().extent != lightExtent) {
+        opticalDepth = Resources::createImageResource(resourceContext,
+          lightIndex == 0 ? "cloud sun optical depth" : "cloud moon optical depth", lightExtent,
+          VK_FORMAT_R32_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
+      }
+      ScopedGpuProfileZone(ctx, "Cloud Directional Optical Depth");
+      ctx->bindResourceView(CLOUD_LIGHTING_BINDING_OUTPUT, opticalDepth.view, nullptr);
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT,
+        lightIndex == 0 ? GenerateCloudSunShader::getShader() : GenerateCloudMoonShader::getShader());
+      ctx->dispatch((lightExtent.width + 7) / 8, (lightExtent.height + 7) / 8, 1);
+    }
+  }
+
   void RtxGlobalVolumetrics::dispatchCloudSky(RtxContext* ctx, const VolumeArgs& volume) {
     const auto& clouds = volume.clouds;
+    dispatchCloudLighting(ctx, clouds);
     if (!clouds.enable) {
       m_cloudAmbient.reset();
       m_cloudSky.reset();

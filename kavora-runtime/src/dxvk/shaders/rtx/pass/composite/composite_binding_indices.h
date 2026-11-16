@@ -76,6 +76,8 @@
 #define COMPOSITE_AIR_TRANSMITTANCE_INPUT                            42
 #define COMPOSITE_AIR_SCATTERING_INPUT                               43
 #define COMPOSITE_AIR_LINEAR_SAMPLER                                 44
+#define COMPOSITE_CLOUD_SUN_DEPTH_INPUT                              45
+#define COMPOSITE_CLOUD_MOON_DEPTH_INPUT                             46
 
 // Inputs/Outputs
 

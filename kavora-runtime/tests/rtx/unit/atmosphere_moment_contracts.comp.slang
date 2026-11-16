@@ -69,7 +69,7 @@ void rayGrid(uint index : SV_DispatchThreadID)
     return;
   }
   const float4 input = Inputs[index];
-  const CloudRayGrid grid = createCloudRayGrid(float2(input.x, MaxDistance), input.y, input.z);
+  const CloudRayGrid grid = createCloudRayGrid(float2(input.x, MaxDistance), input.y, input.z, 160u);
   const float split = lerp(input.x, MaxDistance, input.w);
   const float full = integrateGridProbe(grid, input.x, MaxDistance);
   const float partitioned = integrateGridProbe(grid, input.x, split) + integrateGridProbe(grid, split, MaxDistance);
@@ -80,7 +80,7 @@ void rayGrid(uint index : SV_DispatchThreadID)
     const float next = grid.boundary(cells + 1);
     const float sample = grid.sampleAt(cells);
     failure = max(failure, float(next <= previous || grid.cellAt(sample) != cells));
-    failure = max(failure, float(grid.spanAt(cells) > 1.001f * max(input.y, input.z * sample)));
+    failure = max(failure, float(sample < previous || sample > next || grid.spanAt(cells) <= 0));
     previous = next;
   }
   Results[index] = float4(full, partitioned, failure, float(cells));

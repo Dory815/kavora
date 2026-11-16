@@ -105,10 +105,9 @@ public float cloudFiniteSideWeight(float predictedLocalDepth, float measuredLoca
 // not local diffusion. A convex blend retains the vertical slab in its planar
 // limit. This is a local-neighborhood closure, not an exact 3D transport solve.
 public float cloudDiffuseDirectionalRadiance(float2 verticalDepth, float lightCosine,
-  float2 directionalDepth, float reverseLocalDepth, float predictedLocalDepth)
+  float2 directionalDepth, float reverseLocalDepth, float predictedLocalDepth, float lightOpticalDepth)
 {
   const float cosine = abs(lightCosine);
-  const float lightOpticalDepth = directionalDepth.x + directionalDepth.y;
   const float2 facingDepth = lightCosine >= 0 ? verticalDepth : verticalDepth.yx;
   const float externalDepth = cosine > 0 ? max(lightOpticalDepth - facingDepth.x / cosine, 0.0f) : 0;
   const float planar = cloudDiffuseBeamRadiance(facingDepth, cosine) * exp(-externalDepth);

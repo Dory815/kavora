@@ -23,6 +23,7 @@ SamplerCube<float3> SkyProbe;
 import "rtx/algorithm/atmosphere.slang";
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/algorithm/environment_radiance.slangh"
+#include "rtx/algorithm/scene_cloud_lighting.slangh"
 
 [shader("callable")]
 void main(inout AtmosphereCallData data)
@@ -34,7 +35,7 @@ void main(inout AtmosphereCallData data)
     : float3(0);
   const AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, data.distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, sceneCloudLightingCache(), ray, 0, data.distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
   data.radiance = segment.radiance;
   data.transmittance = segment.transmittance;
   data.cloudMoments = segment.cloudMoments;

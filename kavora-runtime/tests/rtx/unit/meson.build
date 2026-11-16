@@ -249,6 +249,8 @@ run_target('test_air_transport',
   command: [python_interpreter, files('test_air_transport.py')])
 run_target('test_cloud_transport',
   command: [python_interpreter, files('test_cloud_transport.py')])
+run_target('test_cloud_lighting',
+  command: [python_interpreter, files('test_cloud_lighting.py')])
 run_target('test_cloud_scattering',
   command: [python_interpreter, files('test_cloud_scattering.py'), '--device', 'vulkan'])
 run_target('test_atmosphere_moments',

@@ -130,6 +130,11 @@ Texture2D<float4> AirScatteringInput;
 layout(binding = COMPOSITE_AIR_LINEAR_SAMPLER)
 SamplerState AirLinearSampler;
 
+layout(binding = COMPOSITE_CLOUD_SUN_DEPTH_INPUT)
+Sampler3D<float> CloudSunDepthSampler;
+layout(binding = COMPOSITE_CLOUD_MOON_DEPTH_INPUT)
+Sampler3D<float> CloudMoonDepthSampler;
+
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryAlbedo;
