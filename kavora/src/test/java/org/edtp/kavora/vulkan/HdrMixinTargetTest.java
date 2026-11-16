@@ -4,7 +4,11 @@
  */
 package org.edtp.kavora.vulkan;
 
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import java.io.InputStream;
+import net.minecraft.client.renderer.RenderPipelines;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
@@ -14,6 +18,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Pins the narrow format/readback interception to the actual Minecraft binary. */
 class HdrMixinTargetTest {
+    @Test
+    void hostPipelineRetargetingPreservesShadersAndBlendState() {
+        RenderPipeline original = RenderPipelines.GUI_TEXTURED;
+        var variant = new FloatCompositionPipeline(original);
+        var color = original.getColorTargetStates().getFirst();
+        assertEquals(GpuFormat.RGBA8_UNORM, color.format());
+        assertEquals(new ColorTargetState(color.blendFunction(), GpuFormat.RGBA16_FLOAT, color.writeMask()),
+                variant.getColorTargetStates().getFirst());
+        assertEquals(original.getShaders(), variant.getShaders());
+        assertEquals(original.getVertexFormatBindings(), variant.getVertexFormatBindings());
+        assertEquals(original.getBindGroupLayouts(), variant.getBindGroupLayouts());
+        assertEquals(original.getDepthStencilState(), variant.getDepthStencilState());
+    }
+
     @Test
     void mainTargetStoresItsFormatThroughTheSuperclassConstructor() throws Exception {
         MethodNode constructor = method("com/mojang/blaze3d/pipeline/MainTarget", "<init>", "(II)V");
