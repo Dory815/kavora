@@ -52,7 +52,9 @@ def check_morphology_configuration():
         assert re.search(rf"uv \* {scale}\.0f", weather), f"missing mesoscale group frequency {scale}"
     assert "lerp(0.35f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
     assert "cumulusCoverage = saturate(0.42f + 1.85f * groups)" in weather
-    assert "deckNoise = 0.75f * regional" in weather
+    assert "deckCells = cloudWorley(float3(uv, 0.0f), 8" in weather
+    assert "deckNoise = 0.60f * regional" in weather
+    assert "0.15f * (deckCells - 0.5f)" in weather
     assert "deckCoverage = smoothstep(-0.45f, 0.05f, deckNoise)" in weather
     assert "stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type)" in weather
     assert "familyCoverage = lerp(cumulusCoverage, deckCoverage, stratiformBlend)" in weather
