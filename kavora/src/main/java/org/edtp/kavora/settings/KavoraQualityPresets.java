@@ -38,7 +38,7 @@ public final class KavoraQualityPresets {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("clouds.transport", preset == QualityPreset.ULTRA ? 0 : 1);
         values.put("clouds.skyResolution", tier(preset, 1024, 1024, 640, 384));
-        values.put("clouds.samples", tier(preset, 160, 128, 96, 64));
+        values.put("clouds.samples", tier(preset, 384, 256, 160, 96));
         values.put("clouds.shadowSamples", tier(preset, 16, 12, 8, 4));
         // The runtime clamps the maximum to the current minimum.
         values.put("lighting.minBounces", 0);

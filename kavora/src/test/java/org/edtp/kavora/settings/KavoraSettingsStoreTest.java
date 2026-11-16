@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 class KavoraSettingsStoreTest {
 
     private KavoraSettings registryWith(double[] f, int[] i, boolean[] b) {
-        int[] cloudSamples = {160};
+        int[] cloudSamples = {384};
         return new KavoraSettings(List.of(
                 KavoraSetting.ofFloat("f", SettingGroup.MATERIALS, "l", "t", 0.0, 10.0, 1.0,
                         () -> f[0], v -> f[0] = v),
@@ -31,7 +31,7 @@ class KavoraSettingsStoreTest {
                         () -> i[0], v -> i[0] = v),
                 KavoraSetting.ofBool("b", SettingGroup.SKY, "l", "t", true,
                         () -> b[0], v -> b[0] = v),
-                KavoraSetting.ofInt("clouds.samples", SettingGroup.CLOUDS, "l", "t", 8, 256, 160,
+                KavoraSetting.ofInt("clouds.samples", SettingGroup.CLOUDS, "l", "t", 8, 512, 384,
                         () -> cloudSamples[0], v -> cloudSamples[0] = v)));
     }
 
@@ -41,7 +41,7 @@ class KavoraSettingsStoreTest {
         double[] f = {1.0}; int[] i = {42}; boolean[] b = {true};
         KavoraSettings settings = registryWith(f, i, b);
         var edit = new KavoraSettingsSession(settings);
-        edit.stagePreset(QualityPreset.HIGH, Map.of("clouds.samples", 128));
+        edit.stagePreset(QualityPreset.HIGH, Map.of("clouds.samples", 256));
         @SuppressWarnings("unchecked")
         var artistic = (KavoraSetting<Boolean>) settings.byId("b");
         @SuppressWarnings("unchecked")
@@ -104,9 +104,9 @@ class KavoraSettingsStoreTest {
         new KavoraSettingsStore(file).save(registryWith(f, i, b));
 
         JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
-        assertEquals(5, root.get("version").getAsInt());
+        assertEquals(6, root.get("version").getAsInt());
         JsonObject values = root.getAsJsonObject("settings");
-        assertEquals(160, values.get("clouds.samples").getAsInt());
+        assertEquals(384, values.get("clouds.samples").getAsInt());
         assertEquals(42, values.get("i").getAsInt());
         assertFalse(values.has("f"));
         assertFalse(values.has("b"));
@@ -126,7 +126,7 @@ class KavoraSettingsStoreTest {
         assertEquals("medium", quality.get("base").getAsString());
         assertFalse(quality.get("custom").getAsBoolean());
         JsonObject values = root.getAsJsonObject("settings");
-        assertEquals(160, values.get("clouds.samples").getAsInt());
+        assertEquals(384, values.get("clouds.samples").getAsInt());
         assertFalse(values.has("i"));
         assertFalse(values.has("f"));
         assertFalse(values.has("b"));
@@ -143,7 +143,7 @@ class KavoraSettingsStoreTest {
         var settings = new KavoraSettings(List.of(
                 KavoraSetting.ofBool("materials.pomTransmissionSilhouettes", SettingGroup.PARALLAX, "l", "t", true,
                         () -> silhouettes[0], value -> silhouettes[0] = value),
-                KavoraSetting.ofInt("clouds.samples", SettingGroup.CLOUDS, "l", "t", 8, 256, 160,
+                KavoraSetting.ofInt("clouds.samples", SettingGroup.CLOUDS, "l", "t", 8, 512, 384,
                         () -> samples[0], value -> samples[0] = value)));
 
         new KavoraSettingsStore(file).load(settings);
@@ -191,7 +191,7 @@ class KavoraSettingsStoreTest {
                 {"version":3,"settings":{"clouds.samples":160,"reflection.psrr":true,"clouds.coverage":0.5}}
                 """);
         var operations = new ArrayList<String>();
-        var samples = KavoraSetting.ofInt("clouds.samples", SettingGroup.CLOUDS, "k", "t", 8, 256, 160,
+        var samples = KavoraSetting.ofInt("clouds.samples", SettingGroup.CLOUDS, "k", "t", 8, 512, 384,
                 () -> 160, next -> operations.add("samples=" + next));
         var psrr = KavoraSetting.ofBool("reflection.psrr", SettingGroup.REFLECTIONS, "k", "t", true,
                 () -> true, next -> operations.add("psrr=" + next));
@@ -242,7 +242,7 @@ class KavoraSettingsStoreTest {
     @Test
     void loadRejectsAnyVersionItDoesNotOwn(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("kavora.json");
-        for (int version : new int[]{2, 6}) {
+        for (int version : new int[]{2, 7}) {
             Files.writeString(file, """
                     {"version":%d,"quality":{"base":"low","custom":true},"settings":{"f":9.0,"i":50,"b":false}}
                     """.formatted(version));
@@ -286,7 +286,7 @@ class KavoraSettingsStoreTest {
         assertEquals(new KavoraQualitySelection(QualityPreset.HIGH, false), settings.quality());
         String migrated = Files.readString(file);
         JsonObject root = JsonParser.parseString(migrated).getAsJsonObject();
-        assertEquals(5, root.get("version").getAsInt());
+        assertEquals(6, root.get("version").getAsInt());
         var values = root.getAsJsonObject("settings");
         assertFalse(values.has("fog.heightFalloff"));
         assertFalse(values.has("image.saturation"));
@@ -327,7 +327,7 @@ class KavoraSettingsStoreTest {
         assertEquals(new KavoraQualitySelection(QualityPreset.MEDIUM, false), settings.quality());
         String migrated = Files.readString(file);
         JsonObject root = JsonParser.parseString(migrated).getAsJsonObject();
-        assertEquals(5, root.get("version").getAsInt());
+        assertEquals(6, root.get("version").getAsInt());
         var values = root.getAsJsonObject("settings");
         assertFalse(values.has("water.normalStrength"));
         assertEquals(1.25, values.get("materials.translucentNormalStrength").getAsDouble());
@@ -345,6 +345,51 @@ class KavoraSettingsStoreTest {
         assertEquals(0.5, optics.get("water.windStrength"));
         assertEquals(38.0, optics.get("water.fog.range"));
         assertEquals(new KavoraQualitySelection(QualityPreset.MEDIUM, false), settings.quality());
+    }
+
+    @Test
+    void updatesStockCloudBudgetsWithoutOverwritingCustomValues(@TempDir Path dir) throws Exception {
+        Map<QualityPreset, Integer> previous = Map.of(QualityPreset.ULTRA, 160, QualityPreset.HIGH, 128,
+                QualityPreset.MEDIUM, 96, QualityPreset.LOW, 64);
+        for (var entry : previous.entrySet()) {
+            for (boolean custom : new boolean[]{false, true}) {
+                Path file = dir.resolve(entry.getKey().id() + "-" + custom + ".json");
+                Files.writeString(file, """
+                        {"version":5,"quality":{"base":"%s","custom":%s},
+                         "settings":{"clouds.samples":%d,"f":2.5,"unknown":9}}
+                        """.formatted(entry.getKey().id(), custom, entry.getValue()));
+                double[] artistic = {1};
+                KavoraSettings settings = registryWith(artistic, new int[]{0}, new boolean[]{true});
+                var store = new KavoraSettingsStore(file);
+                store.load(settings);
+
+                Object expected = custom ? entry.getValue()
+                        : KavoraQualityPresets.values(entry.getKey()).get("clouds.samples");
+                assertEquals(expected, settings.byId("clouds.samples").get());
+                assertEquals(2.5, artistic[0]);
+                assertEquals(new KavoraQualitySelection(entry.getKey(), custom), settings.quality());
+                String migrated = Files.readString(file);
+                var root = JsonParser.parseString(migrated).getAsJsonObject();
+                assertEquals(6, root.get("version").getAsInt());
+                assertEquals(9, root.getAsJsonObject("settings").get("unknown").getAsInt());
+                store.load(settings);
+                assertEquals(migrated, Files.readString(file));
+            }
+        }
+    }
+
+    @Test
+    void retainsExplicitSamplesEvenWhenTheOldQualityLabelWasNotCustomized(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("edited-clouds.json");
+        Files.writeString(file, """
+                {"version":5,"quality":{"base":"ultra","custom":false},"settings":{"clouds.samples":112}}
+                """);
+        var settings = registryWith(new double[]{1}, new int[]{0}, new boolean[]{true});
+
+        new KavoraSettingsStore(file).load(settings);
+
+        assertEquals(112, settings.byId("clouds.samples").get());
+        assertEquals(new KavoraQualitySelection(QualityPreset.ULTRA, true), settings.quality());
     }
 
     private static KavoraSetting<Double> fog(String id, double[] value, double baseline, double max) {

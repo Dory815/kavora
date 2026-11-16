@@ -31,7 +31,7 @@ public final class KavoraSettingsStore {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KavoraSettingsStore.class);
     private static final int FIRST_RELEASE_SCHEMA = 3;
-    private static final int VERSION = 5;
+    private static final int VERSION = 6;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private final Path file;
@@ -148,6 +148,7 @@ public final class KavoraSettingsStore {
             switch (version) {
                 case 3 -> migrateRelease3To4(root.getAsJsonObject("settings"));
                 case 4 -> migrateRelease4To5(root.getAsJsonObject("settings"));
+                case 5 -> migrateRelease5To6(root);
                 default -> throw new IllegalArgumentException("No migration from settings schema " + version);
             }
             root.addProperty("version", ++version);
@@ -175,6 +176,30 @@ public final class KavoraSettingsStore {
             values.add("materials.translucentNormalStrength", strength);
         }
         // Absent water settings inherit the former constants and the installed underwater profile.
+    }
+
+    private static void migrateRelease5To6(JsonObject root) {
+        JsonObject selection = root.getAsJsonObject("quality");
+        JsonObject values = root.getAsJsonObject("settings");
+        if (selection == null || values == null || !selection.has("base")) return;
+        JsonElement custom = selection.get("custom");
+        if (custom == null || !custom.isJsonPrimitive() || !custom.getAsJsonPrimitive().isBoolean()
+                || custom.getAsBoolean()) return;
+        var base = QualityPreset.byId(selection.get("base").getAsString());
+        if (base.isEmpty()) return;
+        int previousSamples = switch (base.get()) {
+            case ULTRA -> 160;
+            case HIGH -> 128;
+            case MEDIUM -> 96;
+            case LOW -> 64;
+        };
+        JsonElement samples = values.get("clouds.samples");
+        if (samples != null && samples.isJsonPrimitive() && samples.getAsJsonPrimitive().isNumber()
+                && samples.getAsBigDecimal().compareTo(java.math.BigDecimal.valueOf(previousSamples)) == 0) {
+            // Adopt the new bounded integration budget only for an unedited stock profile.
+            // Explicit/custom values retain their owner and are never silently raised.
+            values.remove("clouds.samples");
+        }
     }
 
     private Object readEntry(KavoraSetting<?> setting, JsonElement value) {

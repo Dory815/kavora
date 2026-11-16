@@ -77,7 +77,7 @@ final class KavoraEffectOptions {
         decimal("clouds.highThickness", SettingGroup.HIGH_CLOUDS, "rtx.clouds.highThicknessMeters", 50, 2000),
         decimal("clouds.highDensity", SettingGroup.HIGH_CLOUDS, "rtx.clouds.highExtinctionPerMeter", 0, 0.05),
         decimal("clouds.highDistance", SettingGroup.HIGH_CLOUDS, "rtx.clouds.highMaxDistanceMeters", 12000, 160000),
-        integer("clouds.samples", SettingGroup.CLOUD_QUALITY, "rtx.clouds.steps", 8, 256),
+        integer("clouds.samples", SettingGroup.CLOUD_QUALITY, "rtx.clouds.steps", 8, 512),
         integer("clouds.shadowSamples", SettingGroup.CLOUD_QUALITY, "rtx.clouds.lightSteps", 1, 16),
         decimal("mist.baseHeight", SettingGroup.GROUND_MIST, "rtx.volumetrics.groundMistBaseHeightMeters", -64, 320),
         decimal("mist.heightFalloff", SettingGroup.GROUND_MIST, "rtx.volumetrics.groundMistFalloffMeters", 0.1, 128),

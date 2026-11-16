@@ -317,7 +317,7 @@ def main():
     parser.add_argument('--thunder', type=float, default=0)
     parser.add_argument('--ground-albedo', type=float, default=0.18,
                         help='Mean terrain reflectance used by production cloud illumination')
-    parser.add_argument('--steps', type=int, default=160,
+    parser.add_argument('--steps', type=int, default=384,
                         help='View integration budget; values above native Ultra are for convergence inspection')
     parser.add_argument('--light-steps', type=int, default=16,
                         help='Light integration budget; values above native Ultra are for convergence inspection')

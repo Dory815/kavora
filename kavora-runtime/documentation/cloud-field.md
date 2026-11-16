@@ -424,17 +424,27 @@ The requested sky-map mode applies only to hosts without that extension:
 
 | Profile | Requested transport without physical air | Map height | View quality | Light quality |
 | --- | --- | ---: | ---: | ---: |
-| Ultra | World volume | 1024 when map mode is selected | 160 | 16 |
-| High | Sky map | 1024 | 128 | 12 |
-| Medium | Sky map | 640 | 96 | 8 |
-| Low | Sky map | 384 | 64 | 4 |
+| Ultra | World volume | 1024 when map mode is selected | 384 | 16 |
+| High | Sky map | 1024 | 256 | 12 |
+| Medium | Sky map | 640 | 160 | 8 |
+| Low | Sky map | 384 | 96 | 4 |
 
 Maps have a 2:1 aspect ratio. World-volume mode can generate a separate
 64-pixel-high map for fog illumination. View quality is a true upper bound on
 cells per shell interval. At the default shape scale the nearest low-cloud
-spacing is still 8 metres at Ultra; distant cells widen smoothly to fit the
+spacing is approximately 3.33 metres at Ultra; distant cells widen smoothly to fit the
 budget, with density filtered to their actual span. Lower profiles reduce
 these budgets without selecting a different morphology or scattering model.
+
+The 384-cell Ultra baseline was selected after full-resolution comparisons
+showed regular integration bands at 160 and residual bands at 256. This raises
+the bounded view budget; it does not restore the unbounded nested shadow loop.
+The native and Java defaults agree, and custom view budgets range from 8 to 512.
+Settings schema 6 updates an unedited stock profile only when its saved cloud
+budget matches the former tier. Custom profiles and explicitly edited values
+are preserved. Before/after previews use their respective released Ultra
+budgets (old spacing parameter 160, new cell limit 384), with the same camera,
+cloud ranges, light, weather and display settings.
 
 The old nested loop could issue 1875 forward density queries per occupied
 view sample at the default 60-kilometre light range, plus a vertical column and
