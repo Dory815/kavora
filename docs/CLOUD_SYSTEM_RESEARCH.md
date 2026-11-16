@@ -260,7 +260,7 @@ in the existing RGBA16F weather map:
 
 - R: regionalized cumulus parent-group coverage.
 - G: stratiform deck coverage, built from the broad moisture field, independent
-  8/16/32-cell Perlin detail and a weak cellular perturbation for irregular
+  8/16-cell Perlin detail and a weak cellular perturbation for irregular
   openings. The family field keeps broad regional organization while avoiding
   a single smooth blob frequency.
 - B: broad cloud-family/development type.
