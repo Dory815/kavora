@@ -57,7 +57,7 @@ def check_morphology_configuration():
     assert "deckNoise = 0.60f * regional" in weather
     assert "0.15f * (deckCells - 0.5f)" in weather
     assert "deckCoverage = smoothstep(-0.45f, 0.05f, deckNoise)" in weather
-    assert "stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type)" in weather
+    assert "stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type)" in density
     assert "0.18f * regional" in weather, "cloud development must correlate with broad moisture"
     assert "regionalAmount * cumulusCoverage" in weather
     assert "regionalAmount * deckCoverage" in weather
