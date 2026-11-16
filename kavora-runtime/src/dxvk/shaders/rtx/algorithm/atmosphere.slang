@@ -238,6 +238,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
     const float middle = (intervalBegin + intervalEnd) * 0.5f;
     const bool fogActive = ray.hasFog && middle > fog.x && middle < fog.y;
     bool cloudActive = false;
+    uint cloudLayer = 0;
     CloudRayGrid cloudGrid = { float2(0), 1.0f };
     [unroll]
     for (uint i = 0; i < 4; i++)
@@ -246,6 +247,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       if (middle > cloud.x && middle < cloud.y)
       {
         cloudActive = true;
+        cloudLayer = i / 2;
         cloudGrid.interval = cloud;
         cloudGrid.spacing = cloudSampleSpacing(args.clouds, direction, i / 2);
       }
@@ -301,7 +303,8 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       // Keep each cloud quadrature cell constant when a prefix checkpoint clips it.
       const float cloudSample = cloudGrid.sampleAt(cloudCell);
       const float3 cloudPosition = origin + direction * cloudSample;
-      const float cloudFootprint = max(cloudGrid.spacing, args.clouds.viewAngularFootprint * cloudSample);
+      const float cloudFootprint = cloudDensityFootprint(args.clouds, direction, cloudGrid.spacing,
+        args.clouds.viewAngularFootprint * cloudSample, cloudLayer);
       const float cloudSigma = cloudActive ?
         cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail, cloudFootprint,
           cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spanAt(cloudCell),

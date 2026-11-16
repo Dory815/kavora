@@ -69,7 +69,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const float distance = grid.sampleAt(cell);
       const float3 position = origin + direction * distance;
       const float pixelFootprint = distance * 3.14159265359f / float(args.skyResolution);
-      const float footprint = max(grid.spacing, pixelFootprint);
+      const float footprint = cloudDensityFootprint(args, direction, grid.spacing, pixelFootprint, nearest / 2);
       const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
         CloudDetailSampler, footprint, cloudHeightFootprint(args, position, direction, grid.spanAt(cell), pixelFootprint));
       if (extinction > 0)

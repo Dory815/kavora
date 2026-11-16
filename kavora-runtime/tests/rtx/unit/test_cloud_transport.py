@@ -7,6 +7,8 @@ checks do not measure game performance or validate presentation.
 """
 import argparse
 from pathlib import Path
+import re
+import struct
 
 import numpy as np
 import slangpy as spy
@@ -72,18 +74,6 @@ def check_homogeneous(probe):
                                 transmission])
     np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=5e-4)
     print("PASS homogeneous Beer integration: 16 density/subdivision cases")
-
-
-def check_noise_gradient(probe):
-    axis = np.linspace(-0.75, 1.75, 16, endpoint=False)
-    points = [(x, y, period, 1e-3) for period in (2, 4) for x in axis for y in axis]
-    result = probe.run("noiseGradient", points)
-    assert np.isfinite(result).all()
-    # A 1e-3 UV difference balances float32 cancellation against truncation error.
-    np.testing.assert_allclose(result[:, :2], result[:, 2:], atol=1.5e-3, rtol=5e-4,
-                               err_msg="curl-flow potential gradient differs from the noise derivative")
-    print(f"PASS periodic noise gradient: 512 finite differences, "
-          f"maximum error {np.max(np.abs(result[:, :2] - result[:, 2:])):.7f}")
 
 
 def shell_interval(clouds, origin, direction, limit):
@@ -180,12 +170,48 @@ def production_kernel(device, relative, defines=None, combined_source=False):
     source = (SHADERS / relative).read_text(encoding="utf-8")
     # ShaderCursor writes a constant buffer. SPIR-V compilation checks the production push layout separately.
     source = source.replace("layout(push_constant)", "")
+    source = source.replace("layout(binding = 1)\nSampler2D<float4> CloudCirrusAtlas;",
+                            "Sampler2D<float4>.Handle CloudCirrusAtlas;")
+    if "CloudCirrusAtlas" in source:
+        # Handle introduces a globals buffer: auto-assign the output binding so
+        # that buffer cannot alias the native output's explicit binding zero.
+        source = source.replace("layout(rgba16f, binding = 0)\n", "")
     if combined_source:
         # SlangPy binds combined samplers through descriptor handles.
         source = source.replace("Sampler3D<float4> Source;", "Sampler3D<float4>.Handle Source;")
         source = source.replace("Sampler2D<float4> Source;", "Sampler2D<float4>.Handle Source;")
     module = session.load_module_from_source(Path(relative).stem.replace(".", "_"), source)
     return device.create_compute_kernel(session.link_program([module], [module.entry_point("main")]))
+
+
+def cloud_atlas_path():
+    return Path(__file__).resolve().parents[4] / "kavora/packaging/runtime-textures/cirrus_density.dds"
+
+
+def cloud_atlas(device):
+    source = cloud_atlas_path().read_bytes()
+    header = struct.unpack_from('<31I', source, 4)
+    dx10 = struct.unpack_from('<5I', source, 128)
+    if source[:4] != b'DDS ' or dx10[:4] != (61, 3, 0, 1):
+        raise ValueError('Expected the linear R8_UNORM cirrus density atlas')
+    height, width, mip_count = header[2], header[3], header[6]
+    texture = device.create_texture(type=spy.TextureType.texture_2d, format=spy.Format.r8_unorm,
+                                   width=width, height=height, mip_count=mip_count,
+                                   usage=spy.TextureUsage.shader_resource)
+    offset = 148
+    for mip in range(mip_count):
+        w, h = max(1, width >> mip), max(1, height >> mip)
+        texture.copy_from_numpy(np.frombuffer(source, dtype=np.uint8, count=w*h, offset=offset).reshape(h, w).copy(), mip=mip)
+        offset += w*h
+    if offset != len(source):
+        raise ValueError('Unexpected density atlas payload length')
+    sampler = device.create_sampler(min_filter=spy.TextureFilteringMode.linear,
+                                    mag_filter=spy.TextureFilteringMode.linear,
+                                    mip_filter=spy.TextureFilteringMode.linear,
+                                    max_anisotropy=8,
+                                    address_u=spy.TextureAddressingMode.clamp_to_edge,
+                                    address_v=spy.TextureAddressingMode.clamp_to_edge)
+    return texture.create_view(sampler=sampler)
 
 
 def cloud_textures(device):
@@ -197,13 +223,17 @@ def cloud_textures(device):
     noise = {name: production_kernel(device, "rtx/pass/clouds/generate_cloud_noise.comp.slang", defines)
              for name, defines in (("Base", {"CLOUD_NOISE_BASE": "1"}), ("Detail", {}))}
     weather = production_kernel(device, "rtx/pass/clouds/generate_cloud_weather.comp.slang")
+    weather_source = (SHADERS / "rtx/pass/clouds/generate_cloud_weather.comp.slang").read_text(encoding="utf-8")
+    atlas = cloud_atlas(device) if "CloudCirrusAtlas" in weather_source else None
     filters = {name: production_kernel(device, "rtx/pass/clouds/filter_cloud_noise.comp.slang", defines, True)
                for name, defines in (("Base", {"CLOUD_NOISE_VOLUME": "1", "CLOUD_NOISE_FLOAT": "1"}),
                                      ("Detail", {"CLOUD_NOISE_VOLUME": "1"}), ("Weather", {}))}
     # The preview tool can replay an earlier shader root with its original storage format.
     base_source = (SHADERS / "rtx/pass/clouds/generate_cloud_noise.comp.slang").read_text(encoding="utf-8")
     base_format = spy.Format.rg16_float if "layout(rg16f," in base_source else spy.Format.rgba16_float
-    for name, size, dimensions in (("Base", 128, 3), ("Detail", 32, 3), ("Weather", 512, 2)):
+    configuration = (SHADERS / "rtx/pass/cloud_noise.h").read_text(encoding="utf-8")
+    weather_resolution = int(re.search(r'kCloudWeatherResolution\s*=\s*(\d+)', configuration)[1])
+    for name, size, dimensions in (("Base", 128, 3), ("Detail", 32, 3), ("Weather", weather_resolution, 2)):
         floating = name != "Detail"
         image_format = base_format if name == "Base" else (spy.Format.rgba16_float if floating else spy.Format.rgba8_unorm)
         texture = device.create_texture(type=spy.TextureType.texture_3d if dimensions == 3 else spy.TextureType.texture_2d,
@@ -215,7 +245,10 @@ def cloud_textures(device):
         if dimensions == 3:
             noise[name].dispatch(thread_count=[size, size, size], vars={"CloudNoise": view, "cb": {"detail": name == "Detail"}})
         else:
-            weather.dispatch(thread_count=[size, size, 1], vars={"CloudWeather": view})
+            bindings = {"CloudWeather": view}
+            if atlas is not None:
+                bindings["CloudCirrusAtlas"] = atlas.descriptor_handle_combined
+            weather.dispatch(thread_count=[size, size, 1], vars=bindings)
         data = texture.to_numpy()
         assert np.ptp(data[..., 0]) > (0.12 if floating else 32), (name, "degenerate generated noise")
         if floating:
@@ -316,9 +349,10 @@ def check_high_density(probe, textures, dump):
         assert np.all(density >= previous - 1e-6), "increasing high coverage must not remove condensate"
         previous = density
 
-    # The host wraps wind after sixteen shape periods. All high-layer sampling
-    # must have that same period, including its regional envelope and distortion.
-    period = 16 * clouds["shapeScale"]
+    # The host and both weather lookups share the high field's repeat period.
+    constants = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
+    periods = int(re.search(r"kCloudHighWeatherPeriod\s*=\s*(\d+)", constants).group(1))
+    period = periods * clouds["shapeScale"]
     for wind in ([period, 0, 0], [0, 0, period], [-period, 0, period]):
         wrapped = probe.run("densities", points, clouds=clouds | {"windOffset": wind},
                             textures=textures)[:, 0]
@@ -350,9 +384,8 @@ def check_high_column_transmission(probe, textures):
             column = clouds | {"groundReference": [x, 0.0, z]}
             result = probe.run("viewTransmission", [[x, 0.0, z, distance]], [[0.0, 1.0, 0.0, 0.0]],
                                column, textures)[0]
-            # Use the actual view spacing as the density footprint. The 800m layer
-            # selects a coarser mip than the thin layers, so their raw densities differ.
-            density = probe.run("densities", [[x, center_height, z, result[1]]],
+            # A vertical ray stays at one world XZ coordinate through every layer.
+            density = probe.run("densities", [[x, center_height, z, 0]],
                                 clouds=column, textures=textures)[0, 0]
             # Smooth ramps over [0, .15] and [.65, 1] enclose area .75; the midpoint
             # lies on the unit plateau. This is an independent Beer-law column reference.
@@ -402,7 +435,6 @@ def main():
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=OPTIONS)
     probe = Probe(device)
     check_homogeneous(probe)
-    check_noise_gradient(probe)
     check_intervals(probe)
     check_layer_intervals(probe)
     check_light_profiles(probe)

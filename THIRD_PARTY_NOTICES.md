@@ -173,6 +173,16 @@ Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC.
 - [kavora/packaging/licenses/NASA-Deep-Star-Maps.txt](kavora/packaging/licenses/NASA-Deep-Star-Maps.txt)
   records the source, processing details, credit and redistribution notice.
 
+## CC0 cirrus morphology
+
+`kavora/packaging/runtime-textures/cirrus_density.dds` contains relative cloud
+shapes extracted from CC0 photographs by Estormiz and John Robert McPherson.
+It contains one scalar channel. Cloud illumination is calculated by the
+renderer, and the source photographs' RGB backgrounds are not shipped.
+
+- [Credits and source hashes](kavora/packaging/licenses/Cirrus-CC0.txt)
+- [Reproducible preparation and interpretation](kavora/packaging/runtime-textures/CIRRUS.md)
+
 ## Caustica-Horizon End environment
 
 The native End sky adapts the directional planet, rings, accretion flow,

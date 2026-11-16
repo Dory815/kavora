@@ -159,8 +159,11 @@ visibility sampling. The sky-map approximation omits local cloud occlusion
 against geometry and cloud parallax between ray origins; use World volume
 when flying through clouds. Its resolution is independent of DLSS.
 
-The cloud shape and weather distribution adapt Community Edition's periodic
-Perlin-Worley fields. All ray types use the same density including edge erosion.
+Low-cloud shape and weather distribution adapt Community Edition's periodic
+Perlin-Worley fields. High clouds use finite feathered shapes derived from
+credited CC0 photographs, distributed in regional groups with clear areas.
+Their colour and lighting come from the volumetric renderer. All ray types
+use the same density including edge erosion.
 World-volume transport uses ray marching with sampled self-shadowing and an
 approximation for multiple scattering; it is not a stochastic volumetric path
 tracer. The sky-map transport reuses that integration for background directions.

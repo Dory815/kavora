@@ -78,32 +78,6 @@ float cloudPerlin(float3 position, uint period, uint seed)
   return cloudPerlin(position, uint3(period), seed);
 }
 
-// Derivative of the project's periodic gradient noise in the horizontal plane.
-// Include both the corner's linear gradient and the quintic interpolation weights.
-float2 cloudPerlinGradient2D(float2 uv, uint period, float slice, uint seed)
-{
-  const float3 position = float3(uv * float(period), slice);
-  const int3 cell = int3(floor(position));
-  const float3 f = frac(position);
-  const float3 blend = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
-  const float3 derivative = 30.0f * f * f * (f - 1.0f) * (f - 1.0f);
-  float2 gradient = 0;
-  [unroll]
-  for (uint corner = 0; corner < 8; corner++)
-  {
-    const uint3 offset = uint3(corner & 1u, (corner >> 1) & 1u, (corner >> 2) & 1u);
-    const uint hash = cloudNoiseHash(cloudNoiseWrap(cell + int3(offset), period), seed);
-    const float3 weight = lerp(1.0f - blend, blend, float3(offset));
-    const float3 weightDerivative = (2.0f * float3(offset) - 1.0f) * derivative;
-    const float value = cloudNoiseGradient(hash, f - float3(offset));
-    const float2 cornerGradient = float2(cloudNoiseGradient(hash, float3(1, 0, 0)),
-      cloudNoiseGradient(hash, float3(0, 1, 0)));
-    gradient += cornerGradient * (weight.x * weight.y * weight.z)
-      + value * float2(weightDerivative.x * weight.y, weight.x * weightDerivative.y) * weight.z;
-  }
-  return gradient * float(period);
-}
-
 float cloudWorley(float3 uv, uint cells, uint seed, bool flat)
 {
   const float3 position = float3(uv.xy, flat ? 0.0f : uv.z) * float(cells);

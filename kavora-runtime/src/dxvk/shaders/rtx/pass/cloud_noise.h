@@ -5,7 +5,9 @@
 
 static const uint kCloudBaseResolution = 128;
 static const uint kCloudDetailResolution = 32;
-static const uint kCloudWeatherResolution = 512;
+static const uint kCloudWeatherResolution = 1024;
+static const uint kCloudWeatherPeriod = 16;
+static const uint kCloudHighWeatherPeriod = 32;
 
 struct CloudNoiseGenerationArgs {
   uint detail;

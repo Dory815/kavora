@@ -22,6 +22,7 @@
 #include <glm/gtc/packing.hpp>
 
 #include "rtx_global_volumetrics.h"
+#include "rtx/pass/cloud_noise.h"
 #include "rtx_animation_time.h"
 #include "dxvk_device.h"
 #include "rtx_render/rtx_shader_manager.h"
@@ -620,9 +621,9 @@ namespace dxvk {
     clouds.baseHeight = (CloudOptions::worldBaseHeightMeters() + CloudOptions::altitudeOffsetMeters()) * cloudWorldScale;
     clouds.thickness = CloudOptions::thicknessMeters() * cloudWorldScale;
     clouds.shapeScale = CloudOptions::shapeScaleMeters() * cloudWorldScale;
-    // The weather, shape and erosion textures share this repeat period.
+    // Both weather periods, shape and erosion divide this shared wind wrap.
     const auto sceneOrigin = m_device->getCommon()->getSceneManager().getSceneOrigin();
-    const double period = 16.0 * clouds.shapeScale;
+    const double period = double(kCloudHighWeatherPeriod) * clouds.shapeScale;
     const float windX = float(std::remainder(double(windOffset.x) - sceneOrigin.x, period));
     const float windHorizontal = float(std::remainder(double(RtxOptions::zUp() ? windOffset.y : windOffset.z)
       - sceneOrigin.y, period));

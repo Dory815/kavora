@@ -144,6 +144,15 @@ public float cloudHeightFootprint(CloudArgs args, float3 position, float3 direct
 }
 
 [ForceInline]
+public float cloudDensityFootprint(CloudArgs args, float3 direction, float span, float pixelFootprint, uint layer)
+{
+  // The high field is a horizontal map. A vertical ray changes height but
+  // traverses no map texels; its horizontal footprint is only the pixel cone.
+  const float3 horizontal = direction - args.up * dot(direction, args.up);
+  return max(layer == 0 ? span : span * length(horizontal), pixelFootprint);
+}
+
+[ForceInline]
 public float cloudViewExtinction(CloudArgs args, float3 position, float distance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, float footprint = 0,
   float heightFootprint = 0)
@@ -230,7 +239,8 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
         const float next = min(end, grid.boundary(cell + 1));
         const float sampleDistance = grid.sampleAt(cell);
         const float3 position = origin + direction * sampleDistance;
-        const float footprint = max(grid.spacing, args.viewAngularFootprint * sampleDistance);
+        const float footprint = cloudDensityFootprint(args, direction, grid.spacing,
+          args.viewAngularFootprint * sampleDistance, layer);
         const float heightFootprint = cloudHeightFootprint(args, position, direction, grid.spanAt(cell),
           args.viewAngularFootprint * sampleDistance);
         const float extinction = cloudViewExtinction(args, position, sampleDistance,
@@ -254,7 +264,7 @@ float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 
   const float heightFootprint = cloudHeightFootprint(args, position, direction, span);
   const float extinction = layer == 0 ? args.extinction : args.highExtinction;
   return extinction * cloudDensity(cloudDensityParameters(args), position, weatherSampler, baseSampler, detailSampler,
-    span, layer, heightFootprint) * span;
+    cloudDensityFootprint(args, direction, span, 0, layer), layer, heightFootprint) * span;
 }
 
 float cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float distance,
