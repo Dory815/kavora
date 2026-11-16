@@ -252,3 +252,38 @@ This renders both variants with the same scenario inputs and writes separate
 `reference/` and `candidate/` result directories. It still does not include
 the complete Minecraft presentation path unless the atmosphere fixture and
 other required game inputs are supplied.
+
+## Implementation progress on fix/cloud-system-redesign
+
+The first field-representation change now stores two independent low-cloud masks
+in the existing RGBA16F weather map:
+
+- R: regionalized cumulus parent-group coverage.
+- G: stratiform deck coverage, built from the broad moisture field, a separate
+  meso-scale field and a weak cellular term that creates irregular openings.
+- B: broad cloud-family/development type.
+- A: high-cloud cirrus atlas density.
+
+The density evaluator samples the two filtered masks and blends their coverage
+moments using the local family type. The low/high shell count, texture formats,
+resource bindings and ray transport remain unchanged. This avoids introducing
+another volume, descriptor or raymarch pass just to establish a distinct
+stratiform occupancy field.
+
+The weather-map regression now checks both masks independently for normalized
+range, spatial variation and broad opening/cloud-rich quantiles. The existing
+cumulus autocorrelation checks remain tied to the cumulus channel. The weather
+map no longer stores the old R mean / G second-moment pair; both family masks
+are mip-filtered independently. Consequently the combined coverage variance
+is currently reconstructed as zero at the density-evaluation point. This is a
+known quality tradeoff: if visual inspection shows excessive mip smoothing or
+loss of subpixel coverage, the next iteration should add a separately filtered
+coverage-moment resource or a compact moment encoding rather than silently
+reinterpreting either family channel.
+
+This change is a structural foundation, not a claim that stratiform and
+cumulus now have fully independent 3D shape generators. They still share the
+existing base/detail volumes and ray transport, with their distinct
+occupancy, family-dependent body scale and vertical shaping. Further work must
+separate their 3D silhouette/erosion where the visual matrix demonstrates that
+the shared shape field remains limiting.
