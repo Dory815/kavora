@@ -38,41 +38,53 @@ limitations are recorded in
 
 ## Low-cloud morphology
 
-The low layer follows the weather/shape/detail separation described in
-[Schneider and Vos, 2015](https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn).
-The implementation and texture weights are authored here. Inverse-Worley
-feature centers add convex billows to a broader Perlin envelope. A periodic
-detail field displaces those billows and erodes their boundaries, so smaller
-lobes remain attached to the main cloud instead of appearing only as detached
-fragments. No Beer-Powder brightness term is used.
+The low layer separates regional distribution, connected cloud bodies and
+surface billows. It follows the hierarchy described in
+[Schneider and Vos, 2015](https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn)
+and studied in [Revelation](https://github.com/HaringPro/Revelation/tree/d5911393856d9dd97375b46a1a088e6b8fddd755),
+revision `d5911393856d9dd97375b46a1a088e6b8fddd755` (Apache-2.0).
+Revelation uses an authored coverage/type map, a vertical-profile lookup and
+a two-kilometre base volume. Here the field is independently generated from
+Kavora's existing noise, analytical profiles and filtered density moments.
+No Revelation source blocks, density formula, noise assets, cloud maps or
+profile lookups are included. No Beer-Powder brightness term is used.
 
-The low weather tile organizes regional cloud groups and clear corridors.
-At the default shape scale its coverage octaves span 8192, 4096, 2048 and
-1024 meters. A 512-meter cell field adds smaller updraft groups. The finest
-coverage octave and cell field have eight and four weather texels per cell,
-respectively. Cloud type changes over larger 16384- and 8192-meter scales.
+The low weather tile spans 64 shape-scale units. Broad moisture octaves at
+32768 and 16384 metres gate the regions that can form clouds. Separate updraft
+fields at 2048, 1024 and 512 metres form connected bodies and smaller groups
+within those regions. This replaces the evenly distributed fine Worley clumps;
+three-dimensional noise supplies the body's convex billows rather than
+selecting isolated little clouds. Type varies continuously over 4096- and
+2048-metre fields, so nearby groups need not all have the same development.
+These are input-field scales, not fixed cloud diameters.
 
-A separate vector phase varies the base volume within each region. Four
-integer hashes define the corners of a lattice with four shape periods per
-cell, and quintic interpolation joins them with continuous first and second
-derivatives. Each component stays within one quarter of a shape period:
-4096-meter lattice cells and up to 256 meters of displacement at the default
-scale. The largest component derivative is `0.5 * 1.875 / 4 = 0.234375`.
-The horizontal derivative row sum remains below one, preventing folds of the
-horizontal coordinate mapping. This field is independent of coverage and
-weather controls, follows the same world advection, and is cached with the
-local column for density and illumination. It is a bounded procedural shape
-variation, not a simulated wind velocity or a thermodynamic cloud model.
+Local allowed thickness is
+`thickness * (0.22 + 0.78 * smoothstep(0.1, 0.9, type)) * (0.4 + 0.6 * coverage)`.
+The continuous height profile and final density threshold determine the actual
+occupied top. The shared condensation base remains 800 metres with the usual
+192-metre host cloud height and 608-metre offset; it is not randomized between
+neighbouring columns. The 1500-metre configured thickness remains the shell's
+upper bound. This permits shallow and moderately developed bodies while
+retaining a coherent base, instead of turning the field into independently
+extruded terrain columns.
 
-Coverage controls occupancy separately from the condensation ramp. The height
-profile and erosion are applied before the density threshold; decreasing
-regional coverage therefore opens the sky without turning every remaining
-cloud into transparent smoke. Vertical noise coordinates are relative to the
-cloud base, so changing altitude moves the same field instead of silently
-selecting another three-dimensional noise slice. The default condensation offset
-is 608 meters above the host cloud height: an 800-meter base with the usual
-192-meter host height. A 1500-meter maximum thickness still bounds the layer;
-local weather determines each formation's smaller actual height.
+The base volume spans two shape-scale units, with billow inputs at 512, 256,
+128, 64 and 32 metres by default. A smaller detail field displaces and erodes
+its surface without dominating the parent body. Erosion strength is reduced,
+and the condensation transition is widened from 0.04 to 0.08 to keep attached
+small lobes and soft boundaries. Coverage remains separate from this transition;
+opening a dry region does not make every surviving core transparent. Noise
+height remains relative to the cloud base, so changing altitude moves the
+field rather than silently selecting a different volume slice.
+
+Four hashes at each lattice cell's corners vary the volume's phase. Quintic
+interpolation keeps its first and second derivatives continuous. The phase
+lattice spans four base-volume periods: 8192-metre cells and up to 512 metres
+of displacement per component at default settings. Its maximum component
+derivative remains `0.5 * 1.875 / 4 = 0.234375`; the horizontal derivative row
+sum stays below one, preventing folds. The lattice follows wind and the
+64-kilometre weather wrap, including negative coordinates. This is bounded
+procedural variation, not a fluid or thermodynamic simulation.
 
 The default unit-density extinction is 0.03 per meter. Separating coverage
 from condensation increased density inside the retained cores; keeping the
@@ -92,7 +104,13 @@ unequal connected lobes, mostly white sunlit bodies with local soft gray
 undersides, irregular blue openings, and a continuous near/middle/far size
 hierarchy. Mixed cumulus/stratocumulus photographs also retain locally darker
 cloud bases; the review does not require every shaded face to become white.
-Numerical density moments are filtering checks, not a visual acceptance criterion.
+[Janne Naukkarinen's lake scene](https://commons.wikimedia.org/wiki/File:Cumulus_mediocris_3.JPG)
+and [Kreuzschnabel's spring scene](https://commons.wikimedia.org/wiki/File:Cumulus_mediocris-1.jpg)
+also constrain connected bodies, different development heights and broad blue
+openings. Their camera fields of view, exposure and cloud distances are not
+matched to the diagnostic renderer; image occupancy is not a physical size
+measurement. Numerical density moments are filtering checks, not a visual
+acceptance criterion.
 
 ## Density and filtering
 
@@ -105,12 +123,13 @@ device. All three have complete mip chains, built by the cloud noise filter:
 | Erosion | 32 cubed | RGBA8 | Three detail frequencies |
 | Weather | 1024 square | RGBA16F | Coverage and its square, cumulus type, finished high-cloud density |
 
-The base period defaults to 1024 meters. Erosion occupies one sixteenth of that
-period. Low-cloud weather occupies 128 base periods (131072 meters by default),
-and high-cloud weather occupies 32. Camera motion neither regenerates noise nor
+The scale option defaults to 1024 metres. The base volume spans two scale
+units (2048 metres); erosion spans one sixteenth of that volume period
+(128 metres). Low-cloud weather spans 64 scale units (65536 metres), and
+high-cloud weather spans 32 (32768 metres). Camera motion neither regenerates noise nor
 publishes a different density field. Wind translates both layers in the same
 world frame, with a shared wrap at the larger of these power-of-two periods.
-The low shape phase has the same 128-period wrap. These are finite periodic
+The low shape phase has the same 64-scale-unit wrap. These are finite periodic
 fields; a sufficiently large orthographic map can still expose the full repeat.
 
 Clouds have two non-overlapping curved shells. The lower shell contains
@@ -462,8 +481,14 @@ profile uses two density samples. The environment integral remains one
 quality levels. Its output is one RGBA32F texel. No per-pixel sky-hemisphere
 integration is added.
 
-The three noise textures and their mip chains occupy about 20.0 MiB before
-driver allocation overhead. They are independent of output resolution. Motion
+The three source noise textures and their mip chains still occupy about
+20.0 MiB before driver allocation overhead. The morphology change adds no
+texture allocation or density sampler. `Resources::prepareCloudNoise` returns
+when the base LUT is already valid; its three generators and 22 mip dispatches
+run once per resource lifetime, not once per frame or camera movement. A low
+cloud density query still performs at most one weather, one base and one
+detail lookup. An empty column can skip both 3D reads. Noise octave and Worley
+neighbourhood loops stay in the bake, outside the ray integrators. They are independent of output resolution. Motion
 guides add one word per primary atmosphere record and one per checkpoint. At
 1920 by 1080 internal resolution with the Ultra checkpoint layout this adds
 about 19.8 MiB to path storage. These are storage calculations, not measured
@@ -498,7 +523,7 @@ and thick layers with the independent height-profile integral. Constant-field
 checks compare spherical-shell column depth across view angles, pixel
 footprints and sampling budgets. They do not validate
 game presentation, temporal reconstruction quality or GPU frame time.
-Low-cloud checks exercise the shared 128-period wind wrap, negative
+Low-cloud checks exercise the shared 64-scale-unit wind wrap, negative
 coordinates, phase bounds, continuity and derivative bounds at the phase
 lattice boundaries, and independence from coverage and weather controls.
 Lighting-cache tests exercise prefix differences against constant-density

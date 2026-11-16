@@ -110,10 +110,10 @@ public struct CloudColumn
 }
 
 [ForceInline]
-float3 cloudUpdraftPhase(float2 position)
+float3 cloudBillowPhase(float2 position)
 {
-  // Four shape periods per lattice cell keep each component's derivative below 0.2344.
-  // The phase spans +/- one quarter period and shares the weather wrap.
+  // Four body periods per lattice cell bound the phase derivative to 0.2344.
+  // Its lattice wraps with the weather map, including negative coordinates.
   const float2 lattice = position * 0.25f;
   const int2 cell = int2(floor(lattice));
   const float2 t = frac(lattice);
@@ -124,7 +124,7 @@ float3 cloudUpdraftPhase(float2 position)
   {
     const uint2 offset = uint2(corner & 1u, corner >> 1);
     const uint3 wrapped = cloudNoiseWrap(int3(cell.x + int(offset.x), 0, cell.y + int(offset.y)),
-      kCloudWeatherPeriod / 4u);
+      kCloudWeatherPeriod / (4u * kCloudBasePeriod));
     const uint hash = cloudNoiseHash(wrapped, kCloudNoiseSeed + 431u);
     const float3 value = float3(hash & 1023u, (hash >> 10) & 1023u, (hash >> 20) & 1023u)
       * (1.0f / 1023.0f) - 0.5f;
@@ -140,15 +140,17 @@ public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D
 {
   const float lod = cloudNoiseLod(footprint, args.shapeScale * float(kCloudWeatherPeriod), float(kCloudWeatherResolution));
   const float4 weather = weatherSampler.SampleLevel(position / float(kCloudWeatherPeriod), lod);
-  const float bias = (args.coverage - 0.45f) * 0.9f - 0.18f + 0.51f * args.weather
+  const float bias = (args.coverage - 0.45f) * 0.9f + 0.51f * args.weather
     + 0.15f * args.thunder - 0.17f * args.night * (1.0f - args.weather);
   const float variance = max(weather.g - weather.r * weather.r, 0.0f);
   const float mean = weather.r + bias;
   const float2 coverage = cloudCoverageMoments(mean, mean * mean + variance, 1.0f);
   const float type = saturate(weather.b * (1.0f - 0.4f * args.weather) + 0.85f * args.thunder);
-  const float thickness = args.thickness * ((140.0f + 460.0f * smoothstep(0.1f, 0.6f, type)
-    + 900.0f * smoothstep(0.72f, 1.0f, type)) / 1500.0f);
-  const float3 shapePhase = coverage.x > 0 ? cloudUpdraftPhase(position) : float3(0);
+  // Cloud type varies across groups. Local condensation controls development
+  // above a shared base, rather than assigning independent heights to columns.
+  const float thickness = args.thickness * (0.22f + 0.78f * smoothstep(0.1f, 0.9f, type))
+    * (0.4f + 0.6f * coverage.x);
+  const float3 shapePhase = coverage.x > 0 ? cloudBillowPhase(position / float(kCloudBasePeriod)) : float3(0);
   return { coverage.x, type, thickness, max(coverage.y - coverage.x * coverage.x, 0.0f),
     shapePhase };
 }
@@ -234,29 +236,28 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   {
     return overcast;
   }
-  // Keep the updraft field attached to its condensation level when the host
-  // changes cloud altitude; height controls placement rather than a noise slice.
-  // A prepared column carries one smooth phase into shape and light queries.
-  // Reduce the periodic coordinates before adding that phase to retain precision at the wind wrap.
-  const float3 shapeCoordinates = float3(frac(p.x), heightAboveBase / args.shapeScale, frac(p.z)) + column.shapePhase;
-  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * 0.0625f, 32.0f);
+  // The weather map owns the parent cloud. The periodic 3D field only shapes
+  // its billows; anchoring its height to the base preserves cloud-altitude controls.
+  const float period = float(kCloudBasePeriod);
+  const float3 bodyCoordinates = float3(p.x, heightAboveBase / args.shapeScale, p.z) / period;
+  const float3 shapeCoordinates = float3(frac(bodyCoordinates.x), bodyCoordinates.y,
+    frac(bodyCoordinates.z)) + column.shapePhase;
+  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * period * 0.0625f, 32.0f);
   const float3 detail = detailSampler.SampleLevel(shapeCoordinates * 16.0f, detailLod).rgb;
-  // Advect the large updraft surface with the small-scale field as well as
-  // eroding it. This keeps intermediate billows attached to the main cloud,
-  // instead of obtaining all apparent detail from disconnected fragments.
-  const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * 0.08f;
-  const float baseLod = cloudNoiseLod(footprint, args.shapeScale, 128.0f);
+  // Small-scale motion perturbs a connected surface before it is eroded.
+  const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * 0.04f;
+  const float baseLod = cloudNoiseLod(footprint, args.shapeScale * period, 128.0f);
   const float4 base = baseSampler.SampleLevel(warpedCoordinates, baseLod);
   const float coverageVariance = column.coverageVariance * coverageScale * coverageScale;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
-  const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.20f;
+  const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.10f;
   // Shape the condensation surface before thresholding. Multiplying the
   // resulting density by a profile leaves a smooth, translucent roof instead
   // of giving each updraft a bounded top. Erosion must move that surface too.
   // Coverage sets occupied area. Condensate rises over a separate narrow
   // boundary region, so a sparse fair-weather field can still have opaque cores.
   const float2 density = cloudThresholdMoments(base.r * profile,
-    base.g * profile * profile + coverageVariance, 1.0f - coverage + erosion, 0.04f);
+    base.g * profile * profile + coverageVariance, 1.0f - coverage + erosion, 0.08f);
   return max(overcast, density.x);
 }
 

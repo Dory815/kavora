@@ -43,9 +43,10 @@ void main(uint3 id : SV_DispatchThreadID)
   const float worley4 = cloudWorleyFbm(uv, 4, kCloudNoiseSeed + 11);
   const float lowFrequency = 0.625f * worley4 + 0.25f * cloudWorleyFbm(uv, 8, kCloudNoiseSeed + 23)
     + 0.125f * cloudWorleyFbm(uv, 16, kCloudNoiseSeed + 37);
-  // cloudWorleyFbm is one minus distance: its feature centres dilate the
-  // coherent Perlin mass into convex billows, rather than hollowing it out.
-  const float cumulus = saturate(0.65f + 0.30f * (perlin - 0.5f) + 1.75f * (lowFrequency - 0.47f));
+  // One-minus-distance lobes add convex surface billows. The weather map
+  // supplies the regional parent masses, so this volume needs less contrast
+  // than a field that uses isolated Worley peaks to decide cloud occurrence.
+  const float cumulus = saturate(0.68f + 0.35f * (perlin - 0.5f) + 1.05f * (lowFrequency - 0.47f));
   // Filtering both moments retains the variation needed by the coverage threshold.
   CloudNoise[id] = float4(cumulus, cumulus * cumulus, 0, 0);
 }
