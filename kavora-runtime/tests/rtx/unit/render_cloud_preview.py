@@ -51,7 +51,7 @@ def texture_cache(device, support, shaders, cache_dir, noise_seed=None):
              'rtx/pass/clouds/generate_cloud_weather.comp.slang',
              'rtx/pass/clouds/filter_cloud_noise.comp.slang',
              'rtx/utility/cloud_noise.slangh', 'rtx/pass/cloud_noise.h',
-             'rtx/utility/cloud_shape.slang')
+             'rtx/utility/cloud_shape.slang', 'rtx/utility/cirrus_shapes.slangh')
     shader_files = [shaders / name for name in files]
     digest = hashlib.sha256()
     source_hashes = {}
@@ -60,6 +60,11 @@ def texture_cache(device, support, shaders, cache_dir, noise_seed=None):
             digest.update(path.name.encode())
             digest.update(path.read_bytes())
             source_hashes[str(path.relative_to(shaders))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    atlas = support.cloud_atlas_path() if hasattr(support, 'cloud_atlas_path') else None
+    if atlas is not None and atlas.exists():
+        atlas_bytes = atlas.read_bytes()
+        digest.update(atlas_bytes)
+        source_hashes['cirrus_density.dds'] = hashlib.sha256(atlas_bytes).hexdigest()
     if noise_seed is not None:
         # A test-only seed input: compile the unchanged production algorithms
         # against a copied include with just their fixed seed constant changed.

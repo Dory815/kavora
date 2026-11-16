@@ -31,7 +31,7 @@ High-cloud morphology also draws on these published methods and observations:
 
 These rendering references contribute modeling principles, not copied code
 or assets. High-cloud morphology uses a separately credited CC0 scalar atlas
-derived from small cloud groups in three photographs by Estormiz and John
+derived from eight separate cloud groups in six photographs by Estormiz and John
 Robert McPherson. Its sources, crop bounds, reproducible preparation and
 limitations are recorded in
 [CIRRUS.md](../../kavora/packaging/runtime-textures/CIRRUS.md).
@@ -57,9 +57,12 @@ Clouds have two non-overlapping curved shells. The lower shell contains
 cumulus with local thickness, taper and anvil development driven by weather.
 Rain builds a continuous stratiform component beneath the taller cells. The
 upper shell contains feathered cloud groups and larger clear regions.
-`cloud_shape.slang` places four finite scalar morphology variants in regional
-groups with varied size, position, heading and transverse reflection. The
-source crops' aspect ratios are retained, and their main directions follow
+`cloud_shape.slang` places eight finite scalar morphology variants in regional
+groups with varied size, position, heading and transverse reflection. Groups
+of three, three and two shapes are assigned to a three-colour region lattice;
+regions sharing an edge have disjoint variants, and each region uses its
+variants without replacement. The source crops' aspect ratios are retained,
+their longest axis controls size, and their main directions follow
 a smooth regional flow. Regional humidity controls the amount of cloud,
 including broad clear areas. Placement and atlas sampling run only during
 the weather bake. Analytic texture-coordinate gradients preserve the
@@ -67,8 +70,9 @@ anisotropic footprint of each transformed tile.
 
 `Resources` loads the linear R8 atlas through the existing texture manager,
 waits for its upload before enabling cloud sampling, and releases its pinned
-reference after recording the bake. The 1024-square atlas and its mip chain
-occupy about 1.33 MiB while resident. No source photographs are loaded at
+reference after recording the bake. The 1536-square atlas and its mip chain
+occupy about 3.0 MiB while resident, about 1.67 MiB more than the former four-tile
+atlas. The final weather texture is unchanged. No source photographs are loaded at
 runtime, and no per-ray atlas lookup or placement loop is added.
 
 The finished horizontal density is stored in the weather texture's alpha
@@ -217,10 +221,11 @@ guides add one word per primary atmosphere record and one per checkpoint. At
 about 19.8 MiB to path storage. These are storage calculations, not measured
 GPU performance. Wider shadow cells, the extra cloud layer and larger map
 budgets require hardware profiling before assigning a frame-time cost.
-High-density evaluation needs one weather-texture lookup. Curl-flow construction
-and material shaping are confined to the once-per-device generator. The finite
-16384-meter texture period remains a memory/detail tradeoff and is visible in
-large orthographic distribution maps.
+High-density evaluation needs one weather-texture lookup. Placement and atlas
+sampling are confined to the once-per-device generator, which visits at most
+24 packets rather than the former 36. The finite 32768-meter high-cloud period
+remains a memory/detail tradeoff. Diagonal regions can reuse a variant, and the
+complete field repeats; it is not an infinite nonrepeating distribution.
 
 ## Numerical validation
 

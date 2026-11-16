@@ -2,7 +2,7 @@ Cirrus relative-density atlas
 =============================
 
 textures/cirrus_density.dds contains scalar cloud morphology extracted from
-three photographs released by their authors under CC0 1.0 Universal.
+six photographs released by their authors under CC0 1.0 Universal.
 CC0 dedication: https://creativecommons.org/publicdomain/zero/1.0/
 Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
 
@@ -23,10 +23,28 @@ https://commons.wikimedia.org/wiki/File:Cirrus_74_Sunbury_Street_Geebung_P113043
 Original SHA-256:
 0d5c199495e9b13c0e609ecda920f9228b193a6e2fd796a14e977cde8ebab30e
 
-Modifications: four small cloud groups are cropped, their local blue-sky
+John Robert McPherson, Cirrus, 74 Sunbury Street, Geebung,
+15 April 2024, L1020751.
+https://commons.wikimedia.org/wiki/File:Cirrus_74_Sunbury_Street_Geebung_L1020751.jpg
+Original SHA-256:
+7a67036d386a6a9b2a245d8ba1b00f8b9df208178f04f3ac709083a0b4972a54
+
+John Robert McPherson, Cirrus, 74 Sunbury Street, Geebung,
+1 January 2026, L1030327.
+https://commons.wikimedia.org/wiki/File:Cirrus_74_Sunbury_Street_Geebung_L1030327.jpg
+Original SHA-256:
+dce2bb8093f6a70a7d274c6e07d6285db2d35e0119c9fabdeb0b9053cc85c058
+
+John Robert McPherson, Cirrus, 11 Hamilton Place, Bowen Hills,
+15 May 2010, IMGP3448.
+https://commons.wikimedia.org/wiki/File:Cirrus_11_Hamilton_Place_Bowen_Hills_IMGP3448.jpg
+Original SHA-256:
+37a5c6783950e3b1bc5a7f2a442418a07804a2f3485bdd28f67324944c524ed7
+
+Modifications: eight separate cloud groups are cropped, their local blue-sky
 colour gradient and camera noise floor are removed, and foreground leaves
-are excluded. One scalar relative-density channel is packed into a 1024 x
-1024 R8_UNORM DDS with eleven mip levels. The source colour, sun direction,
+are excluded. One scalar relative-density channel is packed into a 1536 x
+1536 R8_UNORM DDS with eleven mip levels. The source colour, sun direction,
 landscape and lens flare are not stored. Source bounds and processing are
 recorded in packaging/runtime-textures/cirrus_sources.json and
 prepare_cirrus_density.py. Original photographs are not shipped.

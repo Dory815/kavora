@@ -5,6 +5,7 @@ module cloud_shape;
 
 #include "rtx/utility/cloud_noise.slangh"
 #include "rtx/pass/cloud_noise.h"
+#include "rtx/utility/cirrus_shapes.slangh"
 
 float cirrusRandom(uint hash, uint stream)
 {
@@ -32,13 +33,18 @@ public float cloudCirrusHorizontalDensity(float2 uv, Sampler2D<float4> atlas)
       const float bearing = 0.4f + 0.65f * cloudPerlin(float3(regionCenter * (2.0f / float(period)), 0.71f), 2, kCloudNoiseSeed + 419);
       const float2 wind = float2(cos(bearing), sin(bearing));
       const float2 across = float2(-wind.y, wind.x);
-      for (uint packet = 0; packet < 4; packet++)
+      const uint group = uint(x + y) % kCirrusGroupCount;
+      const uint count = kCirrusGroupSizes[group];
+      const uint first = hash % count;
+      const uint stride = (hash & 0x100u) != 0 ? 1u : count - 1u;
+      // The three-colour region lattice wraps without sharing a variant across an edge.
+      // Each region visits its own shapes once, in a deterministic permutation.
+      for (uint packet = 0; packet < count; packet++)
       {
         const uint seed = cloudNoiseHash(uint3(hash, packet, 0), kCloudNoiseSeed + 443);
-        const uint tile = min(uint(cirrusRandom(seed, 0) * 4.0f), 3u);
-        // Crop geometry and flow axes match packaging/runtime-textures/cirrus_sources.json.
-        const float aspect = float4(0.8636364f, 2.2222222f, 0.4256757f, 0.7875000f)[tile];
-        const float orientation = float4(1.21f, 0.11f, -1.42f, 1.40f)[tile];
+        const uint tile = kCirrusGroups[group][(first + packet * stride) % count];
+        const float aspect = kCirrusGeometry[tile].x;
+        const float orientation = kCirrusGeometry[tile].y;
         const float2 center = regionCenter + wind * ((cirrusRandom(seed, 1) - 0.5f) * 0.8f)
           + across * ((cirrusRandom(seed, 2) - 0.5f) * 0.45f);
         const float angle = bearing + orientation + (cirrusRandom(seed, 3) - 0.5f) * 0.5f;
@@ -50,19 +56,23 @@ public float cloudCirrusHorizontalDensity(float2 uv, Sampler2D<float4> atlas)
         const float reflection = cirrusRandom(seed, 4) > 0.5f ? 1.0f : -1.0f;
         const float2 offset = wind * dot(delta, wind) + across * dot(delta, across)
           * reflection;
-        const float height = 0.25f + 0.35f * cirrusRandom(seed, 5);
+        const float length = 1.5f * (0.25f + 0.35f * cirrusRandom(seed, 5));
+        // Size the longest crop axis; a long fallstreak must not become wider
+        // than its weather region simply because its photograph is panoramic.
+        const float2 extent = float2(aspect, 1.0f) * (length / max(aspect, 1.0f));
         const float2 local = float2(dot(offset, direction), dot(offset, perpendicular))
-          / (float2(aspect, 1.0f) * height) + 0.5f;
+          / extent + 0.5f;
         if (any(local < 0) || any(local > 1))
         {
           continue;
         }
-        const float2 tileUv = (local + float2(tile % 2u, tile / 2u)) * 0.5f;
+        const float2 atlasGrid = float2(kCirrusAtlasGrid);
+        const float2 tileUv = (local + float2(tile % kCirrusAtlasGrid.x, tile / kCirrusAtlasGrid.x)) / atlasGrid;
         const float pixelWidth = float(period) / float(kCloudWeatherResolution);
         const float2 dx = (wind * wind.x + across * across.x * reflection) * pixelWidth;
         const float2 dy = (wind * wind.y + across * across.y * reflection) * pixelWidth;
-        const float2 atlasDx = float2(dot(dx, direction), dot(dx, perpendicular)) / (float2(aspect, 1.0f) * height) * 0.5f;
-        const float2 atlasDy = float2(dot(dy, direction), dot(dy, perpendicular)) / (float2(aspect, 1.0f) * height) * 0.5f;
+        const float2 atlasDx = float2(dot(dx, direction), dot(dx, perpendicular)) / extent / atlasGrid;
+        const float2 atlasDy = float2(dot(dy, direction), dot(dy, perpendicular)) / extent / atlasGrid;
         const float amount = region * (0.45f + 0.55f * cirrusRandom(seed, 6));
         density += atlas.SampleGrad(tileUv, atlasDx, atlasDy).r * amount;
       }
