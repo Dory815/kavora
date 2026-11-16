@@ -642,7 +642,7 @@ namespace dxvk {
     clouds.shapeScale = CloudOptions::shapeScaleMeters() * cloudWorldScale;
     // Both weather periods, shape and erosion divide this shared wind wrap.
     const auto sceneOrigin = m_device->getCommon()->getSceneManager().getSceneOrigin();
-    const double period = double(kCloudHighWeatherPeriod) * clouds.shapeScale;
+    const double period = double(std::max(kCloudWeatherPeriod, kCloudHighWeatherPeriod)) * clouds.shapeScale;
     const float windX = float(std::remainder(double(windOffset.x) - sceneOrigin.x, period));
     const float windHorizontal = float(std::remainder(double(RtxOptions::zUp() ? windOffset.y : windOffset.z)
       - sceneOrigin.y, period));
