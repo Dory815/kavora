@@ -143,7 +143,9 @@ contains clouds, fog, and ground mist. Minecraft's cloud option
 remains the master switch: Off removes both styles. Volumetric clouds use a
 world-space density field along camera, reflection, and refraction rays;
 Classic uses Minecraft's blocky cloud pattern. Cloud distance is independent
-of terrain render distance and does not require the far-terrain addon.
+of terrain render distance and does not require the far-terrain addon. Both
+volumetric layers default to a 96-kilometer view range; the low-cloud distance
+control permits up to 160 kilometers.
 
 Celestial Lights separates Moon Size from Moon Intensity. Moon Phase Contrast
 controls the illumination change across the month: zero keeps constant light,
@@ -151,8 +153,13 @@ one makes new moon unlit, and the default 0.7 keeps a 30% new-moon baseline.
 Full-moon illumination is independent of that control. The lunar surface uses
 NASA color and elevation data through the Vulkan sky compositor.
 
-For procedural clouds, **Cloud transport** selects either world-space
-integration or a shared sky map. The map is regenerated every rendered frame
+With Kavora's physical atmosphere, procedural clouds use world-space
+integration at every quality level so air, clouds and local fog share the same
+ray transfer. Lower quality levels reduce their sampling budgets. Classic
+clouds retain the complete sky and authored weather composition.
+
+For hosts without the physical-atmosphere extension, **Cloud transport** selects
+either world-space integration or a shared sky map. The map is regenerated every rendered frame
 from the same density and lighting model and sampled along each background
 ray, including distorted water reflections. Cloud shadows retain world-space
 visibility sampling. The sky-map approximation omits local cloud occlusion

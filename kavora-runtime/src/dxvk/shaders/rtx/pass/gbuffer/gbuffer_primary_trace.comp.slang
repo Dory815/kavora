@@ -48,7 +48,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const RayHitInfo hit = traceOrderedIntersection(ray, primaryRayFlags(), primaryRayMask(),
     cameraRay.coneRadius, cameraRay.spreadAngle);
   storePrimaryIntersection(pixel, hit);
-  if (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable)
+  if (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable || cb.volumeArgs.air.enable)
   {
     storeAtmosphereEndpoint(pixel, hit);
   }

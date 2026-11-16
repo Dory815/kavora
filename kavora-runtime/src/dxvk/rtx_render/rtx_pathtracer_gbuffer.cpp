@@ -740,7 +740,7 @@ namespace dxvk {
     ctx->setFramePassStage(RtxFramePassStage::GBufferPrimaryRays);
     ctx->bindCommonRayTracingResources();
     const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
-    ensurePathBuffers(rayDims, volume.enable || volume.clouds.enable,
+    ensurePathBuffers(rayDims, volume.enable || volume.clouds.enable || volume.air.enable,
       volume.fogIntegrationMode == 1 ? volume.fogIntegrationPixelStride : GBUFFER_ATMOSPHERE_COLUMN_STRIDE,
       volume.fogIntegrationMode == 1 ? GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY : GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY);
     ctx->bindResourceBuffer(GBUFFER_BINDING_PATH_STORAGE,
@@ -1137,11 +1137,11 @@ namespace dxvk {
     const auto& volume = args.volumeArgs;
     const uint32_t atmosphereStride = volume.fogIntegrationMode == 1
       ? volume.fogIntegrationPixelStride : GBUFFER_ATMOSPHERE_COLUMN_STRIDE;
-    ensurePathBuffers(rayDims, raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable),
+    ensurePathBuffers(rayDims, raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable || volume.air.enable),
       atmosphereStride,
       volume.fogIntegrationMode == 1 ? GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY : GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY);
     ctx->bindResourceBuffer(GBUFFER_BINDING_PATH_STORAGE, DxvkBufferSlice(m_pathStorage, 0, m_pathStorage->info().size));
-    if (raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable)) {
+    if (raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable || volume.air.enable)) {
       // Primary consumes the atmospheric transfers and motion guides before PSR reuses the storage.
       ScopedGpuProfileZone(ctx, "Primary Atmosphere");
       {

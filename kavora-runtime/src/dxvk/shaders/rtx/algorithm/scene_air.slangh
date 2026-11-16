@@ -1,0 +1,13 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 GBwater
+// SPDX-License-Identifier: MIT
+#pragma once
+
+import "rtx/algorithm/air_medium.slang";
+import "rtx/pass/air_parameters.slang";
+
+AirTables sceneAirTables(AirArgs args, SamplerState sampler)
+{
+  const uint transmission = args.enable ? args.transmittanceTextureIndex : 0;
+  const uint scattering = args.enable ? args.scatteringTextureIndex : 0;
+  return { textures[transmission], textures[scattering], sampler };
+}

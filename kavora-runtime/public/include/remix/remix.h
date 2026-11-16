@@ -927,6 +927,13 @@ namespace remix {
     }
   };
 
+  struct LightInfoAtmosphereEXT : remixapi_LightInfoAtmosphereEXT {
+    LightInfoAtmosphereEXT() : remixapi_LightInfoAtmosphereEXT{} {
+      sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_ATMOSPHERE_EXT;
+      STATIC_ASSERT_SIZEOF(remixapi_LightInfoAtmosphereEXT, 144);
+    }
+  };
+
   struct LightInfo : remixapi_LightInfo {
     LightInfo() : remixapi_LightInfo{} {
       sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;

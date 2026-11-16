@@ -29,15 +29,20 @@ float3 sampleIndirectEnvironmentRadiance(float3 direction, SamplerCube<float3> p
 {
   // The sky map carries the cloud-scattered radiance for an escaped path.
   // World-space cloud transport has already integrated it in resolveAtmosphere.
+  DomeLightArgs dome = cb.domeLightArgs;
+  if (cb.volumeArgs.air.enable)
+  {
+    dome.textureIndex = dome.boundaryTextureIndex;
+  }
   return applyCloudSky(cb.volumeArgs.clouds, CloudSkySampler, direction,
-    sampleEnvironmentRadiance(cb.domeLightArgs, cb.skyBrightness, probe, sampler, direction));
+    sampleEnvironmentRadiance(dome, cb.skyBrightness, probe, sampler, direction));
 }
 
 // Analytic emitters already participate in direct-light sampling. Their visible disks
 // belong to the camera and specular-continuation background, not the indirect environment.
 float3 sampleClearBackgroundRadiance(float3 direction, SamplerCube<float3> probe, SamplerState sampler) {
   DomeLightArgs dome = cb.domeLightArgs;
-  dome.textureIndex = dome.backgroundTextureIndex;
+  dome.textureIndex = cb.volumeArgs.air.enable ? dome.backgroundBoundaryTextureIndex : dome.backgroundTextureIndex;
   return sampleEnvironmentRadiance(dome, cb.skyBrightness, probe, sampler, direction);
 }
 

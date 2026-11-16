@@ -1563,10 +1563,26 @@ public final class RemixBridge {
                                            int projection,
                                            boolean backgroundOnly,
                                            long chainNext) {
+        return allocDomeLightChain(transform12, colorTexture, transmittanceTexture, opacity, blendType,
+                projection, backgroundOnly, chainNext, null);
+    }
+
+    static long allocDomeLightChain(float[] transform12, long colorTexture, long transmittanceTexture,
+            float opacity, int blendType, int projection, boolean backgroundOnly, long chainNext,
+            LightInfoAtmosphereEXT atmosphere) {
+        if (atmosphere != null) {
+            if (transmittanceTexture == 0 || projection != 0 || backgroundOnly || opacity != 1.0f) {
+                throw new IllegalArgumentException("Atmosphere requires a full-opacity transmitting latitude-longitude dome");
+            }
+            validateAtmosphere(atmosphere);
+        }
         Arena arena = Arena.ofShared();
         try {
             MemorySegment ext = arena.allocate(RemixLayouts.layout("LightInfoDomeEXT"));
             put(ext, "LightInfoDomeEXT", "sType", StructType.LIGHT_INFO_DOME_EXT);
+            if (atmosphere != null) {
+                chainNext = writeAtmosphere(arena, atmosphere, chainNext).address();
+            }
             if (projection != 0 || backgroundOnly) {
                 MemorySegment mapping = info(arena, "LightInfoDomeProjectionEXT",
                         StructType.LIGHT_INFO_DOME_PROJECTION_EXT, chainNext);
@@ -1590,6 +1606,62 @@ public final class RemixBridge {
         } catch (Throwable error) {
             arena.close();
             throw failure(error);
+        }
+    }
+
+    private static MemorySegment writeAtmosphere(Arena arena, LightInfoAtmosphereEXT air, long chainNext) {
+        String type = "LightInfoAtmosphereEXT";
+        MemorySegment extension = info(arena, type, StructType.LIGHT_INFO_ATMOSPHERE_EXT, chainNext);
+        put(extension, type, "transmittanceLut", air.transmittanceLut);
+        put(extension, type, "scatteringLut", air.scatteringLut);
+        floats(extension, type, "lightDirections", air.lightDirections);
+        floats(extension, type, "lightIrradiances", air.lightIrradiances);
+        put(extension, type, "seaLevelMeters", air.seaLevelMeters);
+        put(extension, type, "innerRadius", air.innerRadius);
+        put(extension, type, "lowerDepth", air.lowerDepth);
+        put(extension, type, "atmosphereHeight", air.atmosphereHeight);
+        vector3(extension, type, "rayleighExtinction",
+                air.rayleighExtinction.x, air.rayleighExtinction.y, air.rayleighExtinction.z);
+        put(extension, type, "rayleighHeight", air.rayleighHeight);
+        put(extension, type, "mieExtinction", air.mieExtinction);
+        put(extension, type, "mieHeight", air.mieHeight);
+        put(extension, type, "mieAlbedo", air.mieAlbedo);
+        put(extension, type, "mieAnisotropy", air.mieAnisotropy);
+        return extension;
+    }
+
+    private static void validateAtmosphere(LightInfoAtmosphereEXT air) {
+        if (air.transmittanceLut == 0 || air.scatteringLut == 0 || !Float.isFinite(air.seaLevelMeters)
+                || !(air.innerRadius > 0) || !Float.isFinite(air.innerRadius)
+                || !(air.lowerDepth >= 0) || !(air.atmosphereHeight > air.lowerDepth)
+                || !Float.isFinite(air.atmosphereHeight)
+                || !(air.rayleighHeight > 0) || !Float.isFinite(air.rayleighHeight)
+                || !(air.mieHeight > 0) || !Float.isFinite(air.mieHeight)
+                || !(air.mieExtinction >= 0) || !Float.isFinite(air.mieExtinction)
+                || !(air.mieAlbedo >= 0 && air.mieAlbedo <= 1)
+                || !(air.mieAnisotropy >= 0 && air.mieAnisotropy < 1)
+                || air.rayleighExtinction == null
+                || !(air.rayleighExtinction.x >= 0) || !Float.isFinite(air.rayleighExtinction.x)
+                || !(air.rayleighExtinction.y >= 0) || !Float.isFinite(air.rayleighExtinction.y)
+                || !(air.rayleighExtinction.z >= 0) || !Float.isFinite(air.rayleighExtinction.z)) {
+            throw new IllegalArgumentException("Atmosphere requires finite physical coefficients and both LUTs");
+        }
+        for (int light = 0; light < 2; light++) {
+            int start = light * 4;
+            float lengthSquared = 0;
+            for (int channel = 0; channel < 3; channel++) {
+                float direction = air.lightDirections[start + channel];
+                float irradiance = air.lightIrradiances[start + channel];
+                if (!Float.isFinite(direction) || !(irradiance >= 0) || !Float.isFinite(irradiance)) {
+                    throw new IllegalArgumentException("Atmosphere light direction and irradiance must be finite");
+                }
+                lengthSquared += direction * direction;
+            }
+            float radius = air.lightDirections[start + 3];
+            if (Math.abs(lengthSquared - 1.0f) > 0.001f || !(radius >= 0 && radius < Math.PI * 0.5)
+                    || air.lightIrradiances[start + 3] != 0.0f) {
+                throw new IllegalArgumentException("Atmosphere lights require unit directions and a finite angular radius");
+            }
         }
     }
 

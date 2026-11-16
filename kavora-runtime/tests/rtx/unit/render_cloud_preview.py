@@ -9,8 +9,9 @@ integrates cloudExtinction without the camera-distance fade. Optional radiance
 uses production cloudIncidentRadiance under a constant diagnostic environment.
 An optional atmosphere fixture supplies the production sky texture and Java
 light profile. Clouds use the production hemisphere quadrature for ambient
-illumination. This is cloud-only transport, without air along the cloud ray,
-terrain, celestial disks or the game's temporal reconstruction.
+illumination. --air also uses that fixture's optical tables in the production
+joint air/cloud integrator. Neither mode includes terrain, celestial disks or
+the game's temporal reconstruction.
 
 --shader-root selects code, not that revision's native option defaults; pass the
 same explicit CLI parameters when comparing shader revisions.
@@ -188,7 +189,7 @@ def redisplay(args, shaders):
     path.write_text(json.dumps(manifest, indent=2))
     contact_sheet(args.output, manifest['label'], list(manifest['views']), *manifest['resolution'], True,
                   manifest['camera'], manifest['verticalFovDegrees'], 'atmosphereFixture' in manifest,
-                  manifest['lightingMode'], args.exposure, args.tone_map)
+                  manifest['lightingMode'], args.exposure, args.tone_map, manifest.get('finiteDistanceAir', False))
     print('Redisplayed existing HDR data:', args.output, flush=True)
 
 
@@ -215,7 +216,7 @@ def compare_texture_channels(reference, candidate):
     return report
 
 
-def contact_sheet(output, label, views, width, height, radiance, origin, vfov, atmosphere, lighting, exposure, tone_map):
+def contact_sheet(output, label, views, width, height, radiance, origin, vfov, atmosphere, lighting, exposure, tone_map, air):
     panels = []
     for view in views:
         panels.append((f'{view}: production cloud opacity (white = 1-T)', output / f'{view}-opacity.png'))
@@ -223,7 +224,8 @@ def contact_sheet(output, label, views, width, height, radiance, origin, vfov, a
             panels.append(('top: vertical optical depth, fixed display range 0..1', output / 'top-tau.png'))
         elif radiance:
             background = 'production sky' if atmosphere else 'diagnostic sky'
-            panels.append((f'{view}: production scattering + {background}', output / f'{view}-radiance.png'))
+            transport = 'production joint air/cloud scattering' if air else f'production scattering + {background}'
+            panels.append((f'{view}: {transport}', output / f'{view}-radiance.png'))
     columns = 2
     title_height, caption_height = 84, 34
     rows = (len(panels) + columns - 1) // columns
@@ -232,12 +234,56 @@ def contact_sheet(output, label, views, width, height, radiance, origin, vfov, a
     draw.text((12, 9), label, fill='white')
     sky = 'production atmosphere inputs' if atmosphere else 'constant diagnostic environment'
     draw.text((12, 29), f'Production Slang; {sky}; lighting={lighting}; exposure={exposure:g}; display={tone_map}', fill='#bec6d4')
-    draw.text((12, 49), f'VFOV{vfov:g}; camera{tuple(origin)}; cloud-only transport; no terrain/temporal reconstruction', fill='#bec6d4')
+    transport = 'joint air/cloud transport' if air else 'cloud-only transport'
+    draw.text((12, 49), f'VFOV{vfov:g}; camera{tuple(origin)}; {transport}; no terrain/temporal reconstruction', fill='#bec6d4')
     for index, (caption, path) in enumerate(panels):
         x, y = (index % columns) * width, title_height + (index // columns) * (height + caption_height)
         draw.text((x + 7, y + 8), caption, fill='white')
         sheet.paste(Image.open(path).convert('RGB'), (x, y + caption_height))
     sheet.save(output / 'contact-sheet.png')
+
+
+def air_inputs(device, fixture_path, fixture, origin, pixel_count):
+    if 'opticalModel' not in fixture:
+        raise ValueError('Regenerate this atmosphere fixture to export its production optical model')
+    with np.load(fixture_path / 'atmosphere.npz') as data:
+        arrays = [data['lut'].astype(np.float32), data['scattering'].astype(np.float32)]
+    sampler = device.create_sampler(min_filter=spy.TextureFilteringMode.linear,
+                                    mag_filter=spy.TextureFilteringMode.linear,
+                                    address_u=spy.TextureAddressingMode.clamp_to_edge,
+                                    address_v=spy.TextureAddressingMode.clamp_to_edge)
+    views = []
+    for array in arrays:
+        if not np.isfinite(array).all():
+            raise ValueError('The atmospheric tables must contain finite data')
+        texture = device.create_texture(type=spy.TextureType.texture_2d, format=spy.Format.rgba32_float,
+                                        width=array.shape[1], height=array.shape[0], mip_count=1,
+                                        usage=spy.TextureUsage.shader_resource)
+        texture.copy_from_numpy(array)
+        views.append(texture.create_view())
+    chroma = device.create_texture(type=spy.TextureType.texture_3d, format=spy.Format.rg16_float,
+                                   width=1, height=1, depth=1, mip_count=1,
+                                   usage=spy.TextureUsage.shader_resource)
+    chroma.copy_from_numpy(np.zeros((1, 1, 1, 2), np.float16))
+    chroma_view = chroma.create_view(sampler=sampler)
+    transmission = device.create_buffer(element_count=pixel_count, struct_size=16,
+                                         usage=spy.BufferUsage.unordered_access)
+    air = fixture['opticalModel'] | {
+        'enable': 1, 'up': [0, 1, 0], 'worldToKilometers': 0.001,
+        'groundReference': [origin[0], fixture['seaLevel'], origin[2]],
+        'mieAnisotropy': fixture['mieAnisotropy'],
+        'transmittanceTextureIndex': 0, 'scatteringTextureIndex': 0,
+        'transmittanceExtent': [arrays[0].shape[1], arrays[0].shape[0]],
+        'scatteringSize': arrays[1].shape[0],
+        'lights': [
+            {'directionToLight': fixture['sunDirection'], 'angularRadius': 0.004625123,
+             'irradiance': [fixture['sunSourceRadiance'] * np.pi] * 3},
+            {'directionToLight': (-np.array(fixture['sunDirection'])).tolist(),
+             'angularRadius': 0.004625123, 'irradiance': [0, 0, 0]}]}
+    bindings = {'Air': air, 'AirTransmission': views[0].descriptor_handle_ro,
+                'AirScattering': views[1].descriptor_handle_ro, 'AirSampler': sampler.descriptor_handle,
+                'FogChroma': chroma_view.descriptor_handle_combined, 'TransmissionResults': transmission}
+    return air, bindings, (views, sampler, chroma_view, transmission)
 
 
 def main():
@@ -261,7 +307,7 @@ def main():
     parser.add_argument('--low-shape-scale', type=float, default=1024.0, help='Low cloud base texture period in meters')
     parser.add_argument('--low-extinction', type=float, default=0.03, help='Low cloud extinction per meter at unit density')
     parser.add_argument('--low-coverage', type=float, default=0.45, help='Low cloud regional coverage')
-    parser.add_argument('--low-max-distance', type=float, default=12000.0, help='Low cloud view range in meters')
+    parser.add_argument('--low-max-distance', type=float, default=96000.0, help='Low cloud view range in meters')
     parser.add_argument('--high-base', type=float, default=6300.0, help='High cloud base in meters')
     parser.add_argument('--high-thickness', type=float, default=200.0, help='High cloud thickness in meters')
     parser.add_argument('--high-extinction', type=float, default=0.006, help='High cloud extinction per meter')
@@ -284,6 +330,8 @@ def main():
                         help='Linear RGB ambient illumination; defaults to 0.04,0.06,0.10')
     parser.add_argument('--atmosphere-fixture', type=Path,
                         help='Directory containing production atmosphere.npz and its manifest.json')
+    parser.add_argument('--air', action='store_true',
+                        help='Integrate production finite-distance air, clouds and their shared ray grid')
     parser.add_argument('--lighting', choices=['all', 'direct', 'ambient'], default='all',
                         help='Isolate cloud lighting components while retaining the same sky background')
     parser.add_argument('--exposure', type=float,
@@ -352,6 +400,8 @@ def main():
     if 'createCloudRayGrid' in (shaders / 'rtx/algorithm/clouds.slang').read_text():
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_ADAPTIVE_GRID'] = '1'
     atmosphere = None
+    if args.air and (not args.atmosphere_fixture or not args.radiance):
+        parser.error('--air requires --atmosphere-fixture and --radiance')
     if args.atmosphere_fixture:
         fixture_path = args.atmosphere_fixture / 'manifest.json'
         atmosphere = json.loads(fixture_path.read_text())
@@ -360,6 +410,8 @@ def main():
         support.OPTIONS['defines']['CLOUD_PREVIEW_ATMOSPHERE'] = '1'
         if 'kCloudAmbientSampleCount' in (shaders / 'rtx/algorithm/cloud_sky.slang').read_text():
             support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_AMBIENT_SAMPLE_COUNT'] = '1'
+    if args.air:
+        support.OPTIONS['defines']['CLOUD_PREVIEW_AIR'] = '1'
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=support.OPTIONS)
     display = PreviewDisplay(device, args.tone_map)
     if args.noise_seed is not None and not 0 <= args.noise_seed <= 0xffffffff:
@@ -427,6 +479,11 @@ def main():
         clouds.pop('groundAlbedo', None)
     if args.layers == 'high': clouds['extinction'] = 0
     if args.layers == 'low': clouds['highExtinction'] = 0
+    air_bindings = {}
+    if args.air:
+        air, air_bindings, air_resources = air_inputs(device, args.atmosphere_fixture, atmosphere,
+                                                     args.origin, args.width * args.height)
+        clouds['planetRadius'] = (air['innerRadius'] + air['lowerDepth']) / air['worldToKilometers'] - atmosphere['seaLevel']
     if atmosphere:
         ambient_program = device.load_program('cloud_preview.comp.slang', ['mainAmbient'])
         ambient_kernel = device.create_compute_kernel(ambient_program)
@@ -459,6 +516,14 @@ def main():
                                                      shaders / 'rtx/pass/cloud_parameters.slang',
                                                      shaders / 'rtx/utility/lat_long_projection.slang'})}}
     display_metadata(manifest, args, shaders)
+    manifest['finiteDistanceAir'] = bool(args.air)
+    if args.air:
+        manifest['air'] = air
+        manifest['airScope'] = ('Production air optical model and LUTs in the shared air/cloud segment integrator; '
+                                'black space boundary, no sun disk, terrain, scene fog or temporal reconstruction')
+        for relative in ('rtx/algorithm/air_medium.slang', 'rtx/algorithm/atmosphere.slang',
+                         'rtx/pass/air_args.h', 'rtx/pass/volume_args.h'):
+            manifest['sourceHashes'][relative] = hashlib.sha256((shaders / relative).read_bytes()).hexdigest()
     if atmosphere:
         manifest['atmosphereFixture'] = {
             'path': str(args.atmosphere_fixture), 'manifest': atmosphere,
@@ -484,6 +549,7 @@ def main():
             'Origin': origin, 'Forward': forward, 'Right': right, 'CameraUp': up,
             'TanHalfFov': np.tan(np.radians(args.vfov) * 0.5), 'TopSpan': args.top_span,
             'Projection': int(view == 'top'), **illumination,
+            **air_bindings,
             'Radiance': int(args.radiance and view != 'top'),
             **{name: value.descriptor_handle_combined for name, value in textures.items()},
         })
@@ -499,6 +565,15 @@ def main():
             background = environment_data[:-1, :3].reshape(args.height, args.width, 3)
             raw.update(sky=background, ambient=environment_data[-1, :3])
             manifest['sampledCloudAmbient'] = environment_data[-1, :3].tolist()
+        if args.air and view != 'top':
+            air_transmission = air_resources[-1].to_numpy().view(np.float32).reshape(args.height, args.width, 4)
+            if not np.isfinite(air_transmission).all():
+                raise RuntimeError(f'Nonfinite air transmission in {view}')
+            # The shared integrator already contains the sky's air emission.
+            # This fixture's outer space boundary has no celestial disks.
+            raw['environmentSky'] = background
+            background = np.zeros_like(background)
+            raw.update(sky=background, airTransmittance=air_transmission[:, :, :3])
         np.savez(args.output / f'{view}.npz', **raw)
         save_image(args.output / f'{view}-opacity.png', np.repeat(opacity[:, :, None], 3, axis=2))
         if view == 'top':
@@ -515,7 +590,7 @@ def main():
         print(view, json.dumps(statistics), flush=True)
         (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
     contact_sheet(args.output, args.label, views, args.width, args.height, args.radiance, args.origin, args.vfov,
-                  bool(atmosphere), args.lighting, args.exposure, args.tone_map)
+                  bool(atmosphere), args.lighting, args.exposure, args.tone_map, args.air)
     print('Saved', args.output / 'contact-sheet.png', flush=True)
 
 

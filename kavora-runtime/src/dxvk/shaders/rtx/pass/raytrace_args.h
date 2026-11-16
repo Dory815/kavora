@@ -110,7 +110,8 @@ struct DomeLightArgs {
   uint active;
 
   uint backgroundTextureIndex;
-  uint2 pad0;
+  uint boundaryTextureIndex;
+  uint backgroundBoundaryTextureIndex;
   uint textureIndex;
 };
 

@@ -5,6 +5,7 @@ import "rtx/algorithm/fog_froxel_sampling.slang";
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
+#include "rtx/algorithm/scene_air.slangh"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include "rtx/utility/shader_types.slangh"
 #include "rtx/utility/brdf.slangh"
@@ -39,11 +40,11 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const Ray cameraRay = primaryAtmosphereRay(pixel);
   const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs, cameraRay.origin, cameraRay.direction,
     0, translucentMediumExtinction(cb.startInMediumMaterialIndex, surfaceMaterials));
-  if (!ray.hasFog && !ray.hasCloud)
+  if (!ray.hasFog && !ray.hasCloud && !ray.hasAir)
   {
     storePrimaryAtmosphere(pixel, integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
       VolumeFilteredRadianceCoCg,
-      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, distance, float3(0)));
+      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, distance, float3(0), sceneAirTables(cb.volumeArgs.air, LinearWrapSampler)));
     return;
   }
   const float3 ambient = ray.hasCloud
@@ -57,7 +58,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       min(distance, cacheEnd), checkpoint);
     const AtmosphereSegment tail = distance > cacheEnd
       ? integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
-          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, cacheEnd, distance, ambient) : emptyAtmosphereSegment();
+          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, cacheEnd, distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler)) : emptyAtmosphereSegment();
     storePrimaryAtmosphere(pixel, composeAtmosphereSegments(prefix, tail));
     return;
   }
@@ -66,6 +67,6 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const AtmosphereSegment prefix = interpolateAtmosphereCheckpoints(pixel, checkpoint);
   const AtmosphereSegment tail = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, begin, distance, ambient);
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, begin, distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
   storePrimaryAtmosphere(pixel, composeAtmosphereSegments(prefix, tail));
 }

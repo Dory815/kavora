@@ -42,6 +42,7 @@
 #include <rtx_shaders/composite.h>
 #include <rtx_shaders/composite_alpha_blend.h>
 #include "rtx_texture_manager.h"
+#include "rtx_light_manager.h"
 
 namespace dxvk {
 
@@ -137,6 +138,9 @@ namespace dxvk {
         SAMPLER2D(COMPOSITE_CLOUD_WEATHER_SAMPLER)
         SAMPLER2D(COMPOSITE_CLOUD_SKY_SAMPLER)
         TEXTURE2D(COMPOSITE_CLOUD_AMBIENT_INPUT)
+        TEXTURE2D(COMPOSITE_AIR_TRANSMITTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_AIR_SCATTERING_INPUT)
+        SAMPLER(COMPOSITE_AIR_LINEAR_SAMPLER)
 
         RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT)
@@ -371,6 +375,11 @@ namespace dxvk {
 
     // Note: Clamp to edge used to avoid interpolation to black on the edges of the view.
     Rc<DxvkSampler> linearSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+    const LightManager& lightManager = sceneManager.getLightManager();
+    ctx->bindResourceView(COMPOSITE_AIR_TRANSMITTANCE_INPUT, lightManager.getAirTransmittanceLut(), nullptr);
+    ctx->bindResourceView(COMPOSITE_AIR_SCATTERING_INPUT, lightManager.getAirScatteringLut(), nullptr);
+    ctx->bindResourceSampler(COMPOSITE_AIR_LINEAR_SAMPLER, linearSampler);
 
     const RtxGlobalVolumetrics& globalVolumetrics = ctx->getCommonObjects()->metaGlobalVolumetrics();
     ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceAge().view, nullptr);

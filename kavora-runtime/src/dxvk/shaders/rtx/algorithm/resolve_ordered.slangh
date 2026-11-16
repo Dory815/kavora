@@ -224,7 +224,7 @@ float resolveVertex<T: IBasePayloadState, M: IVertexMaterialContext>(
   const bool hasSurface = rayInteractionHasHit(rayInteraction);
 #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
 #ifdef RESOLVER_PRECOMPUTED_PRIMARY_ATMOSPHERE
-  if (firstPrimarySegment && (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable))
+  if (firstPrimarySegment && (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable || cb.volumeArgs.air.enable))
   {
     const AtmosphereSegment segment = loadPrimaryAtmosphere(getDispatchRaysIndex().xy);
     emissiveRadiance += radianceAttenuation * segment.radiance;

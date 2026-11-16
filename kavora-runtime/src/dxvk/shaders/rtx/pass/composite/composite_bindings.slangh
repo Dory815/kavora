@@ -123,6 +123,13 @@ Texture2D<uint> PrimarySurfaceFlags;
 layout(binding = COMPOSITE_CLOUD_AMBIENT_INPUT)
 Texture2D<float4> CloudAmbientInput;
 
+layout(binding = COMPOSITE_AIR_TRANSMITTANCE_INPUT)
+Texture2D<float4> AirTransmittanceInput;
+layout(binding = COMPOSITE_AIR_SCATTERING_INPUT)
+Texture2D<float4> AirScatteringInput;
+layout(binding = COMPOSITE_AIR_LINEAR_SAMPLER)
+SamplerState AirLinearSampler;
+
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryAlbedo;

@@ -820,6 +820,13 @@ namespace dxvk {
     m_gpuDomeLightArgs = {};
     m_gpuDomeLightArgs.textureIndex = BINDING_INDEX_INVALID;
     m_gpuDomeLightArgs.backgroundTextureIndex = BINDING_INDEX_INVALID;
+    m_gpuDomeLightArgs.boundaryTextureIndex = BINDING_INDEX_INVALID;
+    m_gpuDomeLightArgs.backgroundBoundaryTextureIndex = BINDING_INDEX_INVALID;
+    m_gpuAirArgs = {};
+    m_gpuAirArgs.transmittanceTextureIndex = BINDING_INDEX_INVALID;
+    m_gpuAirArgs.scatteringTextureIndex = BINDING_INDEX_INVALID;
+    m_airTransmittanceLut = nullptr;
+    m_airScatteringLut = nullptr;
     m_domeLayers.clear();
     SceneManager& sceneManager = device()->getCommon()->getSceneManager();
     for (remixapi_LightHandle handle : m_externalActiveDomeLights) {
@@ -844,9 +851,52 @@ namespace dxvk {
     if (m_domeLayers.empty()) {
       return;
     }
-    const TextureRef& composite = m_domeCompositor.compose(ctx, m_domeLayers);
+    const DomeLight* airLayer = nullptr;
+    uint32_t atmosphereCount = 0;
+    for (const DomeLight* layer : m_domeLayers) {
+      if (layer->atmosphere) {
+        airLayer = layer;
+        atmosphereCount++;
+      }
+    }
+    if (atmosphereCount == 1) {
+      const AtmosphereLight& atmosphere = *airLayer->atmosphere;
+      AirArgs air = atmosphere.args;
+      air.transmittanceTextureIndex = BINDING_INDEX_INVALID;
+      air.scatteringTextureIndex = BINDING_INDEX_INVALID;
+      sceneManager.trackTexture(atmosphere.transmittance, air.transmittanceTextureIndex, true, false);
+      sceneManager.trackTexture(atmosphere.scattering, air.scatteringTextureIndex, true, false);
+      const auto* transmission = atmosphere.transmittance.getImageView();
+      const auto* scattering = atmosphere.scattering.getImageView();
+      if (air.transmittanceTextureIndex != BINDING_INDEX_INVALID && air.scatteringTextureIndex != BINDING_INDEX_INVALID
+          && transmission && scattering
+          && transmission->imageInfo().format == VK_FORMAT_R32G32B32A32_SFLOAT
+          && scattering->imageInfo().format == VK_FORMAT_R32G32B32A32_SFLOAT
+          && transmission->imageInfo().extent.width >= 2 && transmission->imageInfo().extent.height >= 2
+          && scattering->imageInfo().extent.width >= 2
+          && scattering->imageInfo().extent.width == scattering->imageInfo().extent.height) {
+        air.transmittanceExtent = { transmission->imageInfo().extent.width, transmission->imageInfo().extent.height };
+        air.scatteringSize = scattering->imageInfo().extent.width;
+        air.up = RtxOptions::zUp() ? Vector3(0, 0, 1) : Vector3(0, 1, 0);
+        const float worldScale = RtxOptions::getMeterToWorldUnitScale();
+        air.worldToKilometers = 0.001f / worldScale;
+        air.groundReference = air.up * (atmosphere.seaLevelMeters * worldScale);
+        for (auto& light : air.lights) {
+          light.irradiance = Vector3(light.irradiance.x, light.irradiance.y, light.irradiance.z) * airLayer->radiance;
+        }
+        air.enable = true;
+        m_airTransmittanceLut = atmosphere.transmittance.getImageView();
+        m_airScatteringLut = atmosphere.scattering.getImageView();
+        m_gpuAirArgs = air;
+      }
+    }
+    const TextureRef& composite = m_domeCompositor.compose(ctx, m_domeLayers, m_gpuAirArgs.enable);
     sceneManager.trackTexture(composite, m_gpuDomeLightArgs.textureIndex, true, false);
     sceneManager.trackTexture(m_domeCompositor.background(), m_gpuDomeLightArgs.backgroundTextureIndex, true, false);
+    if (m_gpuAirArgs.enable) {
+      sceneManager.trackTexture(m_domeCompositor.boundary(), m_gpuDomeLightArgs.boundaryTextureIndex, true, false);
+      sceneManager.trackTexture(m_domeCompositor.backgroundBoundary(), m_gpuDomeLightArgs.backgroundBoundaryTextureIndex, true, false);
+    }
     m_gpuDomeLightArgs.active = m_gpuDomeLightArgs.textureIndex != BINDING_INDEX_INVALID;
     m_gpuDomeLightArgs.radiance = Vector3(1.0f);
     m_gpuDomeLightArgs.worldToLightTransform = m_domeCompositor.worldToOutput();

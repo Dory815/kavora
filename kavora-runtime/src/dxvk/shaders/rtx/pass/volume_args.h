@@ -25,10 +25,12 @@
 #include "rtx/utility/shader_types.h"
 #ifdef __cplusplus
 #include "rtx/pass/cloud_args.h"
+#include "rtx/pass/air_args.h"
 #include "rtx/concept/camera/volume_camera.h"
 #define VOLUME_PARAMETER
 #else
 import "rtx/pass/cloud_parameters.slang";
+import "rtx/pass/air_parameters.slang";
 import "rtx/concept/camera/volume_camera.slang";
 #define VOLUME_PARAMETER public
 #endif
@@ -41,6 +43,7 @@ VOLUME_PARAMETER static const uint froxelVolumeCount = 3;
 // Note: Ensure 16B alignment
 VOLUME_PARAMETER struct VolumeArgs {
   VOLUME_PARAMETER CloudArgs clouds;
+  VOLUME_PARAMETER AirArgs air;
   VOLUME_PARAMETER VolumeDefinitionCamera cameras[froxelVolumeCount];
   VOLUME_PARAMETER VolumeDefinitionCamera restirCameras[froxelVolumeCount];
 

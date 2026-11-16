@@ -7,6 +7,7 @@ package org.edtp.kavora.sky;
 import org.edtp.kavora.render.RenderOrigin;
 import org.edtp.kavora.sdk.LightInfo;
 import org.edtp.kavora.sdk.LightInfoDomeEXT;
+import org.edtp.kavora.sdk.LightInfoAtmosphereEXT;
 import org.edtp.kavora.sdk.LightInfoRectEXT;
 import org.edtp.kavora.sdk.MaterialInfoOpaqueEXT;
 import org.edtp.kavora.sdk.RemixAPI;
@@ -113,6 +114,13 @@ public class SkyRenderer {
     private KavoraTexture skyTextureAsset;
     private KavoraLight skyDomeLightAsset;
     private KavoraTexture skyTransmittanceAsset;
+    private KavoraTexture airTransmittanceLutAsset;
+    private KavoraTexture airScatteringLutAsset;
+    private final LightInfoAtmosphereEXT atmosphereInfo = new LightInfoAtmosphereEXT();
+    private final LightInfoDomeEXT skyDomeInfo = new LightInfoDomeEXT();
+    private final LightInfo skyLightInfo = new LightInfo();
+    private boolean hasAtmosphericTransport;
+    private boolean atmosphereInfoChanged;
     private long overcastTextureHandle;
     private KavoraLight overcastDomeLightAsset;
     private KavoraLight skyAmbientRectLight;
@@ -143,6 +151,8 @@ public class SkyRenderer {
         this.lights = lights;
         nightSky = new NightSkyState(api::setConfigVariable);
         atmosphericGenerator = new AtmosphericSkyGenerator();
+        skyDomeInfo.transform[6] = 1.0f / AtmosphericSkyGenerator.VERTICAL_SCALE;
+        skyLightInfo.domeExt = skyDomeInfo;
         atmosphericTexturePatch.width = SKY_W;
         atmosphericTexturePatch.height = SKY_H;
         atmosphericTexturePatch.rowPitch = SKY_W * 4 * Short.BYTES;
@@ -240,7 +250,8 @@ public class SkyRenderer {
         try (ProfileScope ignored = ProfileScope.begin("Sky.Atmosphere")) {
             nightSky.update(environment.starBrightness, environment.starAngle,
                     clock.animationGameTime(environment.gameTime) * 0.05, environment.moonPhase);
-            updateAtmosphericDomeLight(api, lightState, (float) (cameraPos.y - world.getSeaLevel()));
+            updateAtmosphericDomeLight(api, lightState, (float) (cameraPos.y - world.getSeaLevel()),
+                    world.getSeaLevel(), volumetricClouds);
         }
         boolean weatherRendered;
         try (ProfileScope ignored = ProfileScope.begin("Sky.Weather")) {
@@ -265,7 +276,7 @@ public class SkyRenderer {
             fillFixedDome(pixels, radiance);
             skyTextureAsset = createSkyTexture(pixels);
         }
-        publishSkyDome(api);
+        publishSkyDome(api, false);
     }
 
     /**
@@ -298,37 +309,40 @@ public class SkyRenderer {
 
     private void updateAtmosphericDomeLight(
             RemixAPI api,
-            LightManager.SkyLightState lightState, float observerHeight) {
-        regenerateSkyTexture(api, lightState, observerHeight);
-        publishSkyDome(api);
+            LightManager.SkyLightState lightState, float observerHeight, float seaLevelMeters,
+            boolean finiteAtmosphere) {
+        regenerateSkyTexture(api, lightState, observerHeight, seaLevelMeters);
+        publishSkyDome(api, finiteAtmosphere);
     }
 
     /**
-     * Creates the dome light over the live sky texture when it is missing, refreshes its
-     * multiplier when that changed, and draws it. Does nothing until the texture exists.
+     * Publishes the live sky texture with its matching optical state and multiplier.
+     * Does nothing until the texture exists.
      */
-    private void publishSkyDome(RemixAPI api) {
+    private void publishSkyDome(RemixAPI api, boolean finiteAtmosphere) {
         if (skyTextureAsset == null || !skyTextureAsset.isAlive()) {
             return;
         }
         boolean domeAlive = skyDomeLightAsset != null && skyDomeLightAsset.isAlive();
-        if (!domeAlive || Float.compare(lastSkyDomeMultiplier, skyDomeMultiplier) != 0) {
-            LightInfoDomeEXT domeExt = new LightInfoDomeEXT();
-            domeExt.transform[6] = 1.0f / AtmosphericSkyGenerator.VERTICAL_SCALE;
-            domeExt.setColorTexture(skyTextureAsset.getHandle());
-            if (skyTransmittanceAsset != null) domeExt.transmittanceTexture = skyTransmittanceAsset.getHandle();
-            LightInfo lightInfo = LightInfo.builder()
-                    .radiance(skyDomeMultiplier, skyDomeMultiplier, skyDomeMultiplier)
-                    .domeExt(domeExt)
-                    .build();
+        LightInfoAtmosphereEXT desiredAtmosphere = finiteAtmosphere && hasAtmosphericTransport ? atmosphereInfo : null;
+        if (!domeAlive || skyLightInfo.atmosphereExt != desiredAtmosphere
+                || (desiredAtmosphere != null && atmosphereInfoChanged)
+                || Float.compare(lastSkyDomeMultiplier, skyDomeMultiplier) != 0) {
+            skyDomeInfo.colorTexture = skyTextureAsset.getHandle();
+            skyDomeInfo.transmittanceTexture = skyTransmittanceAsset != null ? skyTransmittanceAsset.getHandle() : 0;
+            skyLightInfo.radiance.x = skyDomeMultiplier;
+            skyLightInfo.radiance.y = skyDomeMultiplier;
+            skyLightInfo.radiance.z = skyDomeMultiplier;
+            skyLightInfo.atmosphereExt = desiredAtmosphere;
             if (domeAlive) {
-                KavoraLightStore.get().update(skyDomeLightAsset, lightInfo);
+                KavoraLightStore.get().update(skyDomeLightAsset, skyLightInfo);
             } else {
                 destroyAsset(skyDomeLightAsset);
-                skyDomeLightAsset = new KavoraLight(lightInfo, null);
+                skyDomeLightAsset = new KavoraLight(skyLightInfo, null);
                 KavoraLightStore.get().create(skyDomeLightAsset);
             }
             lastSkyDomeMultiplier = skyDomeMultiplier;
+            atmosphereInfoChanged = false;
         }
         if (skyDomeLightAsset.isAlive()) {
             try (ProfileScope ignored =
@@ -410,23 +424,28 @@ public class SkyRenderer {
 
     private void regenerateSkyTexture(
             RemixAPI api,
-            LightManager.SkyLightState lightState, float observerHeight) {
-        // Both assets must be live for a skip to be safe. They are released whenever the world
+            LightManager.SkyLightState lightState, float observerHeight, float seaLevelMeters) {
+        // All published assets must be live for a skip to be safe. They are released whenever the world
         // changes, and a world whose time never advances keeps the parameters constant forever,
         // so gating on the parameters alone would never rebuild them and the dome would stay black.
         boolean publishedOutputValid = skyTextureAsset != null
                 && skyTextureAsset.isAlive()
                 && skyDomeLightAsset != null
-                && skyDomeLightAsset.isAlive();
+                && skyDomeLightAsset.isAlive()
+                && skyTransmittanceAsset != null && skyTransmittanceAsset.isAlive()
+                && airTransmittanceLutAsset != null && airTransmittanceLutAsset.isAlive()
+                && airScatteringLutAsset != null && airScatteringLutAsset.isAlive();
         ByteBuffer pixelBuf = atmosphericGenerator.generate(
                 lightState,
                 atmosphericMean,
                 mieScatteringAnisotropy,
                 observerHeight,
+                seaLevelMeters,
                 publishedOutputValid);
         if (pixelBuf == null) {
             return;
         }
+        publishAtmosphereModel();
         String auditDirectory = System.getProperty("kavora.skySnapshotDirectory");
         if (auditDirectory != null) {
             byte[] pixels = new byte[pixelBuf.remaining()];
@@ -470,6 +489,29 @@ public class SkyRenderer {
                 updateAtmosphericTexture(api, pixelBuf);
             }
         }
+    }
+
+    /** Publishes each immutable table once per asset lifetime, using the completed sky's light state. */
+    private void publishAtmosphereModel() {
+        if (airTransmittanceLutAsset == null || !airTransmittanceLutAsset.isAlive()) {
+            destroyAsset(airTransmittanceLutAsset);
+            airTransmittanceLutAsset = createAirTable(0, AtmosphericSkyGenerator.LUT_WIDTH, AtmosphericSkyGenerator.LUT_HEIGHT);
+        }
+        if (airScatteringLutAsset == null || !airScatteringLutAsset.isAlive()) {
+            destroyAsset(airScatteringLutAsset);
+            airScatteringLutAsset = createAirTable(1, AtmosphericSkyGenerator.SCATTERING_WIDTH, AtmosphericSkyGenerator.SCATTERING_HEIGHT);
+        }
+        atmosphericGenerator.describeAtmosphere(atmosphereInfo);
+        atmosphereInfo.transmittanceLut = airTransmittanceLutAsset.getHandle();
+        atmosphereInfo.scatteringLut = airScatteringLutAsset.getHandle();
+        hasAtmosphericTransport = true;
+        atmosphereInfoChanged = true;
+    }
+
+    private KavoraTexture createAirTable(int index, int width, int height) {
+        ByteBuffer pixels = DirectBufferPool.acquire(width * height * 16);
+        atmosphericGenerator.copyTransportTable(index, pixels);
+        return KavoraTextureStore.get().create(new KavoraTexture(width, height, TextureFormat.RGBA32_SFLOAT, 0, pixels, true));
     }
 
     /** Creates the dome's equirect texture over a pool buffer the texture then owns. */
@@ -625,12 +667,19 @@ public class SkyRenderer {
      * next frame publishes them from scratch for whatever sky the current world has.
      */
     private void releaseSkyLights() {
+        atmosphericGenerator.invalidate();
         destroyAsset(skyDomeLightAsset);
         skyDomeLightAsset = null;
         destroyAsset(skyTextureAsset);
         skyTextureAsset = null;
         destroyAsset(skyTransmittanceAsset);
         skyTransmittanceAsset = null;
+        destroyAsset(airTransmittanceLutAsset);
+        airTransmittanceLutAsset = null;
+        destroyAsset(airScatteringLutAsset);
+        airScatteringLutAsset = null;
+        hasAtmosphericTransport = false;
+        atmosphereInfoChanged = false;
         atmosphericTexturePatch.pixelData = null;
         transmittanceTexturePatch.pixelData = null;
         destroyAsset(overcastDomeLightAsset);

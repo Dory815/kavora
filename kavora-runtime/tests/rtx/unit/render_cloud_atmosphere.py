@@ -10,6 +10,7 @@ light; the unmodified GLSL body executes all four production compute passes.
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -234,7 +235,7 @@ def main():
     parser.add_argument('--sun-radiance', type=float, default=30)
     parser.add_argument('--world-height', type=float, default=139)
     parser.add_argument('--sea-level', type=float, default=63)
-    parser.add_argument('--profile-heights', type=float, nargs=4, default=[400, 1900, 6300, 6500])
+    parser.add_argument('--profile-heights', type=float, nargs=4, default=[800, 2300, 6300, 6500])
     parser.add_argument('--width', type=int, default=512)
     parser.add_argument('--height', type=int, default=512)
     parser.add_argument('--mie-anisotropy', type=float, default=0.9)
@@ -282,11 +283,18 @@ def main():
     if not all(np.isfinite(value).all() for value in valid.values()):
         raise RuntimeError('Nonfinite atmosphere output')
     np.savez_compressed(args.output / 'atmosphere.npz', **valid)
+    constants = dict(re.findall(r'^#define (\w+) (.+)$', definitions, re.MULTILINE))
+    optical_model = {field: float(constants[name]) for field, name in (
+        ('innerRadius', 'INNER_RADIUS'), ('lowerDepth', 'LOWER_DEPTH'),
+        ('atmosphereHeight', 'ATMOSPHERE_HEIGHT'), ('rayleighHeight', 'RAYLEIGH_HEIGHT'),
+        ('mieHeight', 'MIE_HEIGHT'), ('mieExtinction', 'BETA_M'), ('mieAlbedo', 'MIE_ALBEDO'))}
+    optical_model['rayleighExtinction'] = [float(value) for value in
+        constants['BETA_R'].removeprefix('vec3(').removesuffix(')').split(',')]
     manifest = dict(worldHeight=args.world_height, seaLevel=args.sea_level, sunDirection=sun,
         exporterHash=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         sunElevationDegrees=args.sun_elevation, sunAzimuthDegrees=args.sun_azimuth, verticalScale=4.0,
         skyExtent=[args.width, args.height], sunSourceRadiance=args.sun_radiance,
-        javaLighting=lighting, mieAnisotropy=args.mie_anisotropy,
+        javaLighting=lighting, mieAnisotropy=args.mie_anisotropy, opticalModel=optical_model,
         textureSunDirection=texture_sun,
         sources={str(p.relative_to(args.repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in
           [sky_path, args.repo / 'kavora/src/main/java/org/edtp/kavora/sky/SkyAtmosphere.java',

@@ -8,16 +8,16 @@ public final class SkyAtmosphere {
     // Lengths are kilometres and extinction is inverse kilometres.
     private static final double SEA_LEVEL_RADIUS = 6371.0;
     // The lower integration boundary lies beyond 500 vertical optical depths of aerosol.
-    private static final double LOWER_DEPTH = 12.0;
-    private static final double INNER_RADIUS = SEA_LEVEL_RADIUS - LOWER_DEPTH;
-    private static final double ATMOSPHERE_HEIGHT = 100.0 + LOWER_DEPTH;
-    private static final double RAYLEIGH_HEIGHT = 8.0;
-    private static final double MIE_HEIGHT = 1.2;
-    private static final double RAYLEIGH_R = 0.0055;
-    private static final double RAYLEIGH_G = 0.0130;
-    private static final double RAYLEIGH_B = 0.0224;
-    private static final double MIE_EXTINCTION = 0.021;
-    private static final double MIE_ALBEDO = 0.9;
+    static final double LOWER_DEPTH = 12.0;
+    static final double INNER_RADIUS = SEA_LEVEL_RADIUS - LOWER_DEPTH;
+    static final double ATMOSPHERE_HEIGHT = 100.0 + LOWER_DEPTH;
+    static final double RAYLEIGH_HEIGHT = 8.0;
+    static final double MIE_HEIGHT = 1.2;
+    static final double RAYLEIGH_R = 0.0055;
+    static final double RAYLEIGH_G = 0.0130;
+    static final double RAYLEIGH_B = 0.0224;
+    static final double MIE_EXTINCTION = 0.021;
+    static final double MIE_ALBEDO = 0.9;
     private static final int LIGHT_STEPS = 64;
     private static final double[] DISK_NODES = {-0.861136312, -0.339981044, 0.339981044, 0.861136312};
     private static final double[] DISK_WEIGHTS = {0.347854845, 0.652145155, 0.652145155, 0.347854845};

@@ -432,7 +432,7 @@
   "kavora.settings.value.cache.filter.1": "空间",
   "kavora.settings.value.cache.filter.2": "空间与时间",
   "kavora.effect.clouds.transport": "云计算方式",
-  "kavora.effect.clouds.transport.tip": "世界体积保留云的局部遮挡和视差。天空贴图让背景射线共用以相机为中心的云层；进入云层时效果为近似。",
+  "kavora.effect.clouds.transport.tip": "物理天空可用时，所有质量档均使用世界体积云。天空贴图仅在没有物理大气时可用；它让背景射线共用以相机为中心的云层，进入云层时效果为近似。",
   "kavora.effect.clouds.skyResolution": "云天空分辨率",
   "kavora.effect.clouds.skyResolution.tip": "共享云天空贴图的像素高度，宽度为两倍。提高此值可保留更细的云边缘和反射，仅天空贴图模式使用。",
   "kavora.effect.lighting.minBounces": "最少间接反弹",

@@ -73,6 +73,9 @@
 #define COMPOSITE_CLOUD_WEATHER_SAMPLER                              37
 #define COMPOSITE_CLOUD_SKY_SAMPLER                                  38
 #define COMPOSITE_RR_PRIMARY_MOTION_INPUT                            39
+#define COMPOSITE_AIR_TRANSMITTANCE_INPUT                            42
+#define COMPOSITE_AIR_SCATTERING_INPUT                               43
+#define COMPOSITE_AIR_LINEAR_SAMPLER                                 44
 
 // Inputs/Outputs
 

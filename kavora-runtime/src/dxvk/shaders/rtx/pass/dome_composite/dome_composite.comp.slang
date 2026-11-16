@@ -20,6 +20,8 @@ layout(r11f_g11f_b10f, binding = DOME_COMPOSITE_OUTPUT)
 RWTexture2D<float4> DomeOutput;
 layout(r11f_g11f_b10f, binding = DOME_COMPOSITE_BACKGROUND)
 RWTexture2D<float4> VisibleBackground;
+layout(r11f_g11f_b10f, binding = DOME_COMPOSITE_BOUNDARY)
+RWTexture2D<float4> Boundary;
 #if defined(DOME_NIGHT_SKY) || defined(DOME_END_SKY)
 layout(binding = DOME_COMPOSITE_NIGHT_FIELD)
 Sampler2D<float> NightField;
@@ -87,21 +89,38 @@ void main(uint2 pixel : SV_DispatchThreadID) {
 #endif
   float3 background = float3(0.0f);
   float3 visible = float3(0.0f);
+  float3 boundary = float3(0.0f);
   if (!(cb.flags & kDomeFirstLayer)) {
     background = DomeOutput[pixel].rgb;
     if (cb.flags & kDomeSeparateBackground) visible = VisibleBackground[pixel].rgb;
+    if (cb.flags & kDomeSeparateBoundary)
+    {
+      boundary = Boundary[pixel].rgb;
+    }
   }
 #ifdef DOME_NIGHT_SKY
   const float3 nightRadiance = DomeEffectOwner.night(night.rotation, night.intensity, night.meteorHead,
     night.meteorTail, NightField, Galaxy, direction, directionX, directionY);
   background += nightRadiance;
   visible += nightRadiance;
+  boundary += nightRadiance;
 #endif
   float3 transmission = float3(1.0f);
   if (cb.flags & kDomeHasTransmittance) transmission = saturate(DomeTransmittance.SampleLevel(sourceUV, 0));
   if (!(cb.flags & kDomeBackgroundOnly)) background = compositeLayer(background, source, transmission);
   DomeOutput[pixel] = float4(background, 1.0f);
-  if (cb.flags & kDomeSeparateBackground) {
-    VisibleBackground[pixel] = float4(compositeLayer(visible, source, transmission), 1.0f);
+  if (cb.flags & kDomeSeparateBackground)
+  {
+    // Finite-ray transport owns the air layer on visible paths.
+    const bool includeAir = !(cb.flags & kDomeSeparateBoundary) || !(cb.flags & kDomeAtmosphere);
+    VisibleBackground[pixel] = float4(includeAir ? compositeLayer(visible, source, transmission) : visible, 1.0f);
+  }
+  if (cb.flags & kDomeSeparateBoundary)
+  {
+    if (!(cb.flags & (kDomeAtmosphere | kDomeBackgroundOnly)))
+    {
+      boundary = compositeLayer(boundary, source, transmission);
+    }
+    Boundary[pixel] = float4(boundary, 1.0f);
   }
 }

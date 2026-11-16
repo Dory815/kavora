@@ -168,13 +168,14 @@ grading runs once in the native shared output pass after either tone mapper.
 **Clouds and fog.** Volumetric clouds use a world-space density field advected
 by synchronized world time. The runtime generates a periodic 3D noise palette
 once per device. Camera, reflection, refraction, and visibility rays sample the
-same density field. A single ray-segment integrator combines cloud and fog
+same density field. A single ray-segment integrator combines cloud, physical air and fog
 extinction and scattering before compositing. Fog height and noise affect both
 lighting and attenuation. Cloud distance is independent of terrain distance.
 Choosing Classic submits vanilla texture partitions with vanilla's period and
-phase as ray-traced geometry instead. Procedural clouds also offer a camera-centered
-sky map shared by background rays; its radiance and transmittance are regenerated
-each frame, while cloud light visibility stays world-space. The visual settings
+phase as ray-traced geometry instead. With physical air, every cloud quality
+level uses world-volume transport. Runtime hosts without the atmosphere
+extension can also select a camera-centered sky map shared by background rays;
+cloud light visibility stays world-space. The visual settings
 stage editable quality profiles and effects across Iris-style folders and commit
 once on Apply. Custom selections retain their source tier. Sodium owns independent
 DLSS, frame generation and performance controls. Visual settings use format v3
@@ -187,7 +188,11 @@ multiple-scattering tables. Sun and moon share optical coefficients with direct
 lighting. Sea level defines air density, not an opaque proxy surface: density
 continues below it to an optically opaque integration boundary. Actual terrain
 provides visible solid surfaces. The upper irradiance is cosine weighted.
-Diagnostic table readbacks are opt-in only.
+The static tables are read back once and published through the ordinary
+immutable texture store. Volumetric mode submits `LightInfoAtmosphereEXT` with
+the completed sky's light-state snapshot so native finite rays use the same
+optical model. Classic mode keeps the complete dome and authored weather
+composition. Diagnostic exports remain opt-in.
 
 **Night sky.** `NightSkyState` publishes host lunar phase, star visibility, rotation and world
 clock separately from artistic controls. Native `NightSky` owns a static scalar

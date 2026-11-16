@@ -5,6 +5,7 @@
 package org.edtp.kavora.sky;
 
 import org.edtp.kavora.light.LightManager.SkyLightState;
+import org.edtp.kavora.sdk.LightInfoAtmosphereEXT;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -28,6 +29,8 @@ final class AtmosphericSkyGenerator {
     private final float[] moonDirection = new float[3];
     private final ByteBuffer skyParameters = BufferUtils.createByteBuffer(80);
     private final ByteBuffer publishedSkyParameters = BufferUtils.createByteBuffer(80);
+    private final ByteBuffer completedSkyParameters = BufferUtils.createByteBuffer(80);
+    private final ByteBuffer[] transportTables = new ByteBuffer[2];
     private final ByteBuffer publishedPixels;
     private final ByteBuffer publishedTransmittance;
     private final int width;
@@ -36,6 +39,7 @@ final class AtmosphericSkyGenerator {
     private final AtmosphericSkyCompute compute;
     private boolean hasPublishedSkyParameters;
     private boolean tablesCaptured;
+    private int generation;
 
     AtmosphericSkyGenerator() { this(WIDTH, HEIGHT); }
 
@@ -50,10 +54,18 @@ final class AtmosphericSkyGenerator {
         publishedTransmittance = BufferUtils.createByteBuffer(height * 8);
         String source = loadShaderSource(width, height);
         compute = new AtmosphericSkyVulkanCompute(width, height, source);
+        try {
+            transportTables[0] = BufferUtils.createByteBuffer(LUT_WIDTH * LUT_HEIGHT * 16);
+            transportTables[1] = BufferUtils.createByteBuffer(SCATTERING_WIDTH * SCATTERING_HEIGHT * 16);
+            for (int index = 0; index < transportTables.length; index++) compute.readLut(index, transportTables[index]);
+        } catch (RuntimeException exception) {
+            compute.close();
+            throw exception;
+        }
     }
 
     ByteBuffer generate(SkyLightState lightState, float[] upperMean,
-            float mieScatteringAnisotropy, float observerHeight, boolean publishedOutputValid) {
+            float mieScatteringAnisotropy, float observerHeight, float seaLevelMeters, boolean publishedOutputValid) {
         if (upperMean.length < 3) throw new IllegalArgumentException("Upper-mean output requires three floats");
         if (!Float.isFinite(mieScatteringAnisotropy) || mieScatteringAnisotropy < 0 || mieScatteringAnisotropy >= 1) {
             throw new IllegalArgumentException("Mie scattering anisotropy must be in [0, 1)");
@@ -62,8 +74,9 @@ final class AtmosphericSkyGenerator {
         setSkyTextureDirection(moonDirection, lightState.moonPosition());
         normalize(sunDirection);
         normalize(moonDirection);
-        boolean changed = fillSkyParameters(lightState, mieScatteringAnisotropy, observerHeight);
-        ByteBuffer completed = compute.consume();
+        boolean changed = fillSkyParameters(lightState, mieScatteringAnisotropy, observerHeight, seaLevelMeters);
+        ByteBuffer completed = compute.consume(completedSkyParameters);
+        if (completed != null && completedSkyParameters.getInt(76) != generation) completed = null;
         if (completed != null) {
             upperMean[0] = Float.float16ToFloat(completed.getShort(outputBytes));
             upperMean[1] = Float.float16ToFloat(completed.getShort(outputBytes + 2));
@@ -83,7 +96,42 @@ final class AtmosphericSkyGenerator {
         return publishedTransmittance;
     }
 
-    /** Explicit diagnostics only; the normal frame path never reads these device-local tables. */
+    /** Old-world readbacks retire normally but cannot publish into the next world. */
+    void invalidate() {
+        generation++;
+        hasPublishedSkyParameters = false;
+    }
+
+    /** Copies the immutable tables read once after their initial Vulkan bake. */
+    void copyTransportTable(int index, ByteBuffer destination) {
+        destination.put(transportTables[index].duplicate()).flip();
+    }
+
+    /** Publishes the optical model and the light state of the completed sky, in world coordinates. */
+    void describeAtmosphere(LightInfoAtmosphereEXT air) {
+        air.seaLevelMeters = completedSkyParameters.getFloat(72);
+        air.innerRadius = (float) SkyAtmosphere.INNER_RADIUS;
+        air.lowerDepth = (float) SkyAtmosphere.LOWER_DEPTH;
+        air.atmosphereHeight = (float) SkyAtmosphere.ATMOSPHERE_HEIGHT;
+        air.rayleighExtinction.x = (float) SkyAtmosphere.RAYLEIGH_R;
+        air.rayleighExtinction.y = (float) SkyAtmosphere.RAYLEIGH_G;
+        air.rayleighExtinction.z = (float) SkyAtmosphere.RAYLEIGH_B;
+        air.rayleighHeight = (float) SkyAtmosphere.RAYLEIGH_HEIGHT;
+        air.mieExtinction = (float) SkyAtmosphere.MIE_EXTINCTION;
+        air.mieHeight = (float) SkyAtmosphere.MIE_HEIGHT;
+        air.mieAlbedo = (float) SkyAtmosphere.MIE_ALBEDO;
+        air.mieAnisotropy = completedSkyParameters.getFloat(64);
+        for (int light = 0; light < 2; light++) {
+            int start = light * 4;
+            for (int channel = 0; channel < 4; channel++) {
+                float direction = completedSkyParameters.getFloat(light * 16 + channel * 4);
+                air.lightDirections[start + channel] = channel == 0 ? -direction : direction;
+                air.lightIrradiances[start + channel] = completedSkyParameters.getFloat(32 + light * 16 + channel * 4);
+            }
+        }
+    }
+
+    /** Explicit diagnostics reuse the immutable tables used by native finite-ray transport. */
     void snapshotTransport(Path directory) throws IOException {
         if (tablesCaptured) return;
         java.nio.file.Files.writeString(directory.resolve("sky-projection.json"),
@@ -95,7 +143,7 @@ final class AtmosphericSkyGenerator {
         try {
             for (int index = 0; index < names.length; index++) {
                 pixels.clear().limit(lengths[index]);
-                compute.readLut(index, pixels);
+                copyTransportTable(index, pixels);
                 try (var channel = java.nio.channels.FileChannel.open(directory.resolve(names[index]),
                         java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
                         java.nio.file.StandardOpenOption.WRITE)) {
@@ -112,7 +160,7 @@ final class AtmosphericSkyGenerator {
 
     private boolean fillSkyParameters(
             SkyLightState lightState,
-            float mieScatteringAnisotropy, float observerHeight) {
+            float mieScatteringAnisotropy, float observerHeight, float seaLevelMeters) {
         putVectorAndScalar(
                 0,
                 sunDirection,
@@ -125,8 +173,8 @@ final class AtmosphericSkyGenerator {
         putIrradiance(48, lightState.moonSourceRadiance());
         skyParameters.putFloat(64, mieScatteringAnisotropy);
         skyParameters.putFloat(68, SkyAtmosphere.observerHeight(observerHeight));
-        skyParameters.putFloat(72, 0.0f);
-        skyParameters.putFloat(76, 0.0f);
+        skyParameters.putFloat(72, seaLevelMeters);
+        skyParameters.putInt(76, generation);
 
         return !hasPublishedSkyParameters || skyParameters.mismatch(publishedSkyParameters) >= 0;
     }

@@ -11,6 +11,7 @@
 #define DOME_COMPOSITE_GALAXY 4
 #define DOME_COMPOSITE_TRANSMITTANCE 5
 #define DOME_COMPOSITE_BACKGROUND 6
+#define DOME_COMPOSITE_BOUNDARY 7
 
 struct DomeCompositeArgs {
   mat4x3 worldToLight;
@@ -30,7 +31,9 @@ static const uint kDomeRectilinear = 8;
 static const uint kDomeBackgroundOnly = 16;
 static const uint kDomeSeparateBackground = 32;
 static const uint kDomeLunarSurface = 64;
+static const uint kDomeSeparateBoundary = 128;
 static const uint kDomeMoonPhaseShift = 8;
+static const uint kDomeAtmosphere = 2048;
 
 #ifdef __cplusplus
 inline

@@ -17,6 +17,7 @@ public class LightInfo {
     public LightInfoDiskEXT diskExt;
     public LightInfoCylinderEXT cylinderExt;
     public LightInfoDomeEXT domeExt;
+    public LightInfoAtmosphereEXT atmosphereExt;
 
     public LightInfo() {}
 
@@ -34,6 +35,7 @@ public class LightInfo {
         private LightInfoDiskEXT diskExt;
         private LightInfoCylinderEXT cylinderExt;
         private LightInfoDomeEXT domeExt;
+        private LightInfoAtmosphereEXT atmosphereExt;
 
         public Builder hash(long hash) {
             this.hash = hash;
@@ -75,6 +77,11 @@ public class LightInfo {
             return this;
         }
 
+        public Builder atmosphereExt(LightInfoAtmosphereEXT ext) {
+            this.atmosphereExt = ext;
+            return this;
+        }
+
         public LightInfo build() {
             LightInfo info = new LightInfo();
             info.hash = this.hash;
@@ -85,6 +92,7 @@ public class LightInfo {
             info.diskExt = this.diskExt;
             info.cylinderExt = this.cylinderExt;
             info.domeExt = this.domeExt;
+            info.atmosphereExt = this.atmosphereExt;
             return info;
         }
     }

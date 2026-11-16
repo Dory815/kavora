@@ -126,13 +126,14 @@ final class AtmosphericSkyVulkanCompute implements AtmosphericSkyCompute {
         return true;
     }
 
-    public ByteBuffer consume() {
+    public ByteBuffer consume(ByteBuffer completedParameters) {
         if (pending == 0) return null;
         Slot slot = slots[readIndex];
         int status = vkGetFenceStatus(device, slot.fence);
         if (status == VK_NOT_READY) return null;
         check(status, "read sky fence");
         Vma.vmaInvalidateAllocation(backend.vma(), slot.readback.allocation, 0, bytes);
+        completedParameters.clear().put(slot.parameters.mapped.duplicate().clear()).flip();
         readIndex = (readIndex + 1) % RING_SIZE;
         pending--;
         return slot.readback.mapped.clear();

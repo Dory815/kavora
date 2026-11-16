@@ -758,6 +758,10 @@ public class RemixAPI {
     }
 
     private long allocLightPNext(LightInfo info) {
+        if (info.atmosphereExt != null && (info.domeExt == null || info.sphereExt != null
+                || info.distantExt != null || info.rectExt != null || info.diskExt != null || info.cylinderExt != null)) {
+            throw new IllegalArgumentException("Atmosphere can only accompany a dome light");
+        }
         if (info.sphereExt != null) {
             LightInfoSphereEXT s = info.sphereExt;
             return RemixBridge.allocSphereExt(
@@ -806,8 +810,9 @@ public class RemixAPI {
                     c.volumetricRadianceScale, 0);
         } else if (info.domeExt != null) {
             LightInfoDomeEXT d = info.domeExt;
-            return RemixBridge.allocDomeExt(
-                    d.transform, d.colorTexture, d.transmittanceTexture, d.opacity, d.blendType, d.projection, d.backgroundOnly, 0);
+            return RemixBridge.allocDomeLightChain(
+                    d.transform, d.colorTexture, d.transmittanceTexture, d.opacity, d.blendType, d.projection,
+                    d.backgroundOnly, 0, info.atmosphereExt);
         }
         return 0;
     }

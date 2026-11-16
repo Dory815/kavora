@@ -7,6 +7,39 @@ import "rtx/pass/clouds/cloud_sky_transport.slang";
 import "rtx/utility/lat_long_projection.slang";
 #include "rtx/pass/tonemap/ACES.hlsl"
 
+#if defined(CLOUD_PREVIEW_AIR)
+import "rtx/algorithm/atmosphere.slang";
+import "rtx/algorithm/air_medium.slang";
+import "rtx/algorithm/fog_medium.slang";
+import "rtx/pass/air_parameters.slang";
+import "rtx/pass/volume_parameters.slang";
+ConstantBuffer<AirArgs> Air;
+Texture2D<float4>.Handle AirTransmission;
+Texture2D<float4>.Handle AirScattering;
+SamplerState.Handle AirSampler;
+Sampler3D<float2>.Handle FogChroma;
+RWStructuredBuffer<float4> TransmissionResults;
+
+struct PreviewFog : IAtmosphereFog
+{
+  static bool interval(VolumeArgs args, float3 origin, float3 direction, float distance, out float2 range)
+  {
+    range = 0;
+    return false;
+  }
+
+  static FogMedium sampleMedium(VolumeArgs args, float3 from, float3 to, float distance)
+  {
+    return {};
+  }
+
+  static float3 transmittance(VolumeArgs args, float3 origin, float3 direction, float distance)
+  {
+    return 1;
+  }
+};
+#endif
+
 ConstantBuffer<CloudArgs> Clouds;
 Sampler2D<float4>.Handle Weather;
 Sampler3D<float4>.Handle Base;
@@ -124,6 +157,22 @@ void main(uint2 pixel : SV_DispatchThreadID)
     Results[pixel.y * Size.x + pixel.x] = float4(0, 0, 0, transmission);
     return;
   }
+
+#if defined(CLOUD_PREVIEW_AIR)
+  if (Projection == 0 && Radiance != 0)
+  {
+    VolumeArgs volume = {};
+    volume.clouds = Clouds;
+    volume.air = Air;
+    const AirTables tables = { Texture2D<float4>(AirTransmission), Texture2D<float4>(AirScattering), SamplerState(AirSampler) };
+    const AtmosphereRay ray = createAtmosphereRay<PreviewFog>(volume, origin, direction);
+    const AtmosphereSegment result = integrateAtmosphereRange<PreviewFog>(volume, base, Sampler3D<float2>(FogChroma),
+      weather, base, detail, ray, 0, 3.402823466e+38f, ambient, tables);
+    Results[pixel.y * Size.x + pixel.x] = float4(result.radiance, 1.0f - result.cloudMoments.y);
+    TransmissionResults[pixel.y * Size.x + pixel.x] = float4(result.transmittance, 1);
+    return;
+  }
+#endif
 
   float2 intervals[4];
   [unroll]

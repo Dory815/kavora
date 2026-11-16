@@ -20,6 +20,8 @@
 * DEALINGS IN THE SOFTWARE.
 */
 import "rtx/utility/cloud_density.slang";
+import "rtx/pass/cloud_parameters.slang";
+import "rtx/algorithm/air_medium.slang";
 import "rtx/algorithm/fog_froxel_sampling.slang";
 #include "rtx/pass/composite/composite_bindings.slangh"
 
@@ -438,14 +440,15 @@ void applyAlphaBlendForeground(
       }
       alphaBlendOutput = totalLight.xyz;
 
-      if (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable)
+      if (cb.volumeArgs.enable || cb.volumeArgs.clouds.enable || cb.volumeArgs.air.enable)
       {
         const AtmosphereRay ray = createAtmosphereRay<SceneAtmosphereFog>(cb.volumeArgs,
           cameraPosition, primaryRayDirections.worldDirection);
         const float3 ambient = ray.hasCloud ? sampleCloudAmbientRadiance() : float3(0);
+        const AirTables air = { AirTransmittanceInput, AirScatteringInput, AirLinearSampler };
         AtmosphereSegment atmosphere = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
           VolumeFilteredRadianceCoCg,
-          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, surface.hitT, ambient);
+          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, surface.hitT, ambient, air);
         alphaBlendOutput = (alphaBlendOutput * atmosphere.transmittance + atmosphere.radiance) * (1 - backgroundAlpha);
       }
       else

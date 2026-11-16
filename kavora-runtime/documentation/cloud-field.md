@@ -196,11 +196,19 @@ paths read the same result without a CPU readback.
 ## Transport
 
 World-volume transport integrates extinction and in-scattering along each ray
-through the existing atmosphere-segment integrator. Fog and cloud contributions
-share a Beer-Lambert transfer. Camera, reflection, refraction and light
+through the existing atmosphere-segment integrator. Physical air, authored fog
+and cloud contributions share a Beer-Lambert transfer. Camera, reflection, refraction and light
 visibility use the same density field, with footprints appropriate to each
-integration. View distance fading remains a rendering approximation; it does
+integration. Both cloud layers default to a 96-kilometer view range. View
+distance fading remains a rendering approximation; it does
 not shorten the celestial shadow path.
+
+The host publishes the existing atmospheric optical tables and completed light
+state through `LightInfoAtmosphereEXT`. Finite air transport attenuates distant
+cloud contrast and adds in-scattered atmospheric radiance at the actual ray
+distance. Full clear-sky radiance remains the cloud lighting environment;
+view rays begin with an exterior boundary that excludes the integrated air.
+See [air-transport.md](air-transport.md) for ownership, units and approximations.
 
 The shared `CloudRayGrid` resolves nearby clouds at the spatial budget and
 grows cells geometrically once the projected pixel footprint is wider. Its
@@ -311,9 +319,10 @@ The transport option remains independent of host quality-profile names.
 
 The host uses Ultra as the reference configuration. Lower profiles reduce
 integration and map budgets while preserving the same density and lighting
-model:
+model. With the physical atmosphere, every profile uses world-volume transport.
+The requested sky-map mode applies only to hosts without that extension:
 
-| Profile | View transport | Map height | View quality | Light cells |
+| Profile | Requested transport without physical air | Map height | View quality | Light cells |
 | --- | --- | ---: | ---: | ---: |
 | Ultra | World volume | 1024 when map mode is selected | 160 | 16 |
 | High | Sky map | 1024 | 128 | 12 |
@@ -348,17 +357,18 @@ per frame, shared across all quality levels. Its output contains one RGBA32F
 texel, with allocation overhead determined by the driver. Each cloud ray reads
 that cached texel instead of repeating a hemisphere integration.
 
-The three noise textures and their mip chains occupy about 12.0 MiB before
+The three noise textures and their mip chains occupy about 20.0 MiB before
 driver allocation overhead. They are independent of output resolution. Motion
 guides add one word per primary atmosphere record and one per checkpoint. At
 1920 by 1080 internal resolution with the Ultra checkpoint layout this adds
 about 19.8 MiB to path storage. These are storage calculations, not measured
 GPU performance. Wider shadow cells, the extra cloud layer and larger map
 budgets require hardware profiling before assigning a frame-time cost.
-High-density evaluation needs one weather-texture lookup. Curl-flow construction
-and material shaping are confined to the once-per-device generator. The finite
-16384-meter texture period remains a memory/detail tradeoff and is visible in
-large orthographic distribution maps.
+High-density evaluation needs one weather-texture lookup. The finite feather
+atlas is sampled only during the once-per-device weather bake, then released.
+The high field's 32768-meter texture period remains a memory/detail tradeoff
+and is visible in large orthographic distribution maps. Finite-air resource
+costs are recorded separately in [air-transport.md](air-transport.md).
 
 ## Numerical validation
 

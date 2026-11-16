@@ -28,6 +28,7 @@
 #include "rtx_utils.h"
 #include "rtx/utility/shader_types.h"
 #include "rtx/concept/light/light_types.h"
+#include "rtx/pass/air_args.h"
 #include "rtx_types.h"
 
 namespace dxvk 
@@ -476,6 +477,13 @@ private:
   XXH64_hash_t m_cachedHash;
 };
 
+struct AtmosphereLight {
+  AirArgs args = {};
+  float seaLevelMeters = 0;
+  TextureRef transmittance;
+  TextureRef scattering;
+};
+
 struct DomeLight {
   Vector3 radiance;
   TextureRef texture;
@@ -485,6 +493,7 @@ struct DomeLight {
   uint32_t blendType = 0;
   uint32_t projection = 0;
   bool backgroundOnly = false;
+  std::optional<AtmosphereLight> atmosphere;
 };
 
 struct RtLight {

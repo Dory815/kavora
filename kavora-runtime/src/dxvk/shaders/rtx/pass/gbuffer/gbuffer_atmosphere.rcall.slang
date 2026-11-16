@@ -5,6 +5,7 @@ import "rtx/algorithm/fog_froxel_sampling.slang";
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
+#include "rtx/algorithm/scene_air.slangh"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include "rtx/utility/shader_types.slangh"
 #include "rtx/utility/brdf.slangh"
@@ -33,7 +34,7 @@ void main(inout AtmosphereCallData data)
     : float3(0);
   const AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, data.distance, ambient);
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, data.distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
   data.radiance = segment.radiance;
   data.transmittance = segment.transmittance;
   data.cloudMoments = segment.cloudMoments;

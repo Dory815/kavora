@@ -610,11 +610,17 @@ namespace dxvk {
     // Set Volumetric Arguments
 
     VolumeArgs volumeArgs = { };
+    volumeArgs.air = m_device->getCommon()->getSceneManager().getLightManager().getAirArgs();
+    const Vector3 airUp(volumeArgs.air.up.x, volumeArgs.air.up.y, volumeArgs.air.up.z);
+    const Vector3 airReference = Vector3(volumeArgs.air.groundReference.x,
+      volumeArgs.air.groundReference.y, volumeArgs.air.groundReference.z)
+      + mainCamera.getPosition() - airUp * dot(mainCamera.getPosition(), airUp);
+    volumeArgs.air.groundReference = airReference;
 
     const float cloudWorldScale = RtxOptions::getMeterToWorldUnitScale();
     auto& clouds = volumeArgs.clouds;
     clouds.enable = CloudOptions::sceneEnabled();
-    clouds.transportMode = CloudOptions::transportMode();
+    clouds.transportMode = volumeArgs.air.enable ? 0u : CloudOptions::transportMode();
     // World-space view rays integrate clouds directly. Fog lighting only needs a low-frequency sky map.
     clouds.skyResolution = clouds.transportMode == 1 ? CloudOptions::skyResolution() : 64u;
     const auto renderExtent = m_device->getCommon()->getResources().getDownscaleDimensions();
@@ -650,7 +656,10 @@ namespace dxvk {
     clouds.groundReference = RtxOptions::zUp()
       ? Vector3(cameraPosition.x, cameraPosition.y, 0)
       : Vector3(cameraPosition.x, 0, cameraPosition.z);
-    clouds.planetRadius = 6360000.0f * cloudWorldScale;
+    clouds.planetRadius = volumeArgs.air.enable
+      ? (volumeArgs.air.innerRadius + volumeArgs.air.lowerDepth) / volumeArgs.air.worldToKilometers
+        - dot(airReference, airUp)
+      : 6360000.0f * cloudWorldScale;
     clouds.maxDistance = CloudOptions::maxDistanceMeters() * cloudWorldScale;
     clouds.highBaseHeight = std::max(clouds.baseHeight + clouds.thickness + 1000.0f * cloudWorldScale,
       CloudOptions::highAltitudeMeters() * cloudWorldScale);

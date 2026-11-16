@@ -486,7 +486,7 @@
   "kavora.settings.value.cache.filter.1": "Spatial",
   "kavora.settings.value.cache.filter.2": "Spatial + Temporal",
   "kavora.effect.clouds.transport": "Cloud transport",
-  "kavora.effect.clouds.transport.tip": "World volume preserves local cloud occlusion and parallax. Sky map shares a camera-centered cloud layer between background rays; flying inside clouds is approximate.",
+  "kavora.effect.clouds.transport.tip": "Physical skies use world-volume clouds at every quality level. Sky map is available only without a physical atmosphere; it shares a camera-centered layer and approximates views inside clouds.",
   "kavora.effect.clouds.skyResolution": "Cloud sky height",
   "kavora.effect.clouds.skyResolution.tip": "Height in pixels of the shared 2:1 cloud sky map. Higher values preserve finer cloud edges and reflections. Only used by Sky map.",
   "kavora.effect.lighting.minBounces": "Minimum bounces",

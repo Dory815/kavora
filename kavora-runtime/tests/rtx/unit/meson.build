@@ -229,6 +229,10 @@ test('test_volume_transport', exe, env: test_env)
 tests += exe
 
 # Explicitly opt in to shader readback tests on a hardware or software Vulkan device.
+run_target('test_dome_atmosphere',
+  command: [python_interpreter, files('test_dome_atmosphere.py')])
+run_target('test_air_transport',
+  command: [python_interpreter, files('test_air_transport.py')])
 run_target('test_cloud_transport',
   command: [python_interpreter, files('test_cloud_transport.py')])
 run_target('test_cloud_scattering',

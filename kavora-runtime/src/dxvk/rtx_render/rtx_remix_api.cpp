@@ -1439,6 +1439,36 @@ namespace {
   #include "rtx_remix_retained_scene.inl"
 
   namespace {
+    bool validAtmosphere(const remixapi_LightInfoAtmosphereEXT& air) {
+      if (!air.transmittanceLut || !air.scatteringLut || !std::isfinite(air.seaLevelMeters)
+          || !(air.innerRadius > 0) || !std::isfinite(air.innerRadius)
+          || !(air.lowerDepth >= 0) || !(air.atmosphereHeight > air.lowerDepth)
+          || !std::isfinite(air.atmosphereHeight)
+          || !(air.rayleighHeight > 0) || !std::isfinite(air.rayleighHeight)
+          || !(air.mieHeight > 0) || !std::isfinite(air.mieHeight)
+          || !(air.mieExtinction >= 0) || !std::isfinite(air.mieExtinction)
+          || !(air.mieAlbedo >= 0 && air.mieAlbedo <= 1)
+          || !(air.mieAnisotropy >= 0 && air.mieAnisotropy < 1)
+          || !(air.rayleighExtinction.x >= 0) || !std::isfinite(air.rayleighExtinction.x)
+          || !(air.rayleighExtinction.y >= 0) || !std::isfinite(air.rayleighExtinction.y)
+          || !(air.rayleighExtinction.z >= 0) || !std::isfinite(air.rayleighExtinction.z)) {
+        return false;
+      }
+      for (uint32_t index = 0; index < 2; index++) {
+        const auto& direction = air.lightDirections[index];
+        const auto& irradiance = air.lightIrradiances[index];
+        const float lengthSquared = direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
+        if (!std::isfinite(lengthSquared) || std::abs(lengthSquared - 1.0f) > 0.001f
+            || !(direction.w >= 0 && direction.w < 1.570796327f)
+            || !(irradiance.x >= 0) || !std::isfinite(irradiance.x)
+            || !(irradiance.y >= 0) || !std::isfinite(irradiance.y)
+            || !(irradiance.z >= 0) || !std::isfinite(irradiance.z) || irradiance.w != 0) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     void setExternalSceneOrigin(dxvk::DxvkContext* ctx, ivec2 origin) {
       auto& scene = ctx->getCommonObjects()->getSceneManager();
       if (scene.getSceneOrigin().x == origin.x && scene.getSceneOrigin().y == origin.y)
@@ -1474,10 +1504,18 @@ namespace {
     }
     const auto transmission = pnext::find<remixapi_LightInfoDomeTransmittanceEXT>(info);
     const auto projection = pnext::find<remixapi_LightInfoDomeProjectionEXT>(info);
+    const auto atmosphere = pnext::find<remixapi_LightInfoAtmosphereEXT>(info);
     if (projection && (!dome || projection->projection > 2)) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     if (transmission && (!dome || !transmission->transmittanceTexture)) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    if (atmosphere && (!dome || !transmission || !validAtmosphere(*atmosphere)
+        || (projection && (projection->projection || projection->backgroundOnly))
+        || !(info->radiance.x >= 0) || !std::isfinite(info->radiance.x)
+        || !(info->radiance.y >= 0) || !std::isfinite(info->radiance.y)
+        || !(info->radiance.z >= 0) || !std::isfinite(info->radiance.z))) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     if (update) {
@@ -1487,7 +1525,7 @@ namespace {
       }
     }
     if (auto src = pnext::find<remixapi_LightInfoDomeEXT>(info)) {
-      if (!std::isfinite(src->opacity) || src->blendType > 10) {
+      if (!std::isfinite(src->opacity) || src->blendType > 10 || (atmosphere && src->opacity != 1.0f)) {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
       // Special case for dome lights
@@ -1498,6 +1536,9 @@ namespace {
                           cProjection = projection ? projection->projection : 0,
                           cBackgroundOnly = projection && convert::tobool(projection->backgroundOnly),
                           cTransform = convert::tomat4(src->transform), 
+                          cAtmosphere = atmosphere ? std::optional(*atmosphere) : std::nullopt,
+                          cAirTransmittance = lookupApiTexture(atmosphere ? atmosphere->transmittanceLut : nullptr),
+                          cAirScattering = lookupApiTexture(atmosphere ? atmosphere->scatteringLut : nullptr),
                           cTransmission = lookupApiTexture(transmission ? transmission->transmittanceTexture : nullptr),
                           cTexture = lookupApiTexture(src->colorTexture)]
                           (dxvk::DxvkContext* ctx) {
@@ -1511,6 +1552,30 @@ namespace {
         domeLight.worldToLight = inverse(cTransform);
         domeLight.texture = resolveApiTexture(*ctx, cTexture);
         domeLight.transmittance = resolveApiTexture(*ctx, cTransmission);
+        if (cAtmosphere) {
+          const auto& source = *cAtmosphere;
+          dxvk::AtmosphereLight air;
+          air.seaLevelMeters = source.seaLevelMeters;
+          air.transmittance = resolveApiTexture(*ctx, cAirTransmittance);
+          air.scattering = resolveApiTexture(*ctx, cAirScattering);
+          air.args.innerRadius = source.innerRadius;
+          air.args.lowerDepth = source.lowerDepth;
+          air.args.atmosphereHeight = source.atmosphereHeight;
+          air.args.rayleighExtinction = convert::tovec3(source.rayleighExtinction);
+          air.args.rayleighHeight = source.rayleighHeight;
+          air.args.mieExtinction = source.mieExtinction;
+          air.args.mieHeight = source.mieHeight;
+          air.args.mieAlbedo = source.mieAlbedo;
+          air.args.mieAnisotropy = source.mieAnisotropy;
+          for (uint32_t index = 0; index < 2; index++) {
+            const auto& direction = source.lightDirections[index];
+            const auto& irradiance = source.lightIrradiances[index];
+            air.args.lights[index].directionToLight = dxvk::Vector3(direction.x, direction.y, direction.z);
+            air.args.lights[index].angularRadius = direction.w;
+            air.args.lights[index].irradiance = dxvk::Vector3(irradiance.x, irradiance.y, irradiance.z);
+          }
+          domeLight.atmosphere = std::move(air);
+        }
 
         // Ensures a texture stays in VidMem
         uint32_t unused;

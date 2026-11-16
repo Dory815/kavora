@@ -25,11 +25,13 @@ namespace dxvk {
           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT },
         { DOME_COMPOSITE_BACKGROUND, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_IMAGE_VIEW_TYPE_2D,
           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT },
+        { DOME_COMPOSITE_BOUNDARY, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_IMAGE_VIEW_TYPE_2D,
+          VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT },
       END_REFLECTED_PARAMETER(checkDomeCompositeSlots)
     };
   }
 
-  const TextureRef& DomeCompositor::compose(const Rc<RtxContext>& ctx, const std::vector<const DomeLight*>& layers) {
+  const TextureRef& DomeCompositor::compose(const Rc<RtxContext>& ctx, const std::vector<const DomeLight*>& layers, bool finiteAir) {
     ScopedGpuProfileZone(ctx, "Composite Dome Lights");
     const bool nightActive = m_nightSky.prepare(ctx);
     // A uniform angular output preserves celestial point shapes under sky-layer transforms.
@@ -51,7 +53,11 @@ namespace dxvk {
       extent.width = std::max(extent.width, NightSky::kWidth);
       extent.height = std::max(extent.height, NightSky::kHeight);
     }
-    if (!m_image.ptr() || m_image->info().extent.width != extent.width || m_image->info().extent.height != extent.height) {
+    const auto prepareOutput = [&](Output& output, const char* name) {
+      if (output.image.ptr() && output.image->info().extent.width == extent.width
+          && output.image->info().extent.height == extent.height) {
+        return;
+      }
       DxvkImageCreateInfo imageInfo = {};
       imageInfo.type = VK_IMAGE_TYPE_2D;
       imageInfo.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
@@ -64,8 +70,8 @@ namespace dxvk {
       imageInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
       imageInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
       imageInfo.layout = VK_IMAGE_LAYOUT_UNDEFINED;
-      m_image = ctx->getDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        DxvkMemoryStats::Category::RTXRenderTarget, "Composed dome lights");
+      output.image = ctx->getDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        DxvkMemoryStats::Category::RTXRenderTarget, name);
       DxvkImageViewCreateInfo viewInfo = {};
       viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
       viewInfo.format = imageInfo.format;
@@ -73,31 +79,29 @@ namespace dxvk {
       viewInfo.numLevels = 1;
       viewInfo.numLayers = 1;
       viewInfo.usage = imageInfo.usage;
-      m_view = ctx->getDevice()->createImageView(m_image, viewInfo);
-      ctx->changeImageLayout(m_image, VK_IMAGE_LAYOUT_GENERAL);
-      m_texture = TextureRef(m_view);
-    }
+      output.view = ctx->getDevice()->createImageView(output.image, viewInfo);
+      ctx->changeImageLayout(output.image, VK_IMAGE_LAYOUT_GENERAL);
+      output.texture = TextureRef(output.view);
+    };
+    prepareOutput(m_environment, "Composed dome lights");
     if (separateBackground) {
-      if (!m_backgroundImage.ptr() || m_backgroundImage->info().extent.width != extent.width
-          || m_backgroundImage->info().extent.height != extent.height) {
-        m_backgroundImage = ctx->getDevice()->createImage(m_image->info(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-          DxvkMemoryStats::Category::RTXRenderTarget, "Visible dome background");
-        m_backgroundView = ctx->getDevice()->createImageView(m_backgroundImage, m_view->info());
-        ctx->changeImageLayout(m_backgroundImage, VK_IMAGE_LAYOUT_GENERAL);
-        m_backgroundTexture = TextureRef(m_backgroundView);
-      }
+      prepareOutput(m_background, "Visible dome background");
     } else {
-      m_backgroundTexture = {};
-      m_backgroundView = nullptr;
-      m_backgroundImage = nullptr;
+      m_background = {};
+    }
+    if (finiteAir) {
+      prepareOutput(m_boundary, "Atmosphere lighting boundary");
+    } else {
+      m_boundary = {};
     }
     const Rc<DxvkSampler> sampler = ctx->getResourceManager().getSampler(
       VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT,
       VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     ctx->bindResourceSampler(DOME_COMPOSITE_SOURCE, sampler);
     ctx->bindResourceSampler(DOME_COMPOSITE_TRANSMITTANCE, sampler);
-    ctx->bindResourceView(DOME_COMPOSITE_OUTPUT, m_view, nullptr);
-    ctx->bindResourceView(DOME_COMPOSITE_BACKGROUND, m_backgroundView, nullptr);
+    ctx->bindResourceView(DOME_COMPOSITE_OUTPUT, m_environment.view, nullptr);
+    ctx->bindResourceView(DOME_COMPOSITE_BACKGROUND, m_background.view, nullptr);
+    ctx->bindResourceView(DOME_COMPOSITE_BOUNDARY, m_boundary.view, nullptr);
     if (nightActive) {
       m_nightSky.bind(ctx);
     }
@@ -123,13 +127,15 @@ namespace dxvk {
         | (layer->projection ? kDomeRectilinear : 0)
         | (layer->projection == 2 ? kDomeLunarSurface | ((NightSky::moonPhase() & 7u) << kDomeMoonPhaseShift) : 0)
         | (layer->backgroundOnly ? kDomeBackgroundOnly : 0)
-        | (separateBackground ? kDomeSeparateBackground : 0);
+        | (separateBackground ? kDomeSeparateBackground : 0)
+        | (finiteAir ? kDomeSeparateBoundary : 0)
+        | (layer->atmosphere ? kDomeAtmosphere : 0);
       ctx->bindResourceView(DOME_COMPOSITE_SOURCE, layer->texture.getImageView(), nullptr);
       ctx->bindResourceView(DOME_COMPOSITE_TRANSMITTANCE, layer->transmittance.getImageView(), nullptr);
       ctx->pushConstants(0, sizeof(args), &args);
       ctx->dispatch((extent.width + 7) / 8, (extent.height + 7) / 8, 1);
       first = false;
     }
-    return m_texture;
+    return m_environment.texture;
   }
 }

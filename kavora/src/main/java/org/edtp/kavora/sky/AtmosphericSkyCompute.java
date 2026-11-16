@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
 /** Backend-owned atmospheric compute resources and asynchronous readback. */
 interface AtmosphericSkyCompute extends AutoCloseable {
     boolean enqueue(ByteBuffer parameters);
-    ByteBuffer consume();
+    ByteBuffer consume(ByteBuffer completedParameters);
     void readLut(int index, ByteBuffer destination);
     @Override void close();
 }

@@ -5,6 +5,7 @@ import "rtx/algorithm/fog_froxel_sampling.slang";
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
+#include "rtx/algorithm/scene_air.slangh"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include "rtx/utility/brdf.slangh"
 
@@ -62,7 +63,7 @@ void main(uint2 column : SV_DispatchThreadID)
     const float next = max(previous, atmosphereCheckpointDistance(ray.fogProjection, checkpoint));
     const AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
       VolumeFilteredRadianceCoCg,
-      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, previous, next, ambient);
+      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, previous, next, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
     accumulated = composeAtmosphereSegments(accumulated, segment);
     storeAtmosphereCheckpoint(column, checkpoint, accumulated);
     previous = next;

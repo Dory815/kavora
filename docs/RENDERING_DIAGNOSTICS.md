@@ -65,11 +65,12 @@ tables with source hashes and lighting parameters. From the repository root:
 ```sh
 python kavora-runtime/tests/rtx/unit/render_cloud_atmosphere.py \
   --output /tmp/cloud-day --sun-elevation 40 --sun-azimuth 135 \
-  --world-height 139 --profile-heights 400 1900 6300 6500
+  --world-height 139 --profile-heights 800 2300 6300 6500
 python kavora-runtime/tests/rtx/unit/render_cloud_preview.py \
   --output /tmp/cloud-inspection --layers low --radiance \
   --atmosphere-fixture /tmp/cloud-day --origin 8043,139,1240 \
-  --low-base 400 --low-thickness 1500 --low-coverage 0.45 \
+  --low-base 800 --low-thickness 1500 --low-coverage 0.45 \
+  --low-extinction 0.03 --low-max-distance 96000 --air \
   --width 1280 --height 800 --views zenith,45,horizon --exposure 0.1
 ```
 
@@ -79,6 +80,11 @@ four light-profile heights when changing the low/high layer bounds. The
 fixture's observer height must match the preview camera. The scripts also
 have explicit Meson run targets, `render_cloud_atmosphere` and
 `render_cloud_preview`, for their default diagnostic inputs.
+
+`--air` uses the exported optical tables in the same finite-distance air/cloud
+segment integrator as production. Without it the tool renders cloud-only
+transport over the full sky, which remains useful for isolating density and
+lighting. The contact sheet and manifest identify the selected transport.
 
 Keep camera, sun, cloud parameters, view size and display exposure identical
 for a revision comparison. Inspect several world positions and views toward,

@@ -89,6 +89,9 @@ public:
   bool isLightIdentityTableBuilt() const { return !m_lightIdentityData.empty(); }
   const uint32_t getActiveCount() const { return m_currentActiveLightCount; }
   const DomeLightArgs& getDomeLightArgs();
+  const AirArgs& getAirArgs() const { return m_gpuAirArgs; }
+  const Rc<DxvkImageView>& getAirTransmittanceLut() const { return m_airTransmittanceLut; }
+  const Rc<DxvkImageView>& getAirScatteringLut() const { return m_airScatteringLut; }
   void prepareDomeLights(const Rc<RtxContext>& ctx);
 
   void clear();
@@ -140,6 +143,9 @@ private:
   std::vector<const DomeLight*> m_domeLayers;
   DomeCompositor m_domeCompositor;
   DomeLightArgs m_gpuDomeLightArgs = {};
+  AirArgs m_gpuAirArgs = {};
+  Rc<DxvkImageView> m_airTransmittanceLut;
+  Rc<DxvkImageView> m_airScatteringLut;
 
   Rc<DxvkBuffer> m_lightBuffer;
   Rc<DxvkBuffer> m_previousLightBuffer;

@@ -32,7 +32,8 @@ namespace dxvk {
 
   struct CloudOptions {
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, transportMode, 0u,
-      "Cloud transport. 0: World-space volumetric integration. 1: Camera-centered sky map shared by background rays.",
+      "Cloud transport. 0: World-space volumetric integration. 1: Camera-centered sky map shared by background rays. "
+      "A host-provided physical atmosphere uses world-space integration at every quality level.",
       args.minValue = 0u, args.maxValue = 1u);
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, skyResolution, 1024u,
       "Height of the 2:1 cloud sky map. Used only by the sky-map transport mode.",
@@ -66,7 +67,7 @@ namespace dxvk {
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, extinctionPerMeter, 0.03f, "Cloud extinction at unit density, per meter.",
       args.minValue = 0.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 12000.0f, "Cloud visibility distance, including the fade to the background sky.",
+    RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 96000.0f, "Cloud visibility distance, including the fade to the background sky.",
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, highAltitudeMeters, 6300.0f, "Thin high-cloud base height. Kept at least 1000 meters above the cumulus top.",
       args.minValue = 1.0f);

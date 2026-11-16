@@ -24,6 +24,7 @@
 import "rtx/concept/surface_material/translucent_medium.slang";
 import "rtx/algorithm/atmosphere.slang";
 #include "rtx/algorithm/volume_lighting.slangh"
+#include "rtx/algorithm/scene_air.slangh"
 #include "rtx/utility/volume_integral.h"
 #include "rtx/algorithm/environment_radiance.slangh"
 
@@ -41,7 +42,7 @@ float2 resolveAtmosphere(float3 origin, float3 direction, float distance, uint v
   inout float3 attenuation, inout float3 radiance, uint mediumState = SURFACE_INDEX_INVALID)
 {
   const float3 mediumExtinction = translucentMediumExtinction(mediumState, surfaceMaterials);
-  if (!cb.volumeArgs.enable && !cb.volumeArgs.clouds.enable)
+  if (!cb.volumeArgs.enable && !cb.volumeArgs.clouds.enable && !cb.volumeArgs.air.enable)
   {
     attenuation *= volumeTransmittance(mediumExtinction, distance);
     return 0;
@@ -63,7 +64,8 @@ float2 resolveAtmosphere(float3 origin, float3 direction, float distance, uint v
     : float3(0);
   AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, distance, ambient);
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, distance, ambient,
+    sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
 #endif
   radiance += attenuation * segment.radiance;
   attenuation *= segment.transmittance;

@@ -249,6 +249,7 @@ dxvk_src = files([
   'shaders/rtx/utility/height_fog.h',
   'shaders/rtx/utility/volume_integral.h',
   'shaders/rtx/pass/cloud_args.h',
+  'shaders/rtx/pass/air_args.h',
   'shaders/rtx/concept/camera/volume_camera.h',
   'shaders/rtx/pass/cloud_noise.h',
   'shaders/rtx/pass/clouds/cloud_sky_binding_indices.h',
