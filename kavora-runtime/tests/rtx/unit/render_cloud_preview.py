@@ -311,6 +311,7 @@ def main():
     parser.add_argument('--high-base', type=float, default=6375.0, help='High cloud base in meters')
     parser.add_argument('--high-thickness', type=float, default=50.0, help='High cloud thickness in meters')
     parser.add_argument('--high-extinction', type=float, default=0.024, help='High cloud extinction per meter')
+    parser.add_argument('--high-max-distance', type=float, default=96000.0, help='High cloud view range in meters')
     parser.add_argument('--coverage', type=float, default=0.35, help='High layer coverage')
     parser.add_argument('--weather', type=float, default=0)
     parser.add_argument('--thunder', type=float, default=0)
@@ -380,9 +381,10 @@ def main():
     args.ambient_rgb = args.ambient_rgb or [0.04, 0.06, 0.10]
     if min(*args.sun_irradiance_rgb, *args.ambient_rgb) < 0:
         parser.error('sun irradiance and ambient illumination must be nonnegative')
-    if (not np.isfinite([args.high_base, args.high_thickness, args.high_extinction]).all()
-            or args.high_base < 0 or args.high_thickness <= 0 or args.high_extinction < 0):
-        parser.error('high cloud base/extinction must be nonnegative and thickness must be positive')
+    if (not np.isfinite([args.high_base, args.high_thickness, args.high_extinction, args.high_max_distance]).all()
+            or args.high_base < 0 or args.high_thickness <= 0 or args.high_extinction < 0
+            or args.high_max_distance <= 0):
+        parser.error('high cloud base/extinction must be nonnegative and thickness/range must be positive')
     views = args.views.split(',')
     unknown_views = sorted(set(views) - VIEWS.keys())
     if unknown_views:
@@ -472,7 +474,7 @@ def main():
         baseHeight=args.low_base, thickness=args.low_thickness, shapeScale=args.low_shape_scale,
         extinction=args.low_extinction, coverage=args.low_coverage, maxDistance=args.low_max_distance,
         highBaseHeight=args.high_base, highThickness=args.high_thickness, highExtinction=args.high_extinction,
-        highCoverage=args.coverage, highMaxDistance=96000.0,
+        highCoverage=args.coverage, highMaxDistance=args.high_max_distance,
         groundReference=[args.origin[0], 0, args.origin[2]], windOffset=args.wind,
         viewAngularFootprint=2 * np.tan(np.radians(args.vfov) * 0.5) / args.height,
         weather=args.weather, thunder=args.thunder, groundAlbedo=args.ground_albedo,
@@ -556,6 +558,7 @@ def main():
             **{name: value.descriptor_handle_combined for name, value in textures.items()},
         })
         data = output.to_numpy().view(np.float32).reshape(args.height, args.width, 4)
+        render_seconds = time.monotonic() - started
         if not np.isfinite(data).all(): raise RuntimeError(f'Nonfinite production output in {view}')
         opacity = 1 - data[:, :, 3]
         background = np.array([0.12, 0.26, 0.48])
@@ -586,6 +589,7 @@ def main():
                 save_image(args.output / f'{view}-linear.png', PreviewDisplay(device, 'clip').encode(linear_rgb, args.exposure))
             save_image(args.output / f'{view}-radiance.png', display.encode(linear_rgb, args.exposure))
         statistics = {'yawDegrees': yaw, 'elevationDegrees': pitch, 'seconds': time.monotonic() - started,
+                      'dispatchReadbackSeconds': render_seconds,
                       'meanOpacity': float(opacity.mean()), 'maxOpacity': float(opacity.max()),
                       'opacityAboveOnePercent': float(np.mean(opacity > 0.01))}
         manifest['views'][view] = statistics
