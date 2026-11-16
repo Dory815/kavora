@@ -35,10 +35,12 @@ void main(uint2 id : SV_DispatchThreadID)
   // Their mask shares the moisture field but has a distinct spatial spectrum.
   // A weak cellular term breaks smooth blobs into open/closed cloud cells.
   const float deckCells = cloudWorley(float3(uv, 0.0f), 8, kCloudNoiseSeed + 237, true);
-  const float deckNoise = 0.60f * regional
-    + 0.25f * cloudPerlin(float3(uv * 8.0f, 0.83f), 8, kCloudNoiseSeed + 233)
-    + 0.15f * (deckCells - 0.5f);
-  const float deckCoverage = smoothstep(-0.45f, 0.05f, deckNoise);
+  const float deckNoise = 0.55f * regional
+    + 0.20f * cloudPerlin(float3(uv * 8.0f, 0.83f), 8, kCloudNoiseSeed + 233)
+    + 0.12f * cloudPerlin(float3(uv * 16.0f, 0.23f), 16, kCloudNoiseSeed + 239)
+    + 0.08f * cloudPerlin(float3(uv * 32.0f, 0.61f), 32, kCloudNoiseSeed + 243)
+    + 0.05f * (deckCells - 0.5f);
+  const float deckCoverage = smoothstep(-0.40f, 0.10f, deckNoise);
 
   // Cloud family varies over broad weather regions, not independently per cell.
   // Humid regions modestly favor deeper development; the density evaluator
