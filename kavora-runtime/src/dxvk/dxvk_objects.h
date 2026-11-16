@@ -21,6 +21,9 @@
 */
 #pragma once
 
+// NV-DXVK start: Centralize the native display color contract.
+#include "dxvk_display_output.h"
+// NV-DXVK end
 #include "dxvk_gpu_event.h"
 #include "dxvk_gpu_query.h"
 #include "dxvk_memory.h"
@@ -99,6 +102,12 @@ namespace dxvk {
   public:
 
     explicit DxvkObjects(DxvkDevice* device);
+
+    // NV-DXVK start: Centralize the native display color contract.
+    DxvkDisplayOutput& displayOutput() {
+      return m_displayOutput;
+    }
+    // NV-DXVK end
 
     DxvkMemoryAllocator& memoryManager() {
       return m_memoryManager;
@@ -362,6 +371,10 @@ namespace dxvk {
   private:
 
     DxvkDevice*                       m_device;
+
+    // NV-DXVK start: Centralize the native display color contract.
+    DxvkDisplayOutput                 m_displayOutput;
+    // NV-DXVK end
 
     DxvkMemoryAllocator               m_memoryManager;
     DxvkRenderPassPool                m_renderPassPool;

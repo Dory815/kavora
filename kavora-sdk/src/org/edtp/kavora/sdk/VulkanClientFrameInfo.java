@@ -11,6 +11,9 @@ package org.edtp.kavora.sdk;
  * semaphores; the caller owns the ready semaphore and the runtime owns the consumed semaphore.
  * Presenting image zero synchronously releases the runtime's borrowed image views without
  * advancing a frame. Do this before destroying a previously presented image.
+ * Shared-device RGBA16F contains display-referred extended-sRGB, with one at paper white
+ * and values above one retaining highlight headroom. It is not linear scRGB. The runtime
+ * converts this image to the negotiated display color space. GUI colors remain sRGB.
  */
 public final class VulkanClientFrameInfo {
     public long device;

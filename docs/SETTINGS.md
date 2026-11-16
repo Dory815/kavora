@@ -239,6 +239,45 @@ Contrast and RGB balance work in both modes.
 Taking control of a native value masks that option in a map's lighting profiles for
 the rest of the session; see [Where A Setting Can Come From](#where-a-setting-can-come-from).
 
+## Display & HDR
+
+The separate **Display** page is available in menus as well as during RTX rendering.
+**HDR Output** defaults to **Auto**. It enables HDR10 when Windows HDR is on for the
+window's monitor and the Vulkan surface supports the required 10-bit format and
+color space. **Off** selects SDR. The **Current Output** row reports the negotiated
+mode; its tooltip includes the reason for SDR fallback and the effective luminance.
+
+**Paper White** controls the luminance of ordinary white and the GUI. Auto follows
+Windows' SDR content brightness. **Peak Brightness** limits highlights to the
+display's reported peak; Auto uses that report, with a 1000-nit fallback when it is
+missing. Set a measured or calibrated value if the display reports it incorrectly.
+Both controls use nits. These display choices persist independently of world
+lighting profiles and quality presets, and Apply commits them together.
+
+Both tone mappers support HDR highlight headroom. Exposure, color grading, and
+RGB balance still apply. The SDR-only global curve controls do not set the HDR
+display shoulder; use paper white and peak brightness for that range. HDR
+preserves luminance and color detail that SDR compresses. It does not increase
+scene saturation or turn Rec.709 scene colors into newly authored wide-gamut colors.
+
+Moving between displays or changing Windows HDR rechecks the output and resets
+frame-generation history when needed. The game does not toggle Windows HDR for
+you. Screenshots and world thumbnails remain SDR PNGs with highlight compression.
+Their apparent brightness cannot demonstrate an HDR display's output.
+
+If Frame Generation cannot initialize or process HDR10, ordinary HDR rendering
+continues and its capability tooltip reports the failure. Changing HDR Output
+between Auto and Off requests one retry, so Off can also recover the SDR Frame
+Generation path. The runtime does not retry a failing context every frame.
+
+The host's color targets remain FP16 even when HDR is off, so toggling the setting
+does not replace the main target's format mid-frame. Each changed target uses four
+additional bytes per pixel: about 7.91 MiB at 1080p or 31.64 MiB at 4K. Optional
+effect and HUDless targets incur that cost only while allocated. Display conversion
+uses the existing final present pass. See the
+[interop contract](../kavora-runtime/documentation/MinecraftVulkanInterop.md) for
+the source encoding, synchronization, and validation limits.
+
 ## Materials
 
 **Block Glow Intensity** changes the light emitted by glowing block surfaces,

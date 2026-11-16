@@ -27,7 +27,7 @@ public final class VulkanInterop implements KavoraInterop {
     private final VulkanDevice backend;
     private final VkDevice device;
     private final VulkanInteropInfo info = new VulkanInteropInfo();
-    private final Image color = new Image("Remix color", GpuFormat.RGBA8_UNORM);
+    private final Image color = new Image("Remix color", GpuFormat.RGBA16_FLOAT);
     private final Image depth = new Image("Remix projected depth", GpuFormat.R32_FLOAT);
     private final Image uiOverlay = new Image("Remix native menus", GpuFormat.RGBA8_UNORM);
     private long runtimeDone;
@@ -227,8 +227,7 @@ public final class VulkanInterop implements KavoraInterop {
         }
 
         private long copyBytes() {
-            // All three sampled snapshot formats use four bytes per texel.
-            return copy == null ? 0 : (long) width * height * 4;
+            return copy == null ? 0 : (long) width * height * copyFormat.blockSize();
         }
 
         private void blitTo(GpuTexture destination) {

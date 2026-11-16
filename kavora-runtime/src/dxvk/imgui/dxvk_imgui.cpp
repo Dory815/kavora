@@ -3402,7 +3402,7 @@ namespace dxvk {
       dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
     }
 
-    const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
+    const auto& reason = ctx->getCommonObjects()->metaDLFG().getDLFGNotSupportedReason();
     if (reason.size()) {
       RemixGui::SetTooltipToLastWidgetOnHover(reason.c_str());
       ImGui::TextWrapped(reason.c_str());

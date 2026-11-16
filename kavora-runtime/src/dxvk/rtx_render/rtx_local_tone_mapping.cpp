@@ -21,6 +21,7 @@
 */
 #include "rtx_local_tone_mapping.h"
 #include "dxvk_device.h"
+#include "../dxvk_display_output.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx.h"
@@ -171,6 +172,7 @@ namespace dxvk {
     }
 
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
+    const auto& displayFrame = ctx->getCommonObjects()->displayOutput().renderFrame();
 
     {
       ScopedGpuProfileZone(ctx, "Luminance");
@@ -181,6 +183,7 @@ namespace dxvk {
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+      pushArgs.hdrScene = displayFrame.hdrScene();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindResourceView(LUMINANCE_ORIGINAL, resources.get<&RaytracingFrame::m_finalOutput>().view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
@@ -194,8 +197,16 @@ namespace dxvk {
       ScopedGpuProfileZone(ctx, "Weight");
       ExposureWeightArgs pushArgs = {};
       pushArgs.sigmaSq = exposurePreferenceSigma() * exposurePreferenceSigma();
+      if (displayFrame.hdrScene()) {
+        // Scale HDR preference width with the separation of the synthetic exposures.
+        const float minimumStops = std::min({0.0f, shadows(), -highlights()});
+        const float maximumStops = std::max({0.0f, shadows(), -highlights()});
+        const float exposureSpan = 0.5f * (maximumStops - minimumStops);
+        pushArgs.sigmaSq /= 1.0f + pushArgs.sigmaSq * exposureSpan * exposureSpan;
+      }
       pushArgs.offset = exposurePreferenceOffset();
       pushArgs.debugView = debugView.debugViewIdx();
+      pushArgs.hdrScene = displayFrame.hdrScene();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindResourceView(EXPOSURE_WEIGHT_INPUT, m_mips.views[0], nullptr);
       ctx->bindResourceView(EXPOSURE_WEIGHT_OUTPUT, m_mipsWeights.views[0], nullptr);
@@ -273,6 +284,8 @@ namespace dxvk {
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.finalizeWithACES = finalizeWithACES();
       pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+      pushArgs.hdrScene = displayFrame.hdrScene();
+      pushArgs.peakToWhite = displayFrame.peakToWhite();
 
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 

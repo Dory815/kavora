@@ -90,6 +90,7 @@ public final class NativeRuntime {
         windowHandle = hwnd;
         sdlWindow = window;
         started = true;
+        org.edtp.kavora.settings.KavoraVideoSettings.loadDisplay();
         LOGGER.info("Started native Vulkan presentation for the shared device");
         return api();
     }

@@ -26,6 +26,7 @@
 #include "rtx_tone_mapping.h"
 #include "rtx_context.h"
 #include "dxvk_device.h"
+#include "../dxvk_display_output.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx/pass/srgb_dither/srgb_dither.h"
@@ -101,7 +102,9 @@ namespace dxvk {
     const VkExtent3D workgroups = util::computeBlockCount(inoutColorBuffer.view->imageInfo().extent, VkExtent3D{ 16, 16, 1 });
 
     SRGBDitherArgs pushArgs = {};
-    pushArgs.performSRGBConversion = !screenCapture && g_allowSrgbConversionForOutput;
+    const auto& displayFrame = ctx->getCommonObjects()->displayOutput().renderFrame();
+    pushArgs.extendedSrgb = displayFrame.extendedSrgb();
+    pushArgs.performSRGBConversion = displayFrame.extendedSrgb() || (!screenCapture && g_allowSrgbConversionForOutput);
     pushArgs.colorGradingEnabled = DxvkToneMapping::colorGradingEnabled();
     pushArgs.colorBalance = DxvkToneMapping::colorBalance();
     pushArgs.contrast = DxvkToneMapping::contrast();

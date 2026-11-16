@@ -101,12 +101,12 @@ struct ToneMappingApplyToneMappingArgs {
   uint toneMappingEnabled;
   uint debugMode; // If true shows from left to right: Reinhard (0-0.25), Heji Burgess-Dawson (0.25-0.5), and dynamic tone mappers (0.5-1) along with a tone curve on the same screen.
   uint enableAutoExposure;
-  uint pad0;
+  uint hdrScene;
 
   float shadowContrast;       // See ToneMappingCurveArgs
   float shadowContrastEnd;    // See ToneMappingCurveArgs
   float exposureFactor;
-  uint pad1;
+  float peakToWhite;
 
   float toneCurveMinStops;
   float toneCurveMaxStops;

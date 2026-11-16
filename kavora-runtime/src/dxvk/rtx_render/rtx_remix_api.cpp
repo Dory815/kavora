@@ -40,6 +40,7 @@
 #include "rtx_geometry_utils.h"
 
 #include "../dxvk_device.h"
+#include "../dxvk_display_output.h"
 #include "rtx_texture_manager.h"
 #include "rtx_semaphore.h"
 #include "rtx_remix_texture_data.h"
@@ -1656,6 +1657,21 @@ namespace {
   }
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_GetConfigVariableResolved(remixapi_ConfigVariableResolvedInfo* info) {
+    if (info && info->key && dxvk::DxvkDisplayOutput::isStatusKey(info->key)) {
+      if (info->sType != REMIXAPI_STRUCT_TYPE_CONFIG_VARIABLE_RESOLVED_INFO) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
+      std::lock_guard lock { s_mutex };
+      auto device = tryAsDxvk();
+      if (!device) {
+        return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+      }
+      std::string value;
+      if (!device->GetDXVKDevice()->getCommon()->displayOutput().readStatus(info->key, value)) {
+        return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+      }
+      return dxvk::remixapi_config::getResolved(info, value);
+    }
     return dxvk::remixapi_config::getResolved(info);
   }
 
@@ -2367,12 +2383,13 @@ namespace {
     presenter->getVulkanInteropInfo(*info);
     if (capabilities) {
       auto& ngx = device->GetDXVKDevice()->getCommon()->metaNGXContext();
+      auto& dlfg = device->GetDXVKDevice()->getCommon()->metaDLFG();
       capabilities->initializationComplete = ngx.isInitializationComplete();
-      capabilities->supported = capabilities->initializationComplete && ngx.supportsDLFG();
+      capabilities->supported = capabilities->initializationComplete && ngx.supportsDLFG() && !dlfg.hasDLFGFailed();
       capabilities->maxGeneratedFrames = capabilities->supported ? ngx.dlfgMaxInterpolatedFrames() : 0;
       memset(capabilities->notSupportedReason, 0, sizeof(capabilities->notSupportedReason));
       if (!capabilities->supported) {
-        const std::string reason = capabilities->initializationComplete ? ngx.getDLFGNotSupportedReason() : "DLSS is initializing.";
+        const std::string reason = capabilities->initializationComplete ? dlfg.getDLFGNotSupportedReason() : "DLSS is initializing.";
         memcpy(capabilities->notSupportedReason, reason.data(), std::min(reason.size(), sizeof(capabilities->notSupportedReason) - 1));
       }
     }

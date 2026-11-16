@@ -18,6 +18,7 @@ public final class VulkanInteropInfo {
     public long dxvkDoneSemaphore_Handle;
     public long dxvkDoneSemaphore_ValueToWait;
     public long clientDoneSemaphore_Handle;
+    /** Shared-device RGBA16F contains extended-sRGB, not linear scRGB. Preserve values above one. */
     public final Image color = new Image();
     public final Image depth = new Image();
     /** Transparent premultiplied runtime UI, composited over the client UI. */

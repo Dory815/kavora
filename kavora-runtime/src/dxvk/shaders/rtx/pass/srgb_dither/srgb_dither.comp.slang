@@ -28,6 +28,7 @@ import "display_color_grade.slang";
 #include "rtx/pass/tonemap/tonemapping.slangh"
 #include "rtx/pass/tonemap/tonemapping_noise.slangh"
 #include "rtx/utility/color.slangh"
+#include "dxvk_display_color.h"
 
 [[vk::binding(SRGB_DITHER_BLUE_NOISE_TEXTURE_INPUT)]]
 Texture2DArray BlueNoise;
@@ -54,7 +55,14 @@ void main(uint2 threadId : SV_DispatchThreadID)
 #endif
   const float3 gammaColor = applyDisplayColor<inversion>(imageLoad(InOutColorBuffer, threadId).xyz,
     cb.performSRGBConversion != 0, cb.colorGradingEnabled != 0, cb.colorBalance, cb.contrast, cb.saturation,
-    cb.inversionAmount, cb.inversionMode, cb.inversionThreshold);
+    cb.inversionAmount, cb.inversionMode, cb.inversionThreshold, cb.extendedSrgb);
+
+  if (cb.extendedSrgb)
+  {
+    // The shared FP16 surface carries extended sRGB, with 1.0 denoting paper white.
+    InOutColorBuffer[threadId] = float4(displaySanitizeColor(gammaColor), 1.0f);
+    return;
+  }
 
   // Apply dithering as the last step before output to break up banding artifacts.
   // Dithering is performed in gamma space (when SRGB conversion is enabled) so the

@@ -22,6 +22,7 @@
 #include "rtx/pass/tonemap/tonemapping.slangh"
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/color.slangh"
+#include "dxvk_display_color.h"
 
 [[vk::binding(TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT)]]
 RWTexture2D<float4> InColorBuffer;
@@ -64,7 +65,12 @@ float3 dynamicToneMapper(float3 inputColor)
 
 float3 applyToneMapping(float3 color, uint2 pixelPosition)
 {
-  color *= getExposure(InExposure, cb.enableAutoExposure, cb.exposureFactor);
+  const float exposure = getExposure(InExposure, cb.enableAutoExposure, cb.exposureFactor);
+  if (cb.hdrScene)
+  {
+    return displayHdrShoulder(color * sanitizeExposure(exposure), cb.peakToWhite);
+  }
+  color *= exposure;
 
   if (cb.toneMappingEnabled != 0) 
   {
@@ -127,8 +133,11 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   float3 outputColor = applyToneMapping(inputColor, threadId);
 
-  // clamp outputColor to avoid problems with NIS
-  outputColor = saturate(outputColor);
+  if (!cb.hdrScene)
+  {
+    // SDR output uses the normalized display range.
+    outputColor = saturate(outputColor);
+  }
 
   OutColorBuffer[threadId] = vec4(outputColor, 1.0f);
 }

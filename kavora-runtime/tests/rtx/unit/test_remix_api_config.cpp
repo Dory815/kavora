@@ -56,6 +56,8 @@ namespace {
   }
 
   void testValues() {
+    require(api::setVariable("rtx.display.status.mode", "HDR10") == REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS,
+      "display status cannot be queued before startup");
     require(api::setVariable("rtx.apiconfigtest.number", "19") == REMIXAPI_ERROR_CODE_SUCCESS, "queue static value before startup");
     require(api::setVariable("rtx.apiconfigtest.preset", "4") == REMIXAPI_ERROR_CODE_SUCCESS, "queue custom before startup");
     require(api::setVariable("rtx.apiconfigtest.explicitValue", "33") == REMIXAPI_ERROR_CODE_SUCCESS, "queue edit before startup");
@@ -109,6 +111,25 @@ namespace {
     const auto* option = RtxOptionImpl::getOptionByFullName("rtx.apiconfigtest.dynamic.value");
     require(option && option->hasValueInLayer(RtxOptionLayer::getDerivedLayer()), "dynamic NoSave uses derived layer");
     require(!option->hasValueInLayer(RtxOptionLayer::getUserLayer()), "dynamic NoSave never masks runtime changes");
+
+    require(api::setVariable("rtx.display.status.sourceFrame", "0 3 200 1000") == REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS,
+      "display snapshots cannot become options");
+    require(!RtxOptionImpl::getOptionByFullName("rtx.display.status.sourceFrame"), "display status has no option storage");
+    info.key = "rtx.display.status.sourceFrame";
+    info.value = nullptr;
+    require(api::getResolved(&info, "7 3 200 1000") == REMIXAPI_ERROR_CODE_SUCCESS && info.valueSize == 13,
+      "runtime snapshot reports NUL-terminated size");
+    info.value = output.data();
+    info.valueSize = static_cast<uint32_t>(output.size());
+    output.fill('x');
+    require(api::getResolved(&info, "7 3 200 1000") == REMIXAPI_ERROR_CODE_BUFFER_TOO_SMALL && output[0] == 'x',
+      "runtime snapshot preserves short buffer");
+    info.valueSize = static_cast<uint32_t>(output.size());
+    require(api::getResolved(&info, std::string_view("HDR10extra", 5)) == REMIXAPI_ERROR_CODE_SUCCESS &&
+      std::string(output.data()) == "HDR10", "runtime snapshot copies bounded string views");
+    info.valueSize = static_cast<uint32_t>(output.size());
+    require(api::getResolved(&info, std::string_view{}) == REMIXAPI_ERROR_CODE_SUCCESS && output[0] == '\0',
+      "runtime snapshot supports empty values");
   }
 
   void testLayers() {

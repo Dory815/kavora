@@ -43,11 +43,15 @@ ConstantBuffer<LuminanceArgs> cb;
 void main(uint2 threadId : SV_DispatchThreadID)
 {
   float avgExposure = getExposure(AutoExposureTexture, cb.enableAutoExposure, cb.exposure);
+  if (cb.hdrScene)
+  {
+    avgExposure = sanitizeExposure(avgExposure);
+  }
 
   const float luminance = calcBt709Luminance(max(OriginalTexture[threadId].xyz, 0.0f)) * avgExposure;
-  float highlights = encodeExposureLuminance(luminance * cb.highlights, cb.useLegacyACES);
-  float midtones   = encodeExposureLuminance(luminance, cb.useLegacyACES);
-  float shadows    = encodeExposureLuminance(luminance * cb.shadows, cb.useLegacyACES);
+  float highlights = encodeExposureLuminance(luminance * cb.highlights, cb.useLegacyACES, cb.hdrScene);
+  float midtones   = encodeExposureLuminance(luminance, cb.useLegacyACES, cb.hdrScene);
+  float shadows    = encodeExposureLuminance(luminance * cb.shadows, cb.useLegacyACES, cb.hdrScene);
   vec3 cols = vec3(highlights, midtones, shadows);
 
   OutLuminanceTexture[threadId] = vec4(cols, 1.0);

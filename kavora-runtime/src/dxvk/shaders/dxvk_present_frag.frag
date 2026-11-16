@@ -1,5 +1,9 @@
 #version 450
 
+// NV-DXVK start: Share the display transfer functions.
+#extension GL_GOOGLE_include_directive: require
+// NV-DXVK end
+
 layout(constant_id = 1) const bool s_gamma_bound = true;
 
 layout(binding = 0) uniform sampler2D s_image;
@@ -15,7 +19,20 @@ uniform present_info_t {
   uint bottom_up;
   uint source_height;
   // NV-DXVK end
+  // NV-DXVK start: The output encoding is fixed for this presentation.
+  uint display_transfer;
+  uint display_frame_index;
+  float source_paper_white_nits;
+  float source_peak_nits;
+  float target_paper_white_nits;
+  float target_peak_nits;
+  // NV-DXVK end
+
 };
+
+// NV-DXVK start: The final pass owns display encoding.
+#include "dxvk_present_color.glsl"
+// NV-DXVK end
 
 void main() {
   ivec2 coord = ivec2(gl_FragCoord.xy) + src_offset - dst_offset;
@@ -26,7 +43,11 @@ void main() {
   // NV-DXVK end
   o_color = texelFetch(s_image, coord, 0);
   
-  if (s_gamma_bound) {
+  // NV-DXVK start: Legacy gamma ramps do not apply to explicit display encoding.
+  if ((display_transfer & 255u) != 0u) {
+    o_color.rgb = presentDisplayColor(o_color.rgb, uvec2(gl_FragCoord.xy));
+  } else if (s_gamma_bound) {
+  // NV-DXVK end
     o_color = vec4(
       texture(s_gamma, o_color.r).r,
       texture(s_gamma, o_color.g).g,

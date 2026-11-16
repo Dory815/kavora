@@ -23,6 +23,10 @@
 #include "../dxvk/dxvk_scoped_annotation.h"
 
 #include "../dxvk/dxvk_format.h"
+// NV-DXVK start: Negotiate HDR through the device's display owner.
+#include "../dxvk/dxvk_display_output.h"
+#include "../dxvk/dxvk_display_policy.h"
+// NV-DXVK end
 #include "../util/util_monitor.h"
 #include "../util/util_sentry.h"
 // NV-DXVK start: Opt-in capture of WSI frame generation outputs.
@@ -50,8 +54,13 @@ namespace dxvk::vk {
     if (createSurface() != VK_SUCCESS)
       throw DxvkError("Failed to create surface");
 
-    if (recreateSwapChain(desc) != VK_SUCCESS)
+    // NV-DXVK start: Constructor failures release their native surface.
+    if (recreateSwapChain(desc) != VK_SUCCESS) {
+      destroySwapchain();
+      destroySurface();
       throw DxvkError("Failed to create swap chain");
+    }
+    // NV-DXVK end
   }
 
   
@@ -64,6 +73,15 @@ namespace dxvk::vk {
   PresenterInfo Presenter::info() const {
     return m_info;
   }
+
+  // NV-DXVK start: HDR metadata is applied to the actual native swap chain.
+  void Presenter::setHdrMetadata(const VkHdrMetadataEXT& metadata) {
+    if (m_swapchain != VK_NULL_HANDLE && m_vkd->vkSetHdrMetadataEXT != nullptr
+        && DxvkDisplayOutput::isHdrSurface(m_info.format)) {
+      m_vkd->vkSetHdrMetadataEXT(m_vkd->device(), 1, &m_swapchain, &metadata);
+    }
+  }
+  // NV-DXVK end
 
 
   PresenterImage Presenter::getImage(uint32_t index) const {
@@ -211,6 +229,32 @@ namespace dxvk::vk {
 
   
   VkResult Presenter::recreateSwapChain(const PresenterDesc& desc) {
+    // NV-DXVK start: Confirm an actual HDR surface before allowing HDR scene values.
+    PresenterDesc requested = desc;
+    auto* output = m_device.displayOutput;
+    if (output != nullptr) {
+      const uint32_t count = output->surfaceFormats(requested.formats, 4);
+      if (count) {
+        requested.numFormats = count;
+      }
+    }
+    VkResult result = createSwapChain(requested);
+    if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST && output != nullptr
+        && DxvkDisplayOutput::isHdrSurface(m_info.format)) {
+      output->rejectHdrSurface(result);
+      requested.numFormats = output->surfaceFormats(requested.formats, 4);
+      result = createSwapChain(requested);
+    }
+    if (result == VK_SUCCESS && output != nullptr && m_info.imageCount) {
+      output->acceptSurface(m_info.format);
+    }
+    return result;
+    // NV-DXVK end
+  }
+
+  // NV-DXVK start: Each attempt owns and cleans up its partial resources.
+  VkResult Presenter::createSwapChain(const PresenterDesc& desc) {
+  // NV-DXVK end
     if (m_swapchain)
       destroySwapchain();
 
@@ -246,6 +290,11 @@ namespace dxvk::vk {
 
     // Select actual swap chain properties and create swap chain
     m_info.format       = pickFormat(formats.size(), formats.data(), desc.numFormats, desc.formats);
+    // NV-DXVK start: Never interpret an unsupported color-space pair as HDR.
+    if (m_info.format.format == VK_FORMAT_UNDEFINED) {
+      return VK_ERROR_FORMAT_NOT_SUPPORTED;
+    }
+    // NV-DXVK end
     m_info.presentMode  = pickPresentMode(modes.size(), modes.data(), desc.numPresentModes, desc.presentModes);
     m_info.imageExtent  = pickImageExtent(caps, desc.imageExtent);
     m_info.imageCount   = pickImageCount(caps, m_info.presentMode, desc.imageCount);
@@ -286,9 +335,18 @@ namespace dxvk::vk {
     swapInfo.imageExtent            = m_info.imageExtent;
     swapInfo.imageArrayLayers       = 1;
     swapInfo.imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                    | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-    // NV-DXVK start: Add storage bit for Frameview because it runs computer shader
-                                    | VK_IMAGE_USAGE_STORAGE_BIT;
+                                    | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // NV-DXVK start: Storage usage is optional except when frame generation needs it.
+    VkFormatProperties formatProperties;
+    m_vki->vkGetPhysicalDeviceFormatProperties(m_device.adapter, swapInfo.imageFormat, &formatProperties);
+    const bool storageSupported = (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT)
+      && (formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+    if (storageSupported) {
+      swapInfo.imageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
+    } else if (m_device.features.storageImage) {
+      return VK_ERROR_FORMAT_NOT_SUPPORTED;
+    }
+    // NV-DXVK end
     // NV-DXVK start: Opt-in capture of WSI frame generation outputs.
     if (!env::getEnvVar("RTX_DLFG_CAPTURE_PATH").empty()) {
       if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
@@ -297,6 +355,10 @@ namespace dxvk::vk {
       swapInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
     // NV-DXVK end
+    // NV-DXVK start: Validate the complete usage requested from the surface.
+    if ((swapInfo.imageUsage & caps.supportedUsageFlags) != swapInfo.imageUsage) {
+      return VK_ERROR_FORMAT_NOT_SUPPORTED;
+    }
     // NV-DXVK end
     swapInfo.imageSharingMode       = VK_SHARING_MODE_EXCLUSIVE;
     swapInfo.queueFamilyIndexCount  = 0;
@@ -558,37 +620,9 @@ namespace dxvk::vk {
     const VkSurfaceFormatKHR*       pSupported,
           uint32_t                  numDesired,
     const VkSurfaceFormatKHR*       pDesired) {
-    if (numDesired > 0) {
-      // If the implementation allows us to freely choose
-      // the format, we'll just use the preferred format.
-      if (numSupported == 1 && pSupported[0].format == VK_FORMAT_UNDEFINED)
-        return pDesired[0];
-      
-      // If the preferred format is explicitly listed in
-      // the array of supported surface formats, use it
-      for (uint32_t i = 0; i < numDesired; i++) {
-        for (uint32_t j = 0; j < numSupported; j++) {
-          if (pSupported[j].format     == pDesired[i].format
-           && pSupported[j].colorSpace == pDesired[i].colorSpace)
-            return pSupported[j];
-        }
-      }
-
-      // If that didn't work, we'll fall back to a format
-      // which has similar properties to the preferred one
-      DxvkFormatFlags prefFlags = imageFormatInfo(pDesired[0].format)->flags;
-
-      for (uint32_t j = 0; j < numSupported; j++) {
-        auto currFlags = imageFormatInfo(pSupported[j].format)->flags;
-
-        if ((currFlags & DxvkFormatFlag::ColorSpaceSrgb)
-         == (prefFlags & DxvkFormatFlag::ColorSpaceSrgb))
-          return pSupported[j];
-      }
-    }
-    
-    // Otherwise, fall back to the first supported format
-    return pSupported[0];
+    // NV-DXVK start: Keep native WSI selection in the tested display policy.
+    return DxvkDisplayPolicy::selectSurfaceFormat(numSupported, pSupported, numDesired, pDesired);
+    // NV-DXVK end
   }
 
 

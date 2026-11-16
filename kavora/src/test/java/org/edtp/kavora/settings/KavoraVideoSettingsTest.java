@@ -48,4 +48,23 @@ class KavoraVideoSettingsTest {
         assertFalse(KavoraVideoSettings.valid("rtx.bloom.enable", "false"));
         assertFalse(KavoraVideoSettings.valid("rtx.clouds.transportMode", "1"));
     }
+
+    @Test
+    void displayOverridesKeepAutoAndBoundedPhysicalUnits() {
+        assertTrue(KavoraVideoSettings.valid(KavoraDisplaySettings.MODE, "0"));
+        assertTrue(KavoraVideoSettings.valid(KavoraDisplaySettings.MODE, "1"));
+        assertFalse(KavoraVideoSettings.valid(KavoraDisplaySettings.MODE, "2"));
+        assertTrue(KavoraVideoSettings.valid(KavoraDisplaySettings.PAPER_WHITE, "0"));
+        assertTrue(KavoraVideoSettings.valid(KavoraDisplaySettings.PAPER_WHITE, "200"));
+        assertFalse(KavoraVideoSettings.valid(KavoraDisplaySettings.PAPER_WHITE, "79"));
+        assertFalse(KavoraVideoSettings.valid(KavoraDisplaySettings.PAPER_WHITE, "501"));
+        assertTrue(KavoraVideoSettings.valid(KavoraDisplaySettings.PEAK, "10000"));
+        assertFalse(KavoraVideoSettings.valid(KavoraDisplaySettings.PEAK, "Infinity"));
+        assertFalse(KavoraVideoSettings.valid(KavoraDisplaySettings.PEAK, "NaN"));
+        assertFalse(KavoraVideoSettings.valid("rtx.display.status.mode", "hdr10"));
+        assertEquals(0, KavoraDisplaySettings.nitsValue(0, 80, 20));
+        assertEquals(80, KavoraDisplaySettings.nitsValue(1, 80, 20));
+        assertEquals(500, KavoraDisplaySettings.nitsValue(22, 80, 20));
+        assertEquals(10000, KavoraDisplaySettings.nitsValue(99, 200, 100));
+    }
 }

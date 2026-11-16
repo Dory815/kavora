@@ -242,6 +242,7 @@ namespace dxvk {
       uint64_t consumedValue;
       bool bottomUp;
       DxvkFrameInterpolationInfo interpolation;
+      DxvkDisplayFrame display;
     };
     struct ClientInterpolationSlot {
       Rc<DxvkImageView> motionVectors;
@@ -253,8 +254,12 @@ namespace dxvk {
     uint32_t m_lastClientInterpolationFrame = 0;
     uint64_t m_clientPresentationEpoch = 0;
     uint32_t m_clientInterpolationCount = 0;
+    uint64_t m_clientSourceGeneration = 0;
+    uint64_t m_clientOutputGeneration = 0;
+    uint64_t m_displayMetadataGeneration = 0;
     DxvkFrameInterpolationInfo PrepareClientInterpolation(uint32_t imageIndex, const ClientPresentImage& image,
-                                                          VkRect2D srcRect, VkRect2D dstRect);
+                                                          VkRect2D srcRect, VkRect2D dstRect,
+                                                          const DxvkDisplayPresent& display);
     void PresentImage(UINT PresentInterval, const ClientPresentImage* clientImage = nullptr);
     // NV-DXVK end
     
@@ -369,6 +374,7 @@ namespace dxvk {
     uint64_t m_clientFrameGeneration = 0;
     uint64_t m_clientFrameConsumedValue = 0;
     DxvkFrameInterpolationInfo m_clientFrameInterpolation {};
+    DxvkDisplayFrame m_clientDisplayFrame {};
     VkExtent2D m_clientSurfaceExtent {};
     void prepareInteropImages(const Rc<DxvkImage>& color, const Rc<DxvkImage>& depth);
     // NV-DXVK end

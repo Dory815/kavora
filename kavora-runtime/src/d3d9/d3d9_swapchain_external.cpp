@@ -67,6 +67,7 @@ namespace dxvk {
 
   void D3D9SwapchainExternal::enableInterop() {
     m_interopSharedDevice = !m_device->vkd()->ownsDevice();
+    m_device->getCommon()->displayOutput().configureHost(m_window, m_interopSharedDevice);
     m_interopDone = RtxSemaphore::createTimeline(m_device.ptr(), "RemixInterop::done", 0, !m_interopSharedDevice);
     m_interopClient = RtxSemaphore::createTimeline(m_device.ptr(), "RemixInterop::client", 0, !m_interopSharedDevice);
     m_interopEnabled = true;
@@ -87,7 +88,8 @@ namespace dxvk {
       }
       const auto& src = source->info();
       const bool colorFormatSupported = src.format == VK_FORMAT_R8G8B8A8_UNORM || src.format == VK_FORMAT_R8G8B8A8_SRGB ||
-        src.format == VK_FORMAT_B8G8R8A8_UNORM || src.format == VK_FORMAT_B8G8R8A8_SRGB;
+        src.format == VK_FORMAT_B8G8R8A8_UNORM || src.format == VK_FORMAT_B8G8R8A8_SRGB ||
+        src.format == VK_FORMAT_R16G16B16A16_SFLOAT;
       // The client timeline protects the producer's original images on a shared device.
       if (m_interopSharedDevice && !ui && (source != color || colorFormatSupported)) {
         if (target != source) {
@@ -212,6 +214,11 @@ namespace dxvk {
         frame.vsync > 1 || frame.bottomUp > 1 || frame.allowFrameGeneration > 1) {
       return D3DERR_INVALIDCALL;
     }
+    auto& display = m_device->getCommon()->displayOutput();
+    display.configureHost(m_window, !m_device->vkd()->ownsDevice());
+    if (!display.configureClientFormat(VkFormat(frame.format))) {
+      return D3DERR_INVALIDCALL;
+    }
     if (!m_clientFrameConsumed.ptr()) {
       m_clientFrameConsumed = RtxSemaphore::createTimeline(m_device.ptr(), "ClientFrame::consumed");
     }
@@ -258,6 +265,8 @@ namespace dxvk {
       m_clientFrameView = borrowColor(frame.image);
     }
     const bool vsync = frame.vsync != 0 && !m_context->isDLFGEnabled();
+    const auto currentDisplay = display.prepareFrame(m_window, m_device->getCurrentFrameId(), false);
+    const auto sourceDisplay = rtxFramePrepared ? m_clientDisplayFrame : currentDisplay;
     const VkExtent2D surfaceExtent {
       uint32_t(clientRect.right - clientRect.left),
       uint32_t(clientRect.bottom - clientRect.top)
@@ -270,7 +279,7 @@ namespace dxvk {
       CreatePresenter();
       recreated = true;
     } else if (m_vsync != vsync || m_clientInterpolationCount != m_context->dlfgInterpolatedFrameCount() ||
-               m_clientSurfaceExtent != surfaceExtent) {
+               m_clientSurfaceExtent != surfaceExtent || display.needsSurfaceRecreation(GetPresenter()->info().format)) {
       m_vsync = vsync;
       RecreateSwapChain(m_vsync);
       recreated = true;
@@ -286,7 +295,7 @@ namespace dxvk {
     const uint64_t consumedValue = ++m_clientFrameConsumedValue;
     ClientPresentImage image {
       m_clientFrameView, {}, reinterpret_cast<VkSemaphore>(frame.sourceReadySemaphore), frame.sourceReadyValue,
-      m_clientFrameConsumed->handle(), consumedValue, frame.bottomUp != 0, {}
+      m_clientFrameConsumed->handle(), consumedValue, frame.bottomUp != 0, {}, sourceDisplay
     };
     const bool frameGenerationEnabled = m_dlfgPresenter != nullptr;
     if (hudless) hudless->frameGenerationEnabled = frameGenerationEnabled;
@@ -301,6 +310,11 @@ namespace dxvk {
         image.hudless = m_clientHudlessView;
       }
       image.interpolation = m_clientFrameInterpolation;
+    }
+    if (!rtxFramePrepared) {
+      m_parent->EmitCs([sourceDisplay](DxvkContext* ctx) {
+        ctx->getCommonObjects()->displayOutput().setRenderFrame(sourceDisplay);
+      });
     }
     PresentImage(vsync ? 1 : 0, &image);
     if (!rtxFramePrepared) m_device->incrementPresentCount();
@@ -326,6 +340,7 @@ namespace dxvk {
       case VK_FORMAT_B8G8R8A8_UNORM: info.interopImageFormat = REMIXAPI_TEXTURE_FORMAT_BGRA8_UNORM; break;
       case VK_FORMAT_B8G8R8A8_SRGB: info.interopImageFormat = REMIXAPI_TEXTURE_FORMAT_BGRA8_SRGB; break;
       case VK_FORMAT_R8G8B8A8_SRGB: info.interopImageFormat = REMIXAPI_TEXTURE_FORMAT_RGBA8_SRGB; break;
+      case VK_FORMAT_R16G16B16A16_SFLOAT: info.interopImageFormat = REMIXAPI_TEXTURE_FORMAT_RGBA16_SFLOAT; break;
       default: info.interopImageFormat = REMIXAPI_TEXTURE_FORMAT_RGBA8_UNORM; break;
       }
     }
@@ -453,16 +468,26 @@ namespace dxvk {
     auto targetImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
     auto swapImageView = m_backBuffers[0]->GetImageView(false);
 
-    auto& imageInfo = targetImage->info();
+    // NV-DXVK start: Latch the scene encoding before post-processing on the command stream.
+    m_clientDisplayFrame = m_device->getCommon()->displayOutput().prepareFrame(m_window, m_device->getCurrentFrameId());
+    m_parent->EmitCs([display = m_clientDisplayFrame](DxvkContext* ctx) {
+      ctx->getCommonObjects()->displayOutput().setRenderFrame(display);
+    });
+    // NV-DXVK end
 
     m_parent->m_rtx.EndFrame(targetImage);
 
-    m_parent->EmitCs([this, cTargetImage = targetImage](DxvkContext* ctx) {
+    // NV-DXVK start: Keep the floating-point result through the shared-device handoff.
+    m_parent->EmitCs([this, &targetImage, &swapImageView](DxvkContext* ctx) {
       const auto state = static_cast<RtxContext*>(ctx)->getInteropFrameState();
       m_interopFrameId = state.frameId;
       m_interopFrameFlags = (state.raytraced ? 1u : 0u) | (state.cameraValid ? 2u : 0u)
         | (state.shaderCompileCount ? 4u : 0u);
       m_interopShaderCompileCount = state.shaderCompileCount;
+      if (!state.raytraced) {
+        m_clientDisplayFrame.flags &= ~uint32_t(DxvkDisplayFrameFlag::HdrScene);
+        ctx->getCommonObjects()->displayOutput().setRenderFrame(m_clientDisplayFrame);
+      }
       m_clientFrameInterpolation.reset();
       if (state.raytraced && state.cameraValid && !state.shaderCompileCount) {
         m_clientFrameInterpolation = static_cast<RtxContext*>(ctx)->getFrameInterpolationInfo();
@@ -470,14 +495,22 @@ namespace dxvk {
       const auto& finalOutput =
         ctx->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput;
 
-      if (!finalOutput.empty()) {
-        const auto srcImage = finalOutput.resource(Resources::AccessType::ReadWrite).image;
-        RtxContext::blitImageHelper(ctx, srcImage, cTargetImage, VK_FILTER_NEAREST);
+      if (!finalOutput.empty() && (!m_interopSharedDevice || state.raytraced)) {
+        const auto& output = finalOutput.resource(Resources::AccessType::ReadWrite);
+        if (m_interopSharedDevice) {
+          targetImage = output.image;
+          swapImageView = finalOutput.view(Resources::AccessType::ReadWrite);
+        } else {
+          RtxContext::blitImageHelper(ctx, output.image, targetImage, VK_FILTER_NEAREST);
+        }
       }
     });
 
     m_parent->Flush();
     m_parent->SynchronizeCsThread();
+    // NV-DXVK end
+
+    const auto& imageInfo = targetImage->info();
 
     m_context->beginRecording(m_device->createCommandList());
 

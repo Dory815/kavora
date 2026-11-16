@@ -11,6 +11,7 @@
 #include "dxvk_cmdlist.h"
 // NV-DXVK start: Compact camera snapshots for asynchronous frame generation.
 #include "rtx_render/rtx_frame_interpolation.h"
+#include "dxvk_display_output.h"
 // NV-DXVK end
 
 namespace dxvk {
@@ -84,6 +85,7 @@ namespace dxvk {
     uint32_t          interpolatedFrameCount = 0;
     Rc<DxvkImageView> foregroundGuide;
     Rc<DxvkImageView> hudless;
+    DxvkDisplayPresent display;
     
     bool valid() const {
       return motionVectors.ptr() &&
@@ -96,6 +98,7 @@ namespace dxvk {
       depth = nullptr;
       foregroundGuide = nullptr;
       hudless = nullptr;
+      display = {};
       resetHistory = false;
       interpolatedFrameCount = 0;
     }

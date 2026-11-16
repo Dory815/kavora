@@ -23,10 +23,22 @@
 
 #include "rtx/pass/local_tonemap/local_tonemapping.h"
 #include "rtx/pass/tonemap/tonemapping.slangh"
+#include "dxvk_display_color.h"
 
-// The fusion pyramid stores perceptually encoded display luminance along the neutral ACES axis.
-float encodeExposureLuminance(float sceneLuminance, bool useLegacyACES)
+// The fusion pyramid uses a reversible log luminance axis for HDR and the neutral ACES axis for SDR.
+float encodeExposureLuminance(float sceneLuminance, bool useLegacyACES, bool hdrScene = false)
 {
+  if (hdrScene)
+  {
+    const float luminance = displaySanitizeValue(sceneLuminance);
+    const float ratio = luminance / 0.18f;
+    if (ratio < 0.1f)
+    {
+      return (0.5f / 0.69314718056f) * ratio * (1.0f + ratio * (-0.5f
+        + ratio * (1.0f / 3.0f + ratio * (-0.25f + ratio * (0.2f - ratio / 6.0f)))));
+    }
+    return 0.5f * (log2(luminance + 0.18f) - log2(0.18f));
+  }
   const float3 numerator = useLegacyACES ? kLegacyAcesNumerator : kAcesFitNumerator;
   const float3 denominator = useLegacyACES ? kLegacyAcesDenominator : kAcesFitDenominator;
   const float n = sceneLuminance * (numerator.x * sceneLuminance + numerator.y) + numerator.z;
@@ -34,8 +46,21 @@ float encodeExposureLuminance(float sceneLuminance, bool useLegacyACES)
   return pow(saturate(n / d), 1.0f / kSRGBGamma);
 }
 
-float decodeExposureLuminance(float encodedLuminance, bool useLegacyACES)
+float decodeExposureLuminance(float encodedLuminance, bool useLegacyACES, bool hdrScene = false)
 {
+  if (hdrScene)
+  {
+    const float encoded = displaySanitizeValue(encodedLuminance);
+    const float logarithm = 2.0f * encoded;
+    if (logarithm < 0.1f)
+    {
+      const float x = logarithm * 0.69314718056f;
+      return 0.18f * x * (1.0f + x * (0.5f + x * (1.0f / 6.0f
+        + x * (1.0f / 24.0f + x * (1.0f / 120.0f + x / 720.0f)))));
+    }
+    // Leave headroom for reconstructing RGB from luminance in finite float32 arithmetic.
+    return exp2(min(logarithm + log2(0.18f), 124.0f)) - 0.18f;
+  }
   const float3 numerator = useLegacyACES ? kLegacyAcesNumerator : kAcesFitNumerator;
   const float3 denominator = useLegacyACES ? kLegacyAcesDenominator : kAcesFitDenominator;
   const float3 polynomial = numerator - pow(saturate(encodedLuminance), kSRGBGamma) * denominator;

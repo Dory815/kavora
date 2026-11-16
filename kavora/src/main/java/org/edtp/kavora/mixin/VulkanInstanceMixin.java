@@ -7,12 +7,14 @@ package org.edtp.kavora.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.renderpearl.backend.vulkan.VulkanInstance;
+import java.nio.ByteBuffer;
 import org.edtp.kavora.NativeRuntime;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkAllocationCallbacks;
 import org.lwjgl.vulkan.VkInstance;
 import org.lwjgl.vulkan.VkInstanceCreateInfo;
+import org.lwjgl.vulkan.VkExtensionProperties;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -32,23 +34,38 @@ public abstract class VulkanInstanceMixin {
         NativeRuntime.prepareVulkan();
         // Keep the extension names on the constructor's stack until its LWJGL dispatch table has read them.
         MemoryStack stack = MemoryStack.stackGet();
-        String[] required = {
+        String[] additions = {
                 org.lwjgl.vulkan.KHRGetSurfaceCapabilities2.VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
                 // NRC resolves the KHR entry points even when their core equivalents are available.
-                org.lwjgl.vulkan.KHRGetPhysicalDeviceProperties2.VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
+                org.lwjgl.vulkan.KHRGetPhysicalDeviceProperties2.VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+                org.lwjgl.vulkan.EXTSwapchainColorspace.VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME
         };
         PointerBuffer requested = info.ppEnabledExtensionNames();
-        PointerBuffer extensions = stack.mallocPointer(info.enabledExtensionCount() + required.length);
+        PointerBuffer extensions = stack.mallocPointer(info.enabledExtensionCount() + additions.length);
         for (int i = 0; i < info.enabledExtensionCount(); i++) extensions.put(requested.get(i));
-        for (String name : required) {
+        for (String name : additions) {
             boolean present = false;
             for (int i = 0; i < info.enabledExtensionCount(); i++) present |= name.equals(requested.getStringUTF8(i));
-            if (!present) extensions.put(stack.UTF8(name));
+            boolean optional = name.equals(org.lwjgl.vulkan.EXTSwapchainColorspace.VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+            if (!present && (!optional || kavora$instanceExtensionAvailable(name, stack))) extensions.put(stack.UTF8(name));
         }
         info.ppEnabledExtensionNames(extensions.flip());
         int result = original.call(info, allocator, output);
         if (result == org.lwjgl.vulkan.VK10.VK_SUCCESS) NativeRuntime.recordInstance(output.get(0), info);
         return result;
+    }
+
+    private static boolean kavora$instanceExtensionAvailable(String name, MemoryStack stack) {
+        var count = stack.mallocInt(1);
+        if (org.lwjgl.vulkan.VK10.vkEnumerateInstanceExtensionProperties((ByteBuffer) null, count, null)
+                != org.lwjgl.vulkan.VK10.VK_SUCCESS || count.get(0) == 0) return false;
+        var properties = VkExtensionProperties.calloc(count.get(0), stack);
+        if (org.lwjgl.vulkan.VK10.vkEnumerateInstanceExtensionProperties((ByteBuffer) null, count, properties)
+                != org.lwjgl.vulkan.VK10.VK_SUCCESS) return false;
+        for (int i = 0; i < count.get(0); i++) {
+            if (name.equals(properties.get(i).extensionNameString())) return true;
+        }
+        return false;
     }
 
     @WrapOperation(method = "close", at = @At(value = "INVOKE",
