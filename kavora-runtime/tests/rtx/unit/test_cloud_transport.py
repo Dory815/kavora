@@ -50,7 +50,7 @@ def check_morphology_configuration():
     density = (SHADERS / "rtx/utility/cloud_density.slang").read_text()
     for scale in (8, 16, 32):
         assert re.search(rf"uv \\* {scale}\\.0f", weather), f"missing mesoscale group frequency {scale}"
-    assert "lerp(0.28f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
+    assert "lerp(0.35f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
     assert "smoothstep(0.20f, 0.62f, column.type)" in density, "cloud type must select parent-body scale"
     assert "lerp(float(kCloudBasePeriod), 8.0f, stratiform)" in density
     assert "args.shapeScale * float(kCloudBasePeriod) * 0.0625f" in density, (
