@@ -52,9 +52,10 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/cloud-morphology" \
             --cache-dir "$RUNNER_TEMP/cloud-morphology-cache" \
-            --width 384 \
-            --height 216 \
-            --views top,45,horizon \
+            --width 256 \
+            --height 144 \
+            --views 45,horizon \
+            --lighting-cases day_side:35:20,day_sunward:35:135,day_antisolar:35:270,sunset_side:2:30 \
             --repeat 1
 
       - name: Upload cloud validation images and diagnostics
