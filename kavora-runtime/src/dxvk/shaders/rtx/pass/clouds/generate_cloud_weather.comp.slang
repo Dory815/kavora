@@ -35,7 +35,7 @@ void main(uint2 id : SV_DispatchThreadID)
   // Their mask shares the moisture field but has a distinct spatial spectrum.
   const float deckNoise = 0.75f * regional
     + 0.25f * cloudPerlin(float3(uv * 8.0f, 0.83f), 8, kCloudNoiseSeed + 233);
-  const float deckCoverage = smoothstep(-0.28f, 0.24f, deckNoise);
+  const float deckCoverage = smoothstep(-0.45f, 0.05f, deckNoise);
 
   // Cloud family varies over broad weather regions, not independently per cell.
   // Humid regions modestly favor deeper development; the density evaluator
