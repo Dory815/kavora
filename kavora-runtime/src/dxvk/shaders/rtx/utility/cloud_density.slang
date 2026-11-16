@@ -251,37 +251,37 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   {
     return overcast;
   }
-  // The weather map owns the parent cloud. The periodic 3D field only shapes
-  // its billows; anchoring its height to the base preserves cloud-altitude controls.
-  // The broad type field selects the parent-body scale. Shallow stratiform
-  // formations use a wider, flatter volume; ordinary cumulus retains the
-  // original billow scale; stronger development keeps a compact, tall body.
-  // This changes the actual 3D morphology, not just the thresholded 2D map.
   const float stratiform = 1.0f - smoothstep(0.20f, 0.62f, column.type);
-  const float bodyPeriod = lerp(float(kCloudBasePeriod), 8.0f, stratiform);
-  const float3 bodyCoordinates = float3(p.x, heightAboveBase / args.shapeScale, p.z) / bodyPeriod;
-  const float3 phase = column.shapePhase * (float(kCloudBasePeriod) / bodyPeriod);
-  const float3 shapeCoordinates = float3(frac(bodyCoordinates.x), bodyCoordinates.y,
-    frac(bodyCoordinates.z)) + phase;
-  // Keep erosion at its physical world scale while the parent billow scale varies.
-  const float detailScale = bodyPeriod / float(kCloudBasePeriod);
-  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * float(kCloudBasePeriod) * 0.0625f, 32.0f);
-  const float3 detail = detailSampler.SampleLevel(shapeCoordinates * (16.0f * detailScale), detailLod).rgb;
-  // Small-scale motion perturbs a connected surface before it is eroded.
-  const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * (0.04f / detailScale);
-  const float baseLod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod, 128.0f);
-  const float4 base = baseSampler.SampleLevel(warpedCoordinates, baseLod);
+  // Each family has a fixed period that divides the host's weather wrap.
+  // Interpolate density, not a world-coordinate wavelength.
+  const float3 shapePosition = float3(p.x, heightAboveBase / args.shapeScale, p.z)
+    + column.shapePhase * float(kCloudBasePeriod);
+  const float detailPeriod = float(kCloudBasePeriod) * 0.0625f;
+  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * detailPeriod, 32.0f);
+  const float3 detail = detailSampler.SampleLevel(shapePosition / detailPeriod, detailLod).rgb;
+  const float3 warpedPosition = shapePosition + (detail - 0.5f) * (0.04f * float(kCloudBasePeriod));
   const float coverageVariance = column.coverageVariance * coverageScale * coverageScale;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
   const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.10f;
-  // Shape the condensation surface before thresholding. Multiplying the
-  // resulting density by a profile leaves a smooth, translucent roof instead
-  // of giving each updraft a bounded top. Erosion must move that surface too.
-  // Coverage sets occupied area. Condensate rises over a separate narrow
-  // boundary region, so a sparse fair-weather field can still have opaque cores.
-  const float2 density = cloudThresholdMoments(base.r * profile,
-    base.g * profile * profile + coverageVariance, 1.0f - coverage + erosion, 0.08f);
-  return max(overcast, density.x);
+
+  float density = 0;
+  if (stratiform < 1.0f)
+  {
+    const float bodyPeriod = float(kCloudBasePeriod);
+    const float lod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod, 128.0f);
+    const float4 body = baseSampler.SampleLevel(warpedPosition / bodyPeriod, lod);
+    density += (1.0f - stratiform) * cloudThresholdMoments(body.r * profile,
+      body.g * profile * profile + coverageVariance, 1.0f - coverage + erosion, 0.08f).x;
+  }
+  if (stratiform > 0.0f)
+  {
+    const float bodyPeriod = 4.0f * float(kCloudBasePeriod);
+    const float lod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod, 128.0f);
+    const float4 body = baseSampler.SampleLevel(warpedPosition / bodyPeriod, lod);
+    density += stratiform * cloudThresholdMoments(body.r * profile,
+      body.g * profile * profile + coverageVariance, 1.0f - coverage + erosion, 0.08f).x;
+  }
+  return max(overcast, density);
 }
 
 [ForceInline]

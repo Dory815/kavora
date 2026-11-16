@@ -47,37 +47,14 @@ def cloud_parameters(**changes):
 
 
 def check_morphology_configuration():
-    weather = (SHADERS / "rtx/pass/clouds/generate_cloud_weather.comp.slang").read_text()
-    density = (SHADERS / "rtx/utility/cloud_density.slang").read_text()
-    for scale in (8, 16, 32):
-        assert re.search(rf"uv \* {scale}\.0f", weather), f"missing mesoscale group frequency {scale}"
-    assert "lerp(0.35f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
-    assert "cumulusCoverage = saturate(0.42f + 1.85f * groups)" in weather
-    assert "deckCells = cloudWorley(float3(uv, 0.0f), 8" in weather
-    assert "deckNoise = 0.55f * regional" in weather
-    assert "uv * 16.0f" in weather
-    assert "0.08f * (deckCells - 0.5f)" in weather
-    assert "deckCoverage = smoothstep(-0.40f, 0.10f, deckNoise)" in weather
-    assert "stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type)" in density
-    assert "0.18f * regional" in weather, "cloud development must correlate with broad moisture"
-    assert "regionalAmount * cumulusCoverage" in weather
-    assert "regionalAmount * deckCoverage" in weather
-    assert "CloudWeather[id] = float4(regionalAmount * cumulusCoverage" in weather
-    assert "lerp(cumulusCoverage, deckCoverage, stratiformBlend)" in density
-    assert "mipVarianceScale = 0.25f * saturate(lod * 0.25f)" in density
-    assert "cumulusMean * (1.0f - cumulusMean) * mipVarianceScale" in density
-    assert "deckMean * (1.0f - deckMean) * mipVarianceScale" in density
-    assert "float coverage, float heightFootprint" in density
-    assert "column.coverage, heightFootprint" in density
-    assert "coverage * profile" in density
-    assert "const float variance = max(weather.g - weather.r * weather.r, 0.0f)" not in density
-    assert "smoothstep(0.20f, 0.62f, column.type)" in density, "cloud type must select parent-body scale"
-    assert "lerp(float(kCloudBasePeriod), 8.0f, stratiform)" in density
-    assert "args.shapeScale * float(kCloudBasePeriod) * 0.0625f" in density, (
-        "erosion mip selection must remain in world units when parent scale changes")
-    assert "bodyPeriod / float(kCloudBasePeriod)" in density
-    print("PASS cloud morphology configuration: distinct deck/cumulus masks, shared moisture, "
-          "residual dry-region coverage and type-dependent parent-body scale")
+    # Resource-period arithmetic is a configuration contract. Visual quality is
+    # tested by density readback and rendered images, not source-code spelling.
+    source = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
+    base = int(re.search(r"kCloudBasePeriod\s*=\s*(\d+)", source).group(1))
+    low, high = cloud_weather_periods()
+    assert base > 0 and low % (4 * base) == 0
+    assert max(low, high) % min(low, high) == 0
+    print("PASS cloud periods: family bodies and phase lattice divide the host wind wrap")
 
 
 def cloud_weather_periods():
@@ -946,6 +923,11 @@ def main():
     check_density(probe, textures, args.dump)
     check_horizon_cloud_openings(probe, textures)
     check_low_wind_wrap(probe, textures)
+    from test_cloud_morphology import check_family_periodicity, check_erosion_seams
+    fixtures = cloud_parameters()
+    period = max(cloud_weather_periods()) * fixtures["shapeScale"]
+    check_family_periodicity(probe, textures, fixtures, period)
+    check_erosion_seams(probe, textures, fixtures)
     check_shape_phase(probe, textures)
     check_high_density(probe, textures, args.dump)
     check_high_column_transmission(probe, textures)
