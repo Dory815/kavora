@@ -55,13 +55,13 @@ namespace dxvk {
       args.minValue = 0.0f, args.maxValue = 0.95f);
     RTX_OPTION_ARGS("rtx.clouds", float, multipleScattering, 0.8f, "Strength of the higher-order cloud illumination approximation.",
       args.minValue = 0.0f, args.maxValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, altitudeOffsetMeters, 208.0f, "Cumulus condensation height relative to the host cloud height.",
+    RTX_OPTION_ARGS("rtx.clouds", float, altitudeOffsetMeters, 608.0f, "Cumulus condensation height relative to the host cloud height.",
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, thicknessMeters, 1500.0f, "Maximum cumulus thickness. Local weather determines the height of each formation.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, shapeScaleMeters, 1024.0f, "Period of the base shape volume. Weather distribution spans sixteen periods; erosion detail spans one quarter period.",
+    RTX_OPTION_ARGS("rtx.clouds", float, shapeScaleMeters, 1024.0f, "Period of the base shape volume. Weather distribution spans sixteen periods; erosion detail spans one sixteenth period.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, extinctionPerMeter, 0.06f, "Cloud extinction at unit density, per meter.",
+    RTX_OPTION_ARGS("rtx.clouds", float, extinctionPerMeter, 0.03f, "Cloud extinction at unit density, per meter.",
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 12000.0f, "Cloud visibility distance, including the fade to the background sky.",
       args.minValue = 1.0f);

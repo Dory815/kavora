@@ -48,25 +48,27 @@ float cloudNoiseLod(float footprint, float period, float resolution)
 
 // Integrate a clipped ramp and its square over a moment-matched uniform shape distribution.
 [ForceInline]
-float2 cloudCoverageMoments(float shape, float secondMoment, float coverage)
+float2 cloudThresholdMoments(float shape, float secondMoment, float threshold, float rampWidth)
 {
-  if (coverage <= 0)
-  {
-    return 0;
-  }
-  const float value = shape - 1.0f + coverage;
+  const float value = shape - threshold;
   const float width = sqrt(3.0f * max(secondMoment - shape * shape, 0.0f));
   if (width <= 1e-4f)
   {
-    const float density = saturate(value / max(coverage, 1e-4f));
+    const float density = saturate(value / max(rampWidth, 1e-4f));
     return float2(density, density * density);
   }
-  const float lower = saturate((value - width) / max(coverage, 1e-4f));
-  const float upper = saturate((value + width) / max(coverage, 1e-4f));
+  const float lower = saturate((value - width) / max(rampWidth, 1e-4f));
+  const float upper = saturate((value + width) / max(rampWidth, 1e-4f));
   const float2 rampIntegral = float2(0.5f * (upper * upper - lower * lower),
-    (upper * upper * upper - lower * lower * lower) / 3.0f) * coverage;
-  const float plateau = max(value + width - max(coverage, value - width), 0.0f);
+    (upper * upper * upper - lower * lower * lower) / 3.0f) * rampWidth;
+  const float plateau = max(value + width - max(rampWidth, value - width), 0.0f);
   return saturate((rampIntegral + plateau) / (2.0f * width));
+}
+
+[ForceInline]
+float2 cloudCoverageMoments(float shape, float secondMoment, float coverage)
+{
+  return coverage > 0 ? cloudThresholdMoments(shape, secondMoment, 1.0f - coverage, coverage) : float2(0);
 }
 
 [ForceInline]
@@ -203,21 +205,28 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   {
     return overcast;
   }
+  // Keep the updraft field attached to its condensation level when the host
+  // changes cloud altitude; height controls placement rather than a noise slice.
+  const float3 shapeCoordinates = float3(p.x, heightAboveBase / args.shapeScale, p.z);
+  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * 0.0625f, 32.0f);
+  const float3 detail = detailSampler.SampleLevel(shapeCoordinates * 16.0f, detailLod).rgb;
+  // Advect the large updraft surface with the small-scale field as well as
+  // eroding it. This keeps intermediate billows attached to the main cloud,
+  // instead of obtaining all apparent detail from disconnected fragments.
+  const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * 0.08f;
   const float baseLod = cloudNoiseLod(footprint, args.shapeScale, 128.0f);
-  const float4 base = baseSampler.SampleLevel(p, baseLod);
+  const float4 base = baseSampler.SampleLevel(warpedCoordinates, baseLod);
   const float coverageVariance = column.coverageVariance * coverageScale * coverageScale;
-  const float2 density = cloudCoverageMoments(base.r, base.g + coverageVariance, coverage);
-  if (density.x * profile <= overcast)
-  {
-    return overcast;
-  }
-  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * 0.25f, 32.0f);
-  const float3 detail = detailSampler.SampleLevel(p * 4.0f, detailLod).rgb;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
-  const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.18f;
-  // The polynomial erosion integrates directly from the two coverage moments.
-  const float eroded = (1.0f - erosion) * density.x + erosion * density.y;
-  return max(overcast, eroded * profile);
+  const float erosion = lerp(billows, 1.0f - billows, saturate(height * 4.0f)) * 0.20f;
+  // Shape the condensation surface before thresholding. Multiplying the
+  // resulting density by a profile leaves a smooth, translucent roof instead
+  // of giving each updraft a bounded top. Erosion must move that surface too.
+  // Coverage sets occupied area. Condensate rises over a separate narrow
+  // boundary region, so a sparse fair-weather field can still have opaque cores.
+  const float2 density = cloudThresholdMoments(base.r * profile,
+    base.g * profile * profile + coverageVariance, 1.0f - coverage + erosion, 0.04f);
+  return max(overcast, density.x);
 }
 
 [ForceInline]

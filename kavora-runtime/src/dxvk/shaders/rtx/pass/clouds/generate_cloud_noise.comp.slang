@@ -35,7 +35,7 @@ void main(uint3 id : SV_DispatchThreadID)
   float amplitude = 1;
   for (uint octave = 0; octave < 3; octave++)
   {
-    const uint period = 4u << octave;
+    const uint period = 2u << octave;
     perlin += amplitude * cloudPerlin(uv * float(period), period, kCloudNoiseSeed + octave);
     amplitude *= 0.5f;
   }
@@ -43,7 +43,9 @@ void main(uint3 id : SV_DispatchThreadID)
   const float worley4 = cloudWorleyFbm(uv, 4, kCloudNoiseSeed + 11);
   const float lowFrequency = 0.625f * worley4 + 0.25f * cloudWorleyFbm(uv, 8, kCloudNoiseSeed + 23)
     + 0.125f * cloudWorleyFbm(uv, 16, kCloudNoiseSeed + 37);
-  const float cumulus = saturate((perlin - lowFrequency + 1.0f) / (2.0f - lowFrequency));
+  // cloudWorleyFbm is one minus distance: its feature centres dilate the
+  // coherent Perlin mass into convex billows, rather than hollowing it out.
+  const float cumulus = saturate(0.65f + 0.30f * (perlin - 0.5f) + 1.75f * (lowFrequency - 0.47f));
   // Filtering both moments retains the variation needed by the coverage threshold.
   CloudNoise[id] = float4(cumulus, cumulus * cumulus, 0, 0);
 }
