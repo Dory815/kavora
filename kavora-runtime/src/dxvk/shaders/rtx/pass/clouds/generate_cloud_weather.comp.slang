@@ -25,7 +25,7 @@ void main(uint2 id : SV_DispatchThreadID)
   const float region = smoothstep(-0.55f, 0.05f, regional);
   const float regionalAmount = lerp(0.35f, 1.0f, region);
 
-  // Broken cumulus groups use kilometre-scale streets before individual billows.
+  // Broken cumulus groups form at kilometre scales before individual billows.
   const float groups = 0.50f * cloudPerlin(float3(uv * 8.0f, 0.37f), 8, kCloudNoiseSeed + 223)
     + 0.32f * cloudPerlin(float3(uv * 16.0f, 0.51f), 16, kCloudNoiseSeed + 227)
     + 0.18f * cloudPerlin(float3(uv * 32.0f, 0.19f), 32, kCloudNoiseSeed + 229);
