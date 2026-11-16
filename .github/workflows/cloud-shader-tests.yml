@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 GBwater
+# SPDX-License-Identifier: MIT
+
+name: cloud shader validation
+
+on:
+  push:
+    branches: [fix/cloud-system-redesign]
+  pull_request:
+    paths:
+      - "kavora-runtime/src/dxvk/shaders/rtx/**"
+      - "kavora-runtime/tests/rtx/unit/**"
+      - ".github/workflows/cloud-shader-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloud-validation:
+    name: clouds-${{ matrix.case }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        case: [contracts, user, origin, north, far]
+    env:
+      PYTHONUNBUFFERED: "1"
+      OMP_NUM_THREADS: "4"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the comparison plan without a graphics device
+        run: python3 kavora-runtime/tests/rtx/unit/test_cloud_matrix_plan.py
+
+      - name: Install software Vulkan and shader dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cloud-validation"
+          sudo apt-get update
+          sudo apt-get install --yes libvulkan1 mesa-vulkan-drivers vulkan-tools python3-venv
+          ICD="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
+          test -n "$ICD"
+          export VK_ICD_FILENAMES="$ICD"
+          echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"
+          vulkaninfo --summary > "$RUNNER_TEMP/cloud-validation/vulkan-info.txt" 2>&1
+          python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install numpy pillow slangpy==0.43.1
+          "$RUNNER_TEMP/venv/bin/python" -m pip freeze > "$RUNNER_TEMP/cloud-validation/dependencies.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/cloud-validation/source-commit.txt"
+
+      - name: Validate density, transport and lighting contracts
+        if: matrix.case == 'contracts'
+        run: |
+          set -euo pipefail
+          for TEST in test_cloud_transport test_cloud_morphology test_cloud_density_math test_cloud_filtering test_cloud_view_ranges; do
+            python3 "kavora-runtime/tests/rtx/unit/$TEST.py" \
+              --dump "$RUNNER_TEMP/cloud-validation/$TEST" \
+              2>&1 | tee "$RUNNER_TEMP/cloud-validation/$TEST.log"
+          done
+          python3 kavora-runtime/tests/rtx/unit/test_cloud_lighting.py \
+            2>&1 | tee "$RUNNER_TEMP/cloud-validation/test_cloud_lighting.log"
+          python3 kavora-runtime/tests/rtx/unit/test_cloud_scattering.py --device vulkan \
+            2>&1 | tee "$RUNNER_TEMP/cloud-validation/test_cloud_scattering.log"
+
+      - name: Fetch the continuation baseline
+        if: matrix.case != 'contracts'
+        run: |
+          git fetch --no-tags origin 33bbc3ce1c047700285f47f1dfa298054416606e
+          git worktree add --detach "$RUNNER_TEMP/cloud-reference" 33bbc3ce1c047700285f47f1dfa298054416606e
+
+      - name: Render fixed-input A/B views at this location
+        if: matrix.case != 'contracts'
+        run: |
+          python3 kavora-runtime/tests/rtx/unit/render_cloud_morphology_matrix.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --reference-repo "$RUNNER_TEMP/cloud-reference" \
+            --reference-shader-root "$RUNNER_TEMP/cloud-reference/kavora-runtime/src/dxvk/shaders" \
+            --output "$RUNNER_TEMP/cloud-validation/morphology" \
+            --cache-dir "$RUNNER_TEMP/cloud-morphology-cache" \
+            --locations "${{ matrix.case }}" \
+            --width 256 --height 144 --repeat 1 \
+            --views 45,horizon,zenith --layers both --steps 384 --light-steps 8
+
+      - name: Retain successful views and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cloud-validation-${{ matrix.case }}
+          path: ${{ runner.temp }}/cloud-validation
+          if-no-files-found: warn

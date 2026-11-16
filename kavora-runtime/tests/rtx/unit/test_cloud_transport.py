@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import struct
+import time
 
 import numpy as np
 import slangpy as spy
@@ -43,6 +44,17 @@ def cloud_parameters(**changes):
     }
     result.update(changes)
     return result
+
+
+def check_morphology_configuration():
+    # Resource-period arithmetic is a configuration contract. Visual quality is
+    # tested by density readback and rendered images, not source-code spelling.
+    source = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
+    base = int(re.search(r"kCloudBasePeriod\s*=\s*(\d+)", source).group(1))
+    low, high = cloud_weather_periods()
+    assert base > 0 and low % (4 * base) == 0
+    assert max(low, high) % min(low, high) == 0
+    print("PASS cloud periods: family bodies and phase lattice divide the host wind wrap")
 
 
 def cloud_weather_periods():
@@ -239,7 +251,7 @@ def cloud_atlas(device):
     return texture.create_view(sampler=sampler)
 
 
-def cloud_textures(device):
+def cloud_textures(device, dump=None):
     usage = spy.TextureUsage.shader_resource | spy.TextureUsage.unordered_access
     sampler = device.create_sampler(address_u=spy.TextureAddressingMode.wrap,
                                     address_v=spy.TextureAddressingMode.wrap,
@@ -267,6 +279,7 @@ def cloud_textures(device):
                                        depth=size if dimensions == 3 else 1,
                                        mip_count=int(np.log2(size)) + 1, usage=usage)
         view = texture.create_view(mip=0, mip_count=1)
+        weather_started = time.perf_counter() if name == "Weather" else None
         if dimensions == 3:
             noise[name].dispatch(thread_count=[size, size, size], vars={"CloudNoise": view, "cb": {"detail": name == "Detail"}})
         else:
@@ -275,10 +288,72 @@ def cloud_textures(device):
                 bindings["CloudCirrusAtlas"] = atlas.descriptor_handle_combined
             weather.dispatch(thread_count=[size, size, 1], vars=bindings)
         data = texture.to_numpy()
+        if weather_started is not None:
+            print(f"Cloud weather generation and readback: {time.perf_counter() - weather_started:.4f}s")
+        assert np.isfinite(data).all(), (name, "generated nonfinite noise")
         assert np.ptp(data[..., 0]) > (0.12 if floating else 32), (name, "degenerate generated noise")
-        if floating:
-            # The mean and its square are independently quantized to half precision.
-            mean_channels = list(range(0, data.shape[-1], 2)) if name == "Base" else [0]
+        if name == "Weather":
+            cumulus = data[..., 0]
+            stratiform = data[..., 1]
+            cloud_type = data[..., 2]
+            assert np.all((data[..., :4] >= 0) & (data[..., :4] <= 1)), (
+                "weather family masks, type and cirrus must stay normalized")
+            assert np.ptp(cumulus) > 0.12 and np.ptp(stratiform) > 0.12, (
+                "both low-cloud families must retain spatial variation")
+            cumulus_p10, cumulus_p90 = np.quantile(cumulus, [0.10, 0.90])
+            stratiform_p10, stratiform_p90 = np.quantile(stratiform, [0.10, 0.90])
+            type_p10, type_p90 = np.quantile(cloud_type, [0.10, 0.90])
+            adjacent_correlation = float(0.5 * (
+                np.corrcoef(cumulus[:, :-1].ravel(), cumulus[:, 1:].ravel())[0, 1]
+                + np.corrcoef(cumulus[:-1, :].ravel(), cumulus[1:, :].ravel())[0, 1]))
+            mesoscale_correlation = float(0.5 * (
+                np.corrcoef(cumulus[:, :-32].ravel(), cumulus[:, 32:].ravel())[0, 1]
+                + np.corrcoef(cumulus[:-32, :].ravel(), cumulus[32:, :].ravel())[0, 1]))
+            regional_correlation = float(0.5 * (
+                np.corrcoef(cumulus[:, :-128].ravel(), cumulus[:, 128:].ravel())[0, 1]
+                + np.corrcoef(cumulus[:-128, :].ravel(), cumulus[128:, :].ravel())[0, 1]))
+            deck_adjacent_correlation = float(0.5 * (
+                np.corrcoef(stratiform[:, :-1].ravel(), stratiform[:, 1:].ravel())[0, 1]
+                + np.corrcoef(stratiform[:-1, :].ravel(), stratiform[1:, :].ravel())[0, 1]))
+            deck_meso_correlation = float(0.5 * (
+                np.corrcoef(stratiform[:, :-32].ravel(), stratiform[:, 32:].ravel())[0, 1]
+                + np.corrcoef(stratiform[:-32, :].ravel(), stratiform[32:, :].ravel())[0, 1]))
+            deck_regional_correlation = float(0.5 * (
+                np.corrcoef(stratiform[:, :-128].ravel(), stratiform[:, 128:].ravel())[0, 1]
+                + np.corrcoef(stratiform[:-128, :].ravel(), stratiform[128:, :].ravel())[0, 1]))
+            family_correlation = float(np.corrcoef(cumulus.ravel(), stratiform.ravel())[0, 1])
+            assert cumulus_p10 < 0.25 and cumulus_p90 > 0.65, (
+                "cumulus field must retain openings and cloud-rich groups", cumulus_p10, cumulus_p90)
+            assert stratiform_p10 < 0.25 and stratiform_p90 > 0.65, (
+                "stratiform field must retain broad openings and connected decks", stratiform_p10, stratiform_p90)
+            assert type_p10 < 0.30 and type_p90 > 0.65, (
+                "weather field must retain both stratiform and developed cloud families", type_p10, type_p90)
+            assert adjacent_correlation > 0.95 and mesoscale_correlation > 0.6, (
+                "cumulus occupancy must form coherent parent groups", adjacent_correlation, mesoscale_correlation)
+            assert 0.1 < regional_correlation < 0.85, (
+                "cumulus field must retain regional organization and local variation", regional_correlation)
+            assert deck_adjacent_correlation > 0.98 and deck_meso_correlation > 0.75, (
+                "stratiform decks must form broader connected structures",
+                deck_adjacent_correlation, deck_meso_correlation)
+            assert 0.1 < deck_regional_correlation < 0.85, (
+                "stratiform field must retain regional organization and openings", deck_regional_correlation)
+            assert 0.1 < family_correlation < 0.9, (
+                "cloud families must be spatially related but not identical", family_correlation)
+            if dump:
+                dump.mkdir(parents=True, exist_ok=True)
+                np.savez(dump / "cloud-weather-field.npz", cumulus=cumulus, stratiform=stratiform,
+                         cloudType=cloud_type, cirrus=data[..., 3])
+            print(f"PASS weather morphology: cumulus p10/p90 {cumulus_p10:.4f}/{cumulus_p90:.4f}, "
+                  f"stratiform p10/p90 {stratiform_p10:.4f}/{stratiform_p90:.4f}, "
+                  f"type p10/p90 {type_p10:.4f}/{type_p90:.4f}, "
+                  f"cumulus adjacent/32px/128px correlation "
+                  f"{adjacent_correlation:.4f}/{mesoscale_correlation:.4f}/{regional_correlation:.4f}, "
+                  f"deck adjacent/32px/128px correlation "
+                  f"{deck_adjacent_correlation:.4f}/{deck_meso_correlation:.4f}/{deck_regional_correlation:.4f}, "
+                  f"family correlation {family_correlation:.4f}")
+        if floating and name != "Weather":
+            # The base volume stores each shape mean beside its second moment.
+            mean_channels = list(range(0, data.shape[-1], 2))
             moment_channels = [channel + 1 for channel in mean_channels]
             np.testing.assert_allclose(data[..., moment_channels], data[..., mean_channels].astype(np.float32) ** 2,
                                        atol=np.finfo(np.float16).eps, rtol=0, err_msg="unfiltered shape moments")
@@ -325,6 +400,17 @@ def check_density(probe, textures, dump):
         fields.append(field)
     assert np.mean(fields[0]) > 0.001, "fair-weather density has collapsed"
     assert np.mean(fields[2]) > np.mean(fields[0]), "rain should build a denser layer"
+
+    coverage_fields = []
+    for coverage in (0.2, 0.45, 0.8, 1.0):
+        field = probe.run("densities", points,
+                          clouds=cloud_parameters(coverage=coverage), textures=textures)[:, 0]
+        assert np.isfinite(field).all() and np.all((0 <= field) & (field <= 1))
+        coverage_fields.append(field)
+    coverage_means = np.array([np.mean(field) for field in coverage_fields])
+    assert np.all(np.diff(coverage_means) >= -1e-5), (
+        "increasing cloud amount must not reduce occupied cloud density", coverage_means)
+
     filtered_points = points.copy()
     filtered_points[:, 3] = 128
     filtered = probe.run("densities", filtered_points, clouds=cloud_parameters(), textures=textures)[:, 0]
@@ -333,8 +419,11 @@ def check_density(probe, textures, dump):
     if dump:
         dump.mkdir(parents=True, exist_ok=True)
         np.savez(dump / "cloud-density.npz", axis=axis, clear=fields[0].reshape(shape),
-                 rain=fields[2].reshape(shape), filtered=filtered.reshape(shape))
-    print(f"PASS production density: clear/rain means {np.mean(fields[0]):.5f}/{np.mean(fields[2]):.5f}")
+                 rain=fields[2].reshape(shape), filtered=filtered.reshape(shape),
+                 coverage_020=coverage_fields[0].reshape(shape), coverage_045=coverage_fields[1].reshape(shape),
+                 coverage_080=coverage_fields[2].reshape(shape), coverage_100=coverage_fields[3].reshape(shape))
+    print(f"PASS production density: clear/rain means {np.mean(fields[0]):.5f}/{np.mean(fields[2]):.5f}, "
+          f"coverage sweep {coverage_means.tolist()}")
 
 
 def check_low_wind_wrap(probe, textures):
@@ -572,6 +661,46 @@ def check_light_support(probe, textures):
     print("PASS shared light prefixes: local/external partition and bounded outside-domain rays")
 
 
+def check_horizon_cloud_openings(probe, textures):
+    origin_azimuth = np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False)
+    ray_azimuth = np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False)
+    elevation = np.radians(10.0)
+    horizontal = np.cos(elevation)
+    directions = np.column_stack((
+        horizontal * np.cos(np.tile(ray_azimuth, len(origin_azimuth))),
+        np.full(len(origin_azimuth) * len(ray_azimuth), np.sin(elevation)),
+        horizontal * np.sin(np.tile(ray_azimuth, len(origin_azimuth))),
+        np.zeros(len(origin_azimuth) * len(ray_azimuth))))
+    origin_x = 8043.0 + 8192.0 * np.cos(origin_azimuth)
+    origin_z = 1240.0 + 8192.0 * np.sin(origin_azimuth)
+    origins = np.repeat(np.column_stack((origin_x, np.full_like(origin_x, 139.0), origin_z)),
+                        len(ray_azimuth), axis=0)
+    rays = np.column_stack((origins, np.full(len(origins), 1700.0)))
+
+    cases = (
+        ("broken", cloud_parameters(coverage=0.45, weather=0.0, thunder=0.0)),
+        ("cloud-rich deck", cloud_parameters(coverage=0.85, weather=0.0, thunder=0.0)),
+    )
+    for name, clouds in cases:
+        transmission = probe.run("viewTransmission", rays, directions, clouds, textures)[:, 0]
+        assert np.isfinite(transmission).all()
+        assert np.all((0.0 <= transmission) & (transmission <= 1.0))
+        open_count = int(np.count_nonzero(transmission > 0.1))
+        cloud_count = int(np.count_nonzero(transmission < 0.95))
+        assert open_count >= 4, (
+            f"{name} horizon rays lost all meaningful openings", open_count)
+        assert cloud_count >= 4, (
+            f"{name} horizon rays lost all cloud-bearing directions", cloud_count)
+        assert np.quantile(transmission, 0.9) > 0.1, (
+            f"{name} horizon field collapsed into a continuous opaque band")
+        print(f"PASS horizon cloud openings ({name}): open/cloud-bearing rays "
+              f"{open_count}/{cloud_count}, transmission p10/p50/p90 "
+              f"{np.quantile(transmission, 0.1):.4f}/"
+              f"{np.quantile(transmission, 0.5):.4f}/"
+              f"{np.quantile(transmission, 0.9):.4f}")
+
+
+
 def check_high_density(probe, textures, dump):
     axis = np.linspace(-8192, 8192, 128, endpoint=False, dtype=np.float32)
     x, z = np.meshgrid(axis, axis)
@@ -785,13 +914,20 @@ def main():
     args = parser.parse_args()
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=OPTIONS)
     probe = Probe(device)
+    check_morphology_configuration()
     check_homogeneous(probe)
     check_intervals(probe)
     check_layer_intervals(probe)
     check_light_profiles(probe)
-    textures = cloud_textures(device)
+    textures = cloud_textures(device, args.dump)
     check_density(probe, textures, args.dump)
+    check_horizon_cloud_openings(probe, textures)
     check_low_wind_wrap(probe, textures)
+    from test_cloud_morphology import check_family_periodicity, check_erosion_seams
+    fixtures = cloud_parameters()
+    period = max(cloud_weather_periods()) * fixtures["shapeScale"]
+    check_family_periodicity(probe, textures, fixtures, period)
+    check_erosion_seams(probe, textures, fixtures)
     check_shape_phase(probe, textures)
     check_high_density(probe, textures, args.dump)
     check_high_column_transmission(probe, textures)

@@ -50,13 +50,17 @@ No Revelation source blocks, density formula, noise assets, cloud maps or
 profile lookups are included. No Beer-Powder brightness term is used.
 
 The low weather tile spans 64 shape-scale units. Broad moisture octaves at
-32768 and 16384 metres gate the regions that can form clouds. Separate updraft
-fields at 2048, 1024 and 512 metres form connected bodies and smaller groups
-within those regions. This replaces the evenly distributed fine Worley clumps;
-three-dimensional noise supplies the body's convex billows rather than
-selecting isolated little clouds. Type varies continuously over 4096- and
-2048-metre fields, so nearby groups need not all have the same development.
-These are input-field scales, not fixed cloud diameters.
+32768 and 16384 metres define regional humidity, but dry regions retain a
+nonzero residual cloud amount so cloud-rich skies do not collapse into a few
+isolated islands. Mesoscale group fields at 8192, 4096 and 2048 metres form
+connected parent formations and their subordinate groups. This replaces the
+previous 2048, 1024 and 512 metre group frequencies, which made small cells
+dominate the visible footprint. Three-dimensional noise supplies convex
+billows within the parent formations rather than selecting isolated little
+clouds. Type varies continuously over 16384- and 8192-metre fields, so broad
+weather regions can support shallow stratiform formations, ordinary cumulus
+or stronger vertical development. These are input-field scales, not fixed
+cloud diameters.
 
 Local allowed thickness is
 `thickness * (0.22 + 0.78 * smoothstep(0.1, 0.9, type)) * (0.4 + 0.6 * coverage)`.
