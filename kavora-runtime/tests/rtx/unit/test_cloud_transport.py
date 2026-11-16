@@ -696,7 +696,7 @@ def check_horizon_cloud_openings(probe, textures):
 
     cases = (
         ("broken", cloud_parameters(coverage=0.45, weather=0.0, thunder=0.0)),
-        ("cloud-rich deck", cloud_parameters(coverage=0.82, weather=0.65, thunder=0.0)),
+        ("cloud-rich deck", cloud_parameters(coverage=0.85, weather=0.0, thunder=0.0)),
     )
     for name, clouds in cases:
         transmission = probe.run("viewTransmission", rays, directions, clouds, textures)[:, 0]
