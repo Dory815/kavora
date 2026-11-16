@@ -369,6 +369,17 @@ def check_density(probe, textures, dump):
         fields.append(field)
     assert np.mean(fields[0]) > 0.001, "fair-weather density has collapsed"
     assert np.mean(fields[2]) > np.mean(fields[0]), "rain should build a denser layer"
+
+    coverage_fields = []
+    for coverage in (0.2, 0.45, 0.8, 1.0):
+        field = probe.run("densities", points,
+                          clouds=cloud_parameters(coverage=coverage), textures=textures)[:, 0]
+        assert np.isfinite(field).all() and np.all((0 <= field) & (field <= 1))
+        coverage_fields.append(field)
+    coverage_means = np.array([np.mean(field) for field in coverage_fields])
+    assert np.all(np.diff(coverage_means) >= -1e-5), (
+        "increasing cloud amount must not reduce occupied cloud density", coverage_means)
+
     filtered_points = points.copy()
     filtered_points[:, 3] = 128
     filtered = probe.run("densities", filtered_points, clouds=cloud_parameters(), textures=textures)[:, 0]
@@ -377,8 +388,11 @@ def check_density(probe, textures, dump):
     if dump:
         dump.mkdir(parents=True, exist_ok=True)
         np.savez(dump / "cloud-density.npz", axis=axis, clear=fields[0].reshape(shape),
-                 rain=fields[2].reshape(shape), filtered=filtered.reshape(shape))
-    print(f"PASS production density: clear/rain means {np.mean(fields[0]):.5f}/{np.mean(fields[2]):.5f}")
+                 rain=fields[2].reshape(shape), filtered=filtered.reshape(shape),
+                 coverage_020=coverage_fields[0].reshape(shape), coverage_045=coverage_fields[1].reshape(shape),
+                 coverage_080=coverage_fields[2].reshape(shape), coverage_100=coverage_fields[3].reshape(shape))
+    print(f"PASS production density: clear/rain means {np.mean(fields[0]):.5f}/{np.mean(fields[2]):.5f}, "
+          f"coverage sweep {coverage_means.tolist()}")
 
 
 def check_low_wind_wrap(probe, textures):
