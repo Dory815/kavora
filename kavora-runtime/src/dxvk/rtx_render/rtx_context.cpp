@@ -1495,7 +1495,7 @@ namespace dxvk {
     constants.shadowTerminatorArgs.maxLength = std::max(0.f, RtxOptions::ShadowTerminator::maxLength() * RtxOptions::getMeterToWorldUnitScale());
 
     if (constants.volumeArgs.clouds.enable) {
-      getResourceManager().prepareCloudNoise(this);
+      constants.volumeArgs.clouds.enable = getResourceManager().prepareCloudNoise(this);
     }
 
     // Upload the constants to the GPU

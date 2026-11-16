@@ -21,17 +21,20 @@ High-cloud morphology also draws on these published methods and observations:
 - [Hillaire, Frostbite, 2016](https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/s2016-pbs-frostbite-sky-clouds-new.pdf),
   sections 5.3.1 and 5.4.1: separate distribution, shape and detail, and precombine
   density shaping to reduce per-sample work.
-- [Bridson et al., Curl-Noise for Procedural Fluid Flow, 2007](https://www.cs.ubc.ca/~rbridson/docs/bridson-siggraph2007-curlnoise.pdf),
-  sections 2.1 and 2.2: derive a spatially varying velocity field from the curl
-  of a smooth noise potential. This informs the density bake, not a runtime
-  fluid simulation.
+- [Dobashi et al., Modeling of Clouds from a Single Photograph, 2010](https://imelab.jp/doba/projects/photo_cloud_modeling/photo_cloud_modeling.htm):
+  cloud types benefit from different representations, including two-dimensional
+  morphology for cirrus. A photograph does not uniquely recover a cloud volume.
 - [Webanck et al., Procedural Cloudscapes, 2018](https://doi.org/10.1111/cgf.13373),
   sections 4.1 and 4.2: finite cloud-cover primitives and type-specific detail.
   The paper's own evaluation found its cirrus unconvincing, so its hierarchy
   informs the model rather than establishing a visual acceptance criterion.
 
-The procedural high-cloud field is independently authored. These references
-contribute modeling principles, not copied shader code or texture assets.
+These rendering references contribute modeling principles, not copied code
+or assets. High-cloud morphology uses a separately credited CC0 scalar atlas
+derived from small cloud groups in three photographs by Estormiz and John
+Robert McPherson. Its sources, crop bounds, reproducible preparation and
+limitations are recorded in
+[CIRRUS.md](../../kavora/packaging/runtime-textures/CIRRUS.md).
 
 ## Low-cloud morphology
 
@@ -82,26 +85,34 @@ device. All three have complete mip chains, built by the cloud noise filter:
 | --- | --- | --- | --- |
 | Base shape | 128 cubed | RG16F | Cumulus shape and its square |
 | Erosion | 32 cubed | RGBA8 | Three detail frequencies |
-| Weather | 512 square | RGBA16F | Coverage and its square, cumulus type, finished high-cloud density |
+| Weather | 1024 square | RGBA16F | Coverage and its square, cumulus type, finished high-cloud density |
 
 The base period defaults to 1024 meters. Erosion occupies one sixteenth of that
-period and weather sixteen periods. Camera motion neither regenerates noise
-nor publishes a different density field. Wind translates both layers in the
-same world frame, with a shared sixteen-period wrap.
+period. Low-cloud weather occupies sixteen base periods, and high-cloud
+weather occupies thirty-two. Camera motion neither regenerates noise nor
+publishes a different density field. Wind translates both layers in the same
+world frame, with a shared thirty-two-period wrap.
 
 Clouds have two non-overlapping curved shells. The lower shell contains
 cumulus with local thickness, taper and anvil development driven by weather.
 Rain builds a continuous stratiform component beneath the taller cells. The
-upper shell contains swept filaments, irregular tufts and larger clear regions.
-`cloud_shape.slang` evaluates multiscale material through a periodic curl-flow
-coordinate map, then combines it with local and regional coverage. Twelve
-backward midpoint steps run only during the density bake. The potential uses
-the analytic derivative of the existing Perlin primitive in `cloud_noise.slangh`.
-The continuous velocity is divergence-free; its finite-step coordinate map
-only approximates area preservation.
+upper shell contains feathered cloud groups and larger clear regions.
+`cloud_shape.slang` places four finite scalar morphology variants in regional
+groups with varied size, position, heading and transverse reflection. The
+source crops' aspect ratios are retained, and their main directions follow
+a smooth regional flow. Regional humidity controls the amount of cloud,
+including broad clear areas. Placement and atlas sampling run only during
+the weather bake. Analytic texture-coordinate gradients preserve the
+anisotropic footprint of each transformed tile.
+
+`Resources` loads the linear R8 atlas through the existing texture manager,
+waits for its upload before enabling cloud sampling, and releases its pinned
+reference after recording the bake. The 1024-square atlas and its mip chain
+occupy about 1.33 MiB while resident. No source photographs are loaded at
+runtime, and no per-ray atlas lookup or placement loop is added.
 
 The finished horizontal density is stored in the weather texture's alpha
-channel. Its 16384-meter period and 512 texels give a 32-meter texel spacing at
+channel. Its 32768-meter period and 1024 texels give a 32-meter texel spacing at
 the default scale. A continuous height profile turns this field into a thin
 volume with a base of 6300 meters, thickness of 200 meters and unit-density
 extinction of 0.006 per meter. These defaults retain the 6400-meter layer center
@@ -109,6 +120,10 @@ and extinction-times-thickness product of the former 800-meter layer, while
 reducing the horizontal averaging of fine filaments along oblique rays.
 The runtime keeps it at least 1000 meters above the cumulus top. Its coverage
 can be set to zero without changing lower-cloud transport.
+The weather mip chain occupies about 10.67 MiB, an 8 MiB increase over the
+512-square field. The smaller texel spacing retains more feather structure
+than a 512-square texture over this larger period, though very fine source
+fibres remain unresolved. These are storage sizes, not measured GPU timings.
 
 For cumulus, `cloud_density.slang` applies its continuous height profile,
 bounded shape displacement and boundary erosion before one condensation
@@ -122,6 +137,10 @@ entire thin column just because its midpoint lies above the column top.
 At a shell boundary, that vertical footprint uses the actual last cell span.
 Prefix checkpoints retain the original cell's sample and footprint so splitting
 a ray does not change its medium evaluation.
+For the high layer's two-dimensional field, the density footprint uses the
+ray cell's horizontal projection and the pixel footprint. The independent
+height footprint integrates the layer profile. A vertical ray therefore
+does not blur horizontal filaments merely because it advances through height.
 
 High-cloud amount fades the pre-shaped density, including the tails, instead
 of applying another threshold to filtered fine detail. Low-frequency weather
@@ -129,10 +148,11 @@ changes the relative amount between regions. This control is monotone and
 bounded, with exact empty/full endpoints; it is not a literal percentage of
 sky area. Extinction independently controls optical thickness. Its mip chain
 stores linear mean density. Filtering the material and regional control
-separately still approximates their unresolved correlation.
-The volume participates in the shared extinction,
-light visibility and in-scattering calculations. The horizontal morphology is
-procedural, not a thermodynamic simulation of ice formation.
+after combining them retains the mean of their product. The volume participates
+in the shared extinction, light visibility and in-scattering calculations.
+The scalar input is an authored relative shape estimate, not measured optical
+depth or a thermodynamic simulation of ice formation. The native volume model
+supplies extinction, layer thickness and atmospheric lighting.
 
 All rays share shells with a 6360-kilometer radius and a tangent frame for the
 current view. Stable sphere roots and altitude evaluation avoid subtracting
@@ -355,8 +375,8 @@ python tests/rtx/unit/test_atmosphere_moments.py
 Equivalent Meson run targets have the same names. The tests compare Beer
 integration, shell intersections, noise mip averages, light profiles, shadow
 quadrature and motion moments with independent analytic or numerical
-references. High-cloud checks also compare analytic noise derivatives with
-finite differences and column transmission at 100-, 200- and 800-meter layer
+references. High-cloud checks also compare column transmission at 100-,
+200- and 800-meter layer
 thicknesses with the independent height-profile integral. They do not validate
 game presentation, temporal reconstruction quality or GPU frame time.
 The scattering test checks sky quadrature normalization and angular moments
@@ -387,7 +407,7 @@ headings, along with linear numerical output and a parameter/source manifest.
 The default map is 32 kilometers wide. `--origin`, `--wind`, `--coverage`,
 `--weather` and `--layers` vary the test conditions. `--shader-root` selects a
 different revision's shader directory for a matched comparison. Generated
-textures are cached by their source fingerprint. A test-only `--noise-seed`
+textures are cached by their shader and atlas-byte fingerprint. A test-only `--noise-seed`
 override exercises other realizations of the same generator.
 `--sun-elevation` and `--sun-azimuth` select diagnostic light direction;
 `--sun-irradiance-rgb` and `--ambient-rgb` select diagnostic illumination.

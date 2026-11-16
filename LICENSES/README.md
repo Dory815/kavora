@@ -16,6 +16,7 @@
 | 远景的独立材质描述代码 | Apache-2.0 | [原始文本](../kavora-horizon/common/src/main/resources/LICENSE-APACHE-2.0.txt) |
 | 远景内嵌的 RocksDB | 选择 Apache-2.0 许可 | [RocksDB 和 LevelDB 声明](../kavora-horizon/licenses/) |
 | NASA 银河和月面数据 | NASA 公有领域数据及各自署名 | [银河](../kavora/packaging/licenses/NASA-Deep-Star-Maps.txt)、[月面](../kavora/packaging/licenses/NASA-CGI-Moon.txt) |
+| 卷云形态素材 | CC0-1.0，Estormiz、John Robert McPherson | [来源与处理](../kavora/packaging/licenses/Cirrus-CC0.txt) |
 | DLSS、NRC、NRD 等 NVIDIA SDK 二进制 | NVIDIA 各组件的 SDK 条款 | [运行时第三方文本](../kavora/packaging/licenses/remix-runtime/)、[总清单](../THIRD_PARTY_NOTICES.md) |
 | 其他原生依赖 | 各依赖的原始许可 | [DXVK Remix 第三方清单](../kavora-runtime/ThirdPartyLicenses.txt)及随包文本 |
 

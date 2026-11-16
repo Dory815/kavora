@@ -37,6 +37,7 @@
 #include "rtx_terrain_baker.h"
 #include "rtx_scene_manager.h"
 #include "rtx_texture_manager.h"
+#include "rtx_asset_data_manager.h"
 #include "rtx_debug_view.h"
 #include "rtx_xess.h"
 #include "rtx_sparse_rendering.h"
@@ -84,6 +85,7 @@ namespace dxvk {
 
       BEGIN_PARAMETER()
         RW_TEXTURE2D(0)
+        SAMPLER2D(1)
       END_PARAMETER()
     };
 
@@ -1162,10 +1164,30 @@ namespace dxvk {
     return m_valueNoiseLutView;
   }
 
-  void Resources::prepareCloudNoise(Rc<DxvkContext> ctx) {
+  bool Resources::prepareCloudNoise(Rc<DxvkContext> ctx) {
     if (m_cloudBaseLut.isValid()) {
-      return;
+      return true;
     }
+    if (!m_cloudCirrusAtlas.isValid()) {
+      const Rc<AssetData> asset = AssetDataManager::get().findAsset("textures/cirrus_density.dds");
+      if (asset == nullptr) {
+        throw DxvkError("Missing cloud texture: textures/cirrus_density.dds");
+      }
+      m_cloudCirrusAtlas = TextureRef(ctx->getCommonObjects()->getTextureManager().preloadTextureAsset(asset, ColorSpace::AUTO, true));
+    }
+    const auto& texture = m_cloudCirrusAtlas.getManagedTexture();
+    if (!texture.ptr()) {
+      return false;
+    }
+    texture->m_canDemote = false;
+    texture->requestMips(MAX_MIPS);
+    uint32_t textureIndex = BINDING_INDEX_INVALID;
+    ctx->getCommonObjects()->getSceneManager().trackTexture(m_cloudCirrusAtlas, textureIndex, true, false);
+    const Rc<DxvkImageView> cirrusView = m_cloudCirrusAtlas.getImageView();
+    if (cirrusView == nullptr || !texture->hasUploadedMips(MAX_MIPS, false)) {
+      return false;
+    }
+
     ScopedGpuProfileZone(ctx, "Cloud Noise Generation");
     m_cloudBaseLut = createImageResource(ctx, "cloud base shape",
       VkExtent3D { kCloudBaseResolution, kCloudBaseResolution, kCloudBaseResolution },
@@ -1198,6 +1220,9 @@ namespace dxvk {
       ctx->dispatch(resolution / 4, resolution / 4, resolution / 4);
     }
     ctx->bindResourceView(0, mipView(m_cloudWeatherLut, 0, VK_IMAGE_USAGE_STORAGE_BIT), nullptr);
+    ctx->bindResourceView(1, cirrusView, nullptr);
+    ctx->bindResourceSampler(1, getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0.0f, true));
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateCloudWeatherShader::getShader());
     ctx->dispatch(kCloudWeatherResolution / 8, kCloudWeatherResolution / 8, 1);
 
@@ -1219,6 +1244,11 @@ namespace dxvk {
         ctx->dispatch((resolution + 3) / 4, (resolution + 3) / 4, volume ? (resolution + 3) / 4 : 1);
       }
     }
+    // The atlas is needed only for this bake. Recorded GPU work retains its view.
+    texture->m_canDemote = true;
+    m_cloudCirrusAtlas.demote();
+    m_cloudCirrusAtlas = {};
+    return true;
   }
 
   Resources::Resource Resources::getSkyMatte(Rc<DxvkContext> ctx, VkFormat format) {

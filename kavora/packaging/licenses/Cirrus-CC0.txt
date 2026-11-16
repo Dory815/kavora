@@ -1,0 +1,40 @@
+Cirrus relative-density atlas
+=============================
+
+textures/cirrus_density.dds contains scalar cloud morphology extracted from
+three photographs released by their authors under CC0 1.0 Universal.
+CC0 dedication: https://creativecommons.org/publicdomain/zero/1.0/
+Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Estormiz, Cirrus clouds in Haukipudas, Oulu, 11 June 2017.
+https://commons.wikimedia.org/wiki/File:Cirrus_clouds_Haukipudas_Oulu_20170611.jpg
+Original SHA-256:
+025a50e42f9a0066bcdd09ccd255588387c84a957b53a1f1669fbf64dbb0bd7c
+
+John Robert McPherson, Cirrus from Shorncliffe Pier, Moora Park, Shorncliffe,
+14 June 2024, P1120160.
+https://commons.wikimedia.org/wiki/File:Cirrus_from_Shorncliffe_Pier_Moora_Park_Shorncliffe_P1120160.jpg
+Original SHA-256:
+37352ca874307086a65e8b37926e6bb81f6d1716a01e10db3ab859369819534c
+
+John Robert McPherson, Cirrus, 74 Sunbury Street, Geebung,
+20 November 2025, P1130433.
+https://commons.wikimedia.org/wiki/File:Cirrus_74_Sunbury_Street_Geebung_P1130433.jpg
+Original SHA-256:
+0d5c199495e9b13c0e609ecda920f9228b193a6e2fd796a14e977cde8ebab30e
+
+Modifications: four small cloud groups are cropped, their local blue-sky
+colour gradient and camera noise floor are removed, and foreground leaves
+are excluded. One scalar relative-density channel is packed into a 1024 x
+1024 R8_UNORM DDS with eleven mip levels. The source colour, sun direction,
+landscape and lens flare are not stored. Source bounds and processing are
+recorded in packaging/runtime-textures/cirrus_sources.json and
+prepare_cirrus_density.py. Original photographs are not shipped.
+
+The result is an authored morphology field, not a measurement of optical
+depth or a recovery of cloud microphysics. The renderer supplies extinction,
+height profile, atmospheric illumination and scattering in its own pipeline.
+No Photon code or texture is included.
+
+The derived density image is also made available under CC0 1.0 Universal.
+The conversion script retains the source license stated in that file.

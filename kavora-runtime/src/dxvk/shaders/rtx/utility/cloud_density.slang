@@ -3,6 +3,8 @@
  */
 module cloud_density;
 
+#include "rtx/pass/cloud_noise.h"
+
 public struct CloudDensityArgs
 {
   public float3 groundReference;
@@ -109,8 +111,8 @@ public struct CloudColumn
 public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D<float4> weatherSampler,
   float footprint = 0)
 {
-  const float lod = cloudNoiseLod(footprint, args.shapeScale * 16.0f, 512.0f);
-  const float4 weather = weatherSampler.SampleLevel(position / 16.0f, lod);
+  const float lod = cloudNoiseLod(footprint, args.shapeScale * float(kCloudWeatherPeriod), float(kCloudWeatherResolution));
+  const float4 weather = weatherSampler.SampleLevel(position / float(kCloudWeatherPeriod), lod);
   const float bias = (args.coverage - 0.45f) * 0.9f - 0.18f + 0.51f * args.weather
     + 0.15f * args.thunder - 0.17f * args.night * (1.0f - args.weather);
   const float variance = max(weather.g - weather.r * weather.r, 0.0f);
@@ -166,15 +168,13 @@ float cirrusDensity(CloudDensityArgs args, float3 p, Sampler2D<float4> weatherSa
   {
     return 0;
   }
-  const float weatherLod = cloudNoiseLod(footprint, args.shapeScale * 16.0f, 512.0f);
-  const float4 weather = weatherSampler.SampleLevel(p.xz / 16.0f, weatherLod);
+  const float weatherLod = cloudNoiseLod(footprint, args.shapeScale * float(kCloudHighWeatherPeriod), float(kCloudWeatherResolution));
+  const float4 weather = weatherSampler.SampleLevel(p.xz / float(kCloudHighWeatherPeriod), weatherLod);
   const float coverage = saturate(args.highCoverage);
   const float amount = coverage * (2.0f - coverage);
-  const float regionalAmount = lerp(amount * amount, amount * (2.0f - amount), weather.b);
   const float profile = cloudHeightProfile(height, 0.15f, 0.65f, profileFootprint);
-  // Regional amount is monotone in coverage and linear in filtered weather.
   // Finished fibres fade without applying another threshold to their mip chain.
-  return weather.a * regionalAmount * profile;
+  return weather.a * amount * profile;
 }
 
 [ForceInline]

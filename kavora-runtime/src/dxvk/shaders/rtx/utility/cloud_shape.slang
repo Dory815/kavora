@@ -4,39 +4,69 @@
 module cloud_shape;
 
 #include "rtx/utility/cloud_noise.slangh"
+#include "rtx/pass/cloud_noise.h"
 
-float2 cirrusFlow(float2 uv)
+float cirrusRandom(uint hash, uint stream)
 {
-  const float2 potentialGradient =
-    0.045f * cloudPerlinGradient2D(uv, 2, 0.37f, kCloudNoiseSeed + 401)
-    + 0.012f * cloudPerlinGradient2D(uv, 4, 0.71f, kCloudNoiseSeed + 419);
-  // Mean drift carries material through local strain without parallel density ridges.
-  return float2(0.34f, 0.035f) + float2(potentialGradient.y, -potentialGradient.x);
+  return cloudNoiseUnit(cloudNoiseHash(uint3(hash, stream, 0), kCloudNoiseSeed));
 }
 
-public float cloudCirrusHorizontalDensity(float2 uv)
+public float cloudCirrusHorizontalDensity(float2 uv, Sampler2D<float4> atlas)
 {
-  // Bounded backward midpoint integration runs only while baking Weather.A.
-  // The finite-step map approximates advection, not exact discrete volume preservation.
-  float2 materialPosition = uv;
-  const float dt = 0.8f / 12.0f;
-  for (uint step = 0; step < 12; step++)
+  const int period = 3;
+  const float2 position = uv * float(period);
+  float density = 0;
+  for (int y = 0; y < period; y++)
   {
-    const float2 first = cirrusFlow(materialPosition);
-    materialPosition -= dt * cirrusFlow(materialPosition - 0.5f * dt * first);
+    for (int x = 0; x < period; x++)
+    {
+      const uint hash = cloudNoiseHash(uint3(x, y, 0), kCloudNoiseSeed + 421);
+      const float2 jitter = float2(cirrusRandom(hash, 0), cirrusRandom(hash, 1));
+      const float2 regionCenter = float2(x, y) + 0.5f + (jitter - 0.5f) * 0.7f;
+      const float humidity = cloudPerlin(float3(regionCenter * (2.0f / float(period)), 0.41f), 2, kCloudNoiseSeed + 461);
+      const float region = smoothstep(-0.22f, 0.20f, humidity);
+      if (region <= 0)
+      {
+        continue;
+      }
+      const float bearing = 0.4f + 0.65f * cloudPerlin(float3(regionCenter * (2.0f / float(period)), 0.71f), 2, kCloudNoiseSeed + 419);
+      const float2 wind = float2(cos(bearing), sin(bearing));
+      const float2 across = float2(-wind.y, wind.x);
+      for (uint packet = 0; packet < 4; packet++)
+      {
+        const uint seed = cloudNoiseHash(uint3(hash, packet, 0), kCloudNoiseSeed + 443);
+        const uint tile = min(uint(cirrusRandom(seed, 0) * 4.0f), 3u);
+        // Crop geometry and flow axes match packaging/runtime-textures/cirrus_sources.json.
+        const float aspect = float4(0.8636364f, 2.2222222f, 0.4256757f, 0.7875000f)[tile];
+        const float orientation = float4(1.21f, 0.11f, -1.42f, 1.40f)[tile];
+        const float2 center = regionCenter + wind * ((cirrusRandom(seed, 1) - 0.5f) * 0.8f)
+          + across * ((cirrusRandom(seed, 2) - 0.5f) * 0.45f);
+        const float angle = bearing + orientation + (cirrusRandom(seed, 3) - 0.5f) * 0.5f;
+        const float2 direction = float2(cos(angle), sin(angle));
+        const float2 perpendicular = float2(-direction.y, direction.x);
+        // Each finite cloud uses its nearest periodic image across region boundaries.
+        const float2 rawDelta = position - center;
+        const float2 delta = rawDelta - float(period) * round(rawDelta / float(period));
+        const float reflection = cirrusRandom(seed, 4) > 0.5f ? 1.0f : -1.0f;
+        const float2 offset = wind * dot(delta, wind) + across * dot(delta, across)
+          * reflection;
+        const float height = 0.25f + 0.35f * cirrusRandom(seed, 5);
+        const float2 local = float2(dot(offset, direction), dot(offset, perpendicular))
+          / (float2(aspect, 1.0f) * height) + 0.5f;
+        if (any(local < 0) || any(local > 1))
+        {
+          continue;
+        }
+        const float2 tileUv = (local + float2(tile % 2u, tile / 2u)) * 0.5f;
+        const float pixelWidth = float(period) / float(kCloudWeatherResolution);
+        const float2 dx = (wind * wind.x + across * across.x * reflection) * pixelWidth;
+        const float2 dy = (wind * wind.y + across * across.y * reflection) * pixelWidth;
+        const float2 atlasDx = float2(dot(dx, direction), dot(dx, perpendicular)) / (float2(aspect, 1.0f) * height) * 0.5f;
+        const float2 atlasDy = float2(dot(dy, direction), dot(dy, perpendicular)) / (float2(aspect, 1.0f) * height) * 0.5f;
+        const float amount = region * (0.45f + 0.55f * cirrusRandom(seed, 6));
+        density += atlas.SampleGrad(tileUv, atlasDx, atlasDy).r * amount;
+      }
+    }
   }
-
-  const float condensate =
-    0.58f * cloudPerlin(float3(materialPosition * float2(9, 17), 0.31f), uint3(9, 17, 8), kCloudNoiseSeed + 431)
-    + 0.28f * cloudPerlin(float3(materialPosition * float2(19, 37), 0.67f), uint3(19, 37, 8), kCloudNoiseSeed + 439)
-    + 0.14f * cloudPerlin(float3(materialPosition * float2(31, 59), 0.49f), uint3(31, 59, 8), kCloudNoiseSeed + 443);
-  const float meso =
-    0.6f * cloudPerlin(float3(materialPosition * float2(7, 9), 0.59f), uint3(7, 9, 8), kCloudNoiseSeed + 449)
-    + 0.4f * cloudPerlin(float3(materialPosition * float2(13, 15), 0.23f), uint3(13, 15, 8), kCloudNoiseSeed + 457);
-  const float regional =
-    0.7f * cloudPerlin(float3(uv * 3.0f, 0.41f), 3, kCloudNoiseSeed + 461)
-    + 0.3f * cloudPerlin(float3(uv * 5.0f, 0.79f), 5, kCloudNoiseSeed + 463);
-  // All material and coverage shaping happens before generating density mipmaps.
-  return smoothstep(-0.10f, 0.24f, condensate)
-    * smoothstep(-0.20f, 0.15f, meso) * smoothstep(-0.25f, 0.20f, regional);
+  return saturate(density);
 }
