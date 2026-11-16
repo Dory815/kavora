@@ -11,6 +11,7 @@ on:
       - "kavora-runtime/src/dxvk/shaders/rtx/**"
       - "kavora-runtime/tests/rtx/unit/**"
       - ".github/workflows/cloud-shader-tests.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,7 +28,7 @@ jobs:
       - name: Install software Vulkan
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libvulkan1 mesa-vulkan-drivers vulkan-tools
+          sudo apt-get install --yes libvulkan1 mesa-vulkan-drivers vulkan-tools python3-venv
           ICD="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
           test -n "$ICD"
           echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"
