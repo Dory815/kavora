@@ -593,7 +593,7 @@ void cloudAccumulateColumnSegment(inout CloudLocalDepth depth, float2 interval, 
 }
 
 CloudLocalDepth cloudLocalOpticalDepth(CloudArgs args, float3 position, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, CloudLightingCache cache)
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
   const uint layer = cloudLayerAt(args, position);
   if (!cloudLayerEnabled(args, layer))
@@ -603,21 +603,6 @@ CloudLocalDepth cloudLocalOpticalDepth(CloudArgs args, float3 position, Sampler2
   const CloudDensityArgs densityArgs = cloudDensityParameters(args);
   const float altitude = cloudAltitude(densityArgs, position);
   const float3 radialUp = normalize(position - args.groundReference + args.planetRadius * args.up);
-  float2 columnCoordinate;
-  if (layer == 0 && cloudCachedColumnCoordinate(args, position, columnCoordinate))
-  {
-    CloudLocalDepth cached = {};
-    const float above = cloudCachedColumn(args, cache, columnCoordinate, altitude).x;
-    const float total = cloudCachedColumn(args, cache, columnCoordinate, args.baseHeight).x;
-    cached.vertical = float2(above, max(0.0f, total - above));
-    [unroll]
-    for (uint light = 0; light < 2; light++)
-    {
-      cached.lightProjection[light] = cloudCachedColumnProjection(args, cache, columnCoordinate, altitude,
-        dot(args.lights[light].directionToLight, radialUp), args.shapeScale);
-    }
-    return cached;
-  }
   const uint steps = layer == 0 ? max(2u, args.lightSteps) : 2u;
   const float3 coordinates = cloudCoordinates(densityArgs, position);
   CloudColumn column = {};
@@ -672,7 +657,7 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
   CloudLightingCache cache)
 {
   float3 source = 0.0f;
-  const CloudLocalDepth localDepth = cloudLocalOpticalDepth(args, position, weatherSampler, baseSampler, detailSampler, cache);
+  const CloudLocalDepth localDepth = cloudLocalOpticalDepth(args, position, weatherSampler, baseSampler, detailSampler);
   const float2 verticalDepth = localDepth.vertical;
   const float meanCosine = 0.85f * args.anisotropy - 0.15f * 0.25f;
   const float totalVerticalDepth = verticalDepth.x + verticalDepth.y;

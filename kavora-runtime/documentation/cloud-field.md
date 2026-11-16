@@ -320,13 +320,13 @@ This finite angular/spatial filtering is an approximation, particularly around
 thin distant occluders; it does not replace surface path tracing or geometry
 visibility.
 
-A separate RG32F radial-column volume stores optical depth above a height and
-local extinction. Sky illumination and the local two-stream closure reuse it
-instead of repeating a vertical density march at every scattering point. It
-covers the view's tangent domain, including its curved-shell altitude. A point
-outside that domain uses the bounded original local-column calculation. These
-images are rebuilt from the current density and light state each frame, so
-camera cuts, wind and sunset do not depend on stale light history.
+Diffuse illumination keeps the original bounded, local radial-column
+integration. Its samples share the prepared weather/phase column and preserve
+small concavities and attached billows in the two-stream closure. A coarse
+view-wide column texture was rejected because its transverse footprint flattened
+those features. Only directional shadow prefixes are cached. They are rebuilt
+from the current density and light state each frame, so camera cuts, wind and
+sunset do not depend on stale light history.
 
 The high shell retains its bounded exponential light cells and two-point
 quadrature for wide cells. Its morphology and density field are independent of
@@ -446,21 +446,18 @@ cannot reduce that repeated shader work. The shared prefixes remove this long
 per-sample loop from camera and PSR paths alike.
 
 Let `N = 16 * clamp(lightSteps, 4, 16)`. Each directional image contains
-`N * (N / 2) * N` R32F values, and the radial image contains
-`N * (N / 4) * N` RG32F values. The owner reuses allocations while quality is
-unchanged and releases inactive light images. One light plus the column costs
-64 MiB at Ultra; two lights plus the column cost 96 MiB, before driver overhead.
-The two-light totals for High, Medium and Low are 40.5, 12 and 1.5 MiB. This is
-new storage in exchange for sharing work across all viewing and visibility rays.
-It is not a free optimization.
+`N * (N / 2) * N` R32F values. The owner reuses allocations while quality is
+unchanged and releases inactive light images. One active light costs 32 MiB at
+Ultra; two cost 64 MiB, before driver overhead. The two-light totals for High,
+Medium and Low are 27, 8 and 1 MiB. This is new storage in exchange for sharing
+long-path work across all viewing and visibility rays.
 
 Prefix construction has a finite budget independent of output resolution.
 Each directional grid has `N * (N / 2) * (N - 1)` segments, each with at most
-`max(1, lightSteps / 2)` Gaussian pairs before shell skipping. The radial grid
-has `N * N * (N / 4 - 1)` pairs. At Ultra these are at most 133,693,440 density
-queries per active directional grid and 8,257,536 for the radial grid, shared
-by the whole frame. This is a worst-case bound: off-shell segments skip density
-and empty weather can skip the base/detail lookups. It must be included when
+`max(1, lightSteps / 2)` Gaussian pairs before shell skipping. At Ultra this is
+at most 133,693,440 density queries per active grid, shared by the whole frame.
+This is a worst-case bound: off-shell segments skip density and empty weather
+can skip the base/detail lookups. Cache generation must be included when
 comparing performance, rather than timing only the subsequent ray dispatch.
 
 At an occupied low-cloud view sample, an in-domain celestial beam uses at most
@@ -468,8 +465,9 @@ At an occupied low-cloud view sample, an in-domain celestial beam uses at most
 solve may add 16 in the reverse direction. Each cached interval reads eight
 prefix samples and interpolates transmitted energy. A visibility or unsplit
 query needs one interval; a beam split between local and external blockers
-needs up to three intervals, including the independent complete beam. The radial lookup adds
-texture reads but no per-point density march. An uncached low-light ray is
+needs up to three intervals, including the independent complete beam. The
+local radial column retains `max(2, lightSteps)` density samples, or 16 at
+Ultra, shared by both celestial lights and the sky. An uncached low-light ray is
 limited to `max(4, 2 * lightSteps)` density queries, or 32 at Ultra, with explicit
 filtering for its wider supports. The fallback loses fine distant shadow
 detail; it never restarts the old 1875-query path.
@@ -527,7 +525,7 @@ Low-cloud checks exercise the shared 64-scale-unit wind wrap, negative
 coordinates, phase bounds, continuity and derivative bounds at the phase
 lattice boundaries, and independence from coverage and weather controls.
 Lighting-cache tests exercise prefix differences against constant-density
-analytic intervals, spherical radial columns, forward/reverse rays, out-of-domain
+analytic intervals, forward/reverse rays, out-of-domain
 fallbacks, finite celestial disks and a fine independent density integration.
 They test the actual production cache builders, not a substitute Python density
 model. Filtered effective depths are not assumed to be additive. View-grid

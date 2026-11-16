@@ -41,7 +41,6 @@
 #include <rtx_shaders/generate_cloud_ambient.h>
 #include <rtx_shaders/generate_cloud_light_sun.h>
 #include <rtx_shaders/generate_cloud_light_moon.h>
-#include <rtx_shaders/generate_cloud_column.h>
 #include <rtx_shaders/generate_cloud_sky.h>
 #include <rtx_shaders/volume_filter.h>
 #include <rtx_shaders/volume_restir_initial.h>
@@ -79,17 +78,6 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(GenerateCloudMoonShader);
-
-    class GenerateCloudColumnShader : public ManagedShader {
-      SHADER_SOURCE(GenerateCloudColumnShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_column)
-      BINDLESS_ENABLED()
-      BEGIN_PARAMETER()
-        COMMON_RAYTRACING_BINDINGS
-        RW_TEXTURE3D(CLOUD_COLUMN_BINDING_OUTPUT)
-      END_PARAMETER()
-    };
-
-    PREWARM_SHADER_PIPELINE(GenerateCloudColumnShader);
 
     class GenerateCloudAmbientShader : public ManagedShader {
       SHADER_SOURCE(GenerateCloudAmbientShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_cloud_ambient)
@@ -831,28 +819,15 @@ namespace dxvk {
     if (!clouds.enable || clouds.extinction <= 0 || clouds.thickness <= 0) {
       m_cloudLightOpticalDepth[0].reset();
       m_cloudLightOpticalDepth[1].reset();
-      m_cloudColumnOpticalDepth.reset();
       return;
     }
     const uint32_t resolution = CLOUD_LIGHTING_RESOLUTION_PER_STEP
       * std::clamp(clouds.lightSteps, uint32_t(CLOUD_LIGHTING_MIN_QUALITY), uint32_t(CLOUD_LIGHTING_MAX_QUALITY));
     const VkExtent3D lightExtent { resolution, resolution / CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR, resolution };
-    const VkExtent3D columnExtent { resolution, resolution / CLOUD_LIGHTING_COLUMN_HEIGHT_DIVISOR, resolution };
     Rc<DxvkContext> resourceContext = ctx;
-    if (!m_cloudColumnOpticalDepth.isValid() || m_cloudColumnOpticalDepth.image->info().extent != columnExtent) {
-      m_cloudColumnOpticalDepth = Resources::createImageResource(resourceContext, "cloud column optical depth", columnExtent,
-        VK_FORMAT_R32G32_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-    }
     ctx->bindCommonRayTracingResources();
     ctx->bindResourceView(BINDING_CLOUD_SUN_DEPTH_INPUT, nullptr, nullptr);
     ctx->bindResourceView(BINDING_CLOUD_MOON_DEPTH_INPUT, nullptr, nullptr);
-    ctx->bindResourceView(BINDING_CLOUD_COLUMN_DEPTH_INPUT, nullptr, nullptr);
-    {
-      ScopedGpuProfileZone(ctx, "Cloud Column Optical Depth");
-      ctx->bindResourceView(CLOUD_COLUMN_BINDING_OUTPUT, m_cloudColumnOpticalDepth.view, nullptr);
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateCloudColumnShader::getShader());
-      ctx->dispatch((resolution + 7) / 8, (resolution + 7) / 8, 1);
-    }
     for (uint32_t lightIndex = 0; lightIndex < 2; lightIndex++) {
       const auto& light = clouds.lights[lightIndex];
       bool active = light.irradiance.x > 0 || light.irradiance.y > 0 || light.irradiance.z > 0;

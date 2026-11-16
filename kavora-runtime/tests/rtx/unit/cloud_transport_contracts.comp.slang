@@ -15,12 +15,11 @@ Sampler3D<float4>.Handle Base;
 Sampler3D<float4>.Handle Detail;
 Sampler3D<float>.Handle CloudSunDepth;
 Sampler3D<float>.Handle CloudMoonDepth;
-Sampler3D<float2>.Handle CloudColumnDepth;
 uint Count;
 
 CloudLightingCache lightingCache()
 {
-  return { Sampler3D<float>(CloudSunDepth), Sampler3D<float>(CloudMoonDepth), Sampler3D<float2>(CloudColumnDepth) };
+  return { Sampler3D<float>(CloudSunDepth), Sampler3D<float>(CloudMoonDepth) };
 }
 
 [shader("compute")]

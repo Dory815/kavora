@@ -36,10 +36,6 @@ def main():
             usage=spy.TextureUsage.shader_resource)
         tex.copy_from_numpy(data)
         return tex.create_view(sampler=sampler)
-    column = np.empty((N, N // 4, N, 2), np.float32)
-    column[..., 0] = (np.linspace(45, 0, N // 4, dtype=np.float32)[None, :, None])
-    column[..., 1] = SIGMA
-    column_texture = texture(column, spy.Format.rg32_float)
     programs = {}
     def run(name, origins, directions, args, sun=None):
         origins = np.asarray(origins, np.float32).reshape(-1, 4)
@@ -51,8 +47,8 @@ def main():
         bindings = {'Origins': device.create_buffer(data=origins, usage=spy.BufferUsage.shader_resource),
             'Directions': device.create_buffer(data=directions, usage=spy.BufferUsage.shader_resource),
             'Results': output, 'Count': len(origins), 'Clouds': args}
-        if name in ('depths', 'columns', 'energyParts'):
-            bindings.update(Sun=sun.descriptor_handle_combined, Column=column_texture.descriptor_handle_combined)
+        if name in ('depths', 'energyParts'):
+            bindings.update(Sun=sun.descriptor_handle_combined)
         programs[name].dispatch(thread_count=[len(origins), 1, 1], vars=bindings)
         return output.to_numpy().view(np.float32).reshape(-1, 4)
 
@@ -74,7 +70,7 @@ def main():
         origins = [[0, 1200, 0, d] for d in distances]
         actual = run('depths', origins, [[*direction, 0]] * len(origins), args, sun)
         expected = distances * SIGMA
-        assert np.all(actual[:, 1:3] == 1), actual
+        assert np.all(actual[:, 1] == 1), actual
         error = np.max(np.abs(actual[:, 0] - expected))
         assert error < 0.002, (angle, error, actual[:, 0], expected)
         reverse = run('depths', [[0, 1200, 0, 1024]], [[*(-direction), 0]], args, sun)
@@ -82,21 +78,6 @@ def main():
         depth_reports.append({'solarElevationDegrees': angle, 'maximumAbsoluteTauError': float(error),
                               'reverseLocalTau': float(reverse[0, 0])})
     report['prefixDepths'] = depth_reports
-    column_inputs = [[h, mu, 1024, 0] for h in (800, 1000, 1500, 2299, 2300)
-                     for mu in (-1, -0.001, -0.00001, 0, 0.00001, 0.001, 1)]
-    actual = run('columns', column_inputs, np.zeros((len(column_inputs), 4)), args, sun)
-    expected = []
-    for h, mu, dist, _ in column_inputs:
-        above = max(0, min(1500, 2300-h)) * SIGMA
-        if abs(mu) < 1e-4:
-            projection = SIGMA * dist
-        else:
-            target_above = max(0, min(1500, 2300-(h+mu*dist))) * SIGMA
-            projection = abs(target_above-above) / abs(mu)
-        expected.append([above, SIGMA, projection, 0])
-    column_error = float(np.max(np.abs(actual-np.array(expected))))
-    assert column_error < 0.02, (column_error, actual-np.array(expected))
-    report['columnMaximumAbsoluteError'] = column_error
     grid_inputs = [[start, end, spacing, angle] for start, end in ((0, 24000), (800, 24000), (20000, 24000),
                    (800, 1000), (0, 96000)) for spacing in (1, 8, 16, 128) for angle in (0, 0.0013)]
     grids = run('grids', grid_inputs, [[160, 0, 0, 0]] * len(grid_inputs), args)

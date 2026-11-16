@@ -50,12 +50,10 @@ Sampler3D<float4>.Handle Detail;
 #if defined(CLOUD_PREVIEW_HAS_LIGHTING_CACHE)
 Sampler3D<float>.Handle CloudSunDepth;
 Sampler3D<float>.Handle CloudMoonDepth;
-Sampler3D<float2>.Handle CloudColumnDepth;
 
 CloudLightingCache previewCloudLighting()
 {
-  return { Sampler3D<float>(CloudSunDepth), Sampler3D<float>(CloudMoonDepth),
-    Sampler3D<float2>(CloudColumnDepth) };
+  return { Sampler3D<float>(CloudSunDepth), Sampler3D<float>(CloudMoonDepth) };
 }
 #endif
 RWStructuredBuffer<float4> Results;

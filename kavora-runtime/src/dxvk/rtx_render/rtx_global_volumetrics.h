@@ -342,7 +342,6 @@ namespace dxvk {
     // Prepares shared cloud lighting and publishes sky radiance, transmittance and opacity moments.
     void dispatchCloudSky(class RtxContext* ctx, const VolumeArgs& volume);
     Rc<DxvkImageView> getCloudLightOpticalDepth(uint32_t light) const { return m_cloudLightOpticalDepth[light].view; }
-    Rc<DxvkImageView> getCloudColumnOpticalDepth() const { return m_cloudColumnOpticalDepth.view; }
     Rc<DxvkImageView> getCloudAmbient() const { return m_cloudAmbient.view; }
     Rc<DxvkImageView> getCloudSky() const { return m_cloudSky.view; }
     Rc<DxvkImageView> getCloudSkyDistanceMoment() const { return m_cloudSkyDistanceMoment.view; }
@@ -374,7 +373,6 @@ namespace dxvk {
     void dispatchCloudLighting(class RtxContext* ctx, const CloudArgs& clouds);
 
     Resources::Resource m_cloudLightOpticalDepth[2];
-    Resources::Resource m_cloudColumnOpticalDepth;
     Resources::Resource m_cloudAmbient;
     Resources::Resource m_cloudSky;
     Resources::Resource m_cloudSkyDistanceMoment;

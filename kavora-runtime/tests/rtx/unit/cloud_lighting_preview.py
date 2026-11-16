@@ -18,7 +18,6 @@ def build_lighting_cache(device, clouds, textures, shaders, lighting_enabled=Tru
                       constant('CLOUD_LIGHTING_MAX_QUALITY'))
     resolution = int(quality) * constant('CLOUD_LIGHTING_RESOLUTION_PER_STEP')
     light_height = resolution // constant('CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR')
-    column_height = resolution // constant('CLOUD_LIGHTING_COLUMN_HEIGHT_DIVISOR')
     sampler = device.create_sampler(min_filter=spy.TextureFilteringMode.linear,
                                     mag_filter=spy.TextureFilteringMode.linear,
                                     address_u=spy.TextureAddressingMode.clamp_to_edge,
@@ -32,33 +31,29 @@ def build_lighting_cache(device, clouds, textures, shaders, lighting_enabled=Tru
     measurements = {'resolution': resolution, 'volumes': []}
     enabled = lighting_enabled and clouds['enable'] and clouds['extinction'] > 0 and clouds['thickness'] > 0
     light_program = device.load_program('cloud_lighting_preview.comp.slang', ['buildLight'])
-    column_program = device.load_program('cloud_lighting_preview.comp.slang', ['buildColumn'])
     light_kernel = device.create_compute_kernel(light_program)
-    column_kernel = device.create_compute_kernel(column_program)
-    for index, name in enumerate(('CloudSunDepth', 'CloudMoonDepth', 'CloudColumnDepth')):
-        column = index == 2
-        light = clouds['lights'][min(index, 1)]
-        active = enabled and (column or max(light['irradiance']) > 0
+    for index, name in enumerate(('CloudSunDepth', 'CloudMoonDepth')):
+        light = clouds['lights'][index]
+        active = enabled and (max(light['irradiance']) > 0
                               or (light.get('hasRadianceProfile', 0)
                                   and np.max(np.array(light['radianceProfile'])[:, :3]) > 0))
-        width, height, depth = ((resolution, column_height if column else light_height, resolution)
+        width, height, depth = ((resolution, light_height, resolution)
                                 if active else (1, 1, 1))
         texture = device.create_texture(type=spy.TextureType.texture_3d,
-                                        format=spy.Format.rg32_float if column else spy.Format.r32_float,
+                                        format=spy.Format.r32_float,
                                         width=width, height=height, depth=depth, mip_count=1, usage=usage)
         if not active:
-            texture.copy_from_numpy(np.zeros((1, 1, 1, 2) if column else (1, 1, 1), np.float32))
-        kernel = column_kernel if column else light_kernel
-        count = [resolution, resolution if column else light_height, 1]
-        output_binding = {'ColumnOutput': texture} if column else {'LightIndex': index, 'LightOutput': texture}
+            texture.copy_from_numpy(np.zeros((1, 1, 1), np.float32))
+        count = [resolution, light_height, 1]
+        output_binding = {'LightIndex': index, 'LightOutput': texture}
         if active and warmup:
-            kernel.dispatch(thread_count=count, vars={**bindings, **output_binding})
+            light_kernel.dispatch(thread_count=count, vars={**bindings, **output_binding})
             device.wait_for_idle()
         samples = []
         for _ in range(repeats):
             started = time.monotonic()
             if active:
-                kernel.dispatch(thread_count=count, vars={**bindings, **output_binding})
+                light_kernel.dispatch(thread_count=count, vars={**bindings, **output_binding})
             device.wait_for_idle()
             samples.append(time.monotonic() - started)
         elapsed = float(np.median(samples))
@@ -66,7 +61,7 @@ def build_lighting_cache(device, clouds, textures, shaders, lighting_enabled=Tru
         resources.extend((texture, view))
         result[name] = view.descriptor_handle_combined
         measurements['volumes'].append({'name': name, 'extent': [width, height, depth], 'active': bool(active),
-                                       'bytes': width * height * depth * (8 if column else 4),
+                                       'bytes': width * height * depth * 4,
                                        'dispatchWaitSeconds': elapsed, 'dispatchWaitSamplesSeconds': samples,
                                        'warmedUp': bool(warmup)})
     measurements['bytes'] = sum(v['bytes'] for v in measurements['volumes'])

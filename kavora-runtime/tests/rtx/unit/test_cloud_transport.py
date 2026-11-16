@@ -339,7 +339,10 @@ def check_density(probe, textures, dump):
 def check_low_wind_wrap(probe, textures):
     clouds = cloud_parameters(baseHeight=800.0, extinction=0.03)
     period = max(cloud_weather_periods()) * clouds["shapeScale"]
-    _, points = weather_tile_points(clouds, 920)
+    # Power-of-two spacing keeps both p and p +/- period exactly representable
+    # in float32. A thirds-of-a-metre lattice would compare different rounded
+    # coordinates after the shift instead of isolating field periodicity.
+    _, points = weather_tile_points(clouds, 920, resolution=256)
     reference = probe.run("densities", points, clouds=clouds, textures=textures)[:, 0]
     assert np.any(reference > 0.1), "wind wrapping must exercise occupied cumulus"
     maximum_error = 0.0
@@ -433,6 +436,8 @@ def check_visibility(probe, textures, dump):
     differences = np.abs(values[:, 0:10:2] - values[:, 1:10:2])
     mean_error = np.mean(np.abs(values - reference))
     maximum_error = np.max(np.abs(values - reference))
+    partial = int(np.count_nonzero((reference > 0.01) & (reference < 0.99)))
+    assert partial > 0, "the reference set must contain partial cloud shadows"
     if dump:
         dump.mkdir(parents=True, exist_ok=True)
         np.savez(dump / "cloud-visibility.npz", actual=values, reference=reference, angles=angles,
@@ -443,7 +448,50 @@ def check_visibility(probe, textures, dump):
     assert mean_error < 0.05, ("cached shadows diverge from the fine reference", mean_error)
     assert maximum_error < 0.45, ("cached shadows miss a significant cloud cell", maximum_error)
     print(f"PASS cloud visibility: mean/max 2 m reference error {mean_error:.5f}/{maximum_error:.5f}, "
-          f"angular delta {np.max(differences):.6f}")
+          f"angular delta {np.max(differences):.6f}, partial shadows {partial}/{reference.size}")
+
+
+def check_cloud_boundary_visibility(probe, textures, dump):
+    """Select actual cloud boundaries by density, independently of shadow error."""
+    clouds = cloud_parameters(baseHeight=800.0, extinction=0.03, maxDistance=24000.0,
+                              highMaxDistance=24000.0, groundReference=[8043.0, 0.0, 1240.0])
+    axis = np.arange(-6144.0, 6145.0, 256.0)
+    x, z = np.meshgrid(axis + 8043.0, axis + 1240.0)
+    points = np.concatenate([np.column_stack([x.ravel(), np.full(x.size, height), z.ravel(), np.zeros(x.size)])
+                             for height in (860, 1000, 1200, 1450, 1750, 2050)])
+    densities = probe.run("densities", points, clouds=clouds, textures=textures)[:, 0]
+    candidates = np.flatnonzero((densities >= 0.05) & (densities <= 0.85))
+    assert len(candidates) >= 24, "the fixed user region must exercise actual cloud boundaries"
+    selected = candidates[np.linspace(0, len(candidates) - 1, 24, dtype=int)]
+    positions = points[selected, :3]
+    rays = np.column_stack([positions, np.full(len(positions), 60000.0)])
+    angles = (0.2, 0.201, 3.0, 3.001, 40.0, 40.001, 90.0)
+    azimuth = np.radians(30.0)
+    actual, reference = [], []
+    for angle in angles:
+        elevation = np.radians(angle)
+        direction = [np.sin(azimuth) * np.cos(elevation), np.sin(elevation),
+                     np.cos(azimuth) * np.cos(elevation)]
+        parameters = clouds | {"lights": light_parameters(direction)["lights"]}
+        directions = [[*direction, 0]] * len(positions)
+        actual.append(probe.run("visibility", rays, directions, parameters, textures)[:, 0])
+        reference.append(probe.run("visibilityReference", rays, directions, parameters, textures)[:, 0])
+    actual = np.stack(actual, axis=1)
+    reference = np.stack(reference, axis=1)
+    error = np.abs(actual - reference)
+    partial = int(np.count_nonzero((reference > 0.01) & (reference < 0.99)))
+    assert partial >= 12, "boundary validation must include translucent lit/shadow transitions"
+    if dump:
+        np.savez(dump / "cloud-boundary-visibility.npz", actual=actual, reference=reference,
+                 angles=angles, positions=positions, selectedDensities=densities[selected],
+                 candidateCount=len(candidates), referenceStepMeters=2.0)
+    assert np.mean(error) < 0.05, ("cloud-boundary mean shadow error", np.mean(error))
+    assert np.max(error) < 0.45, ("cloud-boundary maximum shadow error", np.max(error))
+    angular_delta = np.max(np.abs(actual[:, :6:2] - actual[:, 1:6:2]))
+    assert angular_delta < 0.025, ("cloud-boundary solar-angle discontinuity", angular_delta)
+    print(f"PASS user-region cloud boundaries: {len(candidates)} density candidates, "
+          f"partial shadows {partial}/{reference.size}, mean/max 2 m error "
+          f"{np.mean(error):.5f}/{np.max(error):.5f}, angular delta {angular_delta:.6f}")
 
 
 def check_light_support(probe, textures):
@@ -697,6 +745,7 @@ def main():
     check_high_filtered_columns(probe, textures)
     check_layer_height_footprints(probe)
     check_visibility(probe, textures, args.dump)
+    check_cloud_boundary_visibility(probe, textures, args.dump)
     check_light_support(probe, textures)
     check_tangent_visibility(probe, textures)
 

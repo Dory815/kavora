@@ -78,7 +78,6 @@
 #define COMPOSITE_AIR_LINEAR_SAMPLER                                 44
 #define COMPOSITE_CLOUD_SUN_DEPTH_INPUT                              45
 #define COMPOSITE_CLOUD_MOON_DEPTH_INPUT                             46
-#define COMPOSITE_CLOUD_COLUMN_DEPTH_INPUT                           47
 
 // Inputs/Outputs
 

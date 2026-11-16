@@ -134,8 +134,6 @@ layout(binding = COMPOSITE_CLOUD_SUN_DEPTH_INPUT)
 Sampler3D<float> CloudSunDepthSampler;
 layout(binding = COMPOSITE_CLOUD_MOON_DEPTH_INPUT)
 Sampler3D<float> CloudMoonDepthSampler;
-layout(binding = COMPOSITE_CLOUD_COLUMN_DEPTH_INPUT)
-Sampler3D<float2> CloudColumnDepthSampler;
 
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)

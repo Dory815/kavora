@@ -6,13 +6,12 @@ import "rtx/pass/cloud_parameters.slang";
 import "rtx/utility/cloud_density.slang";
 #include "rtx/pass/clouds/cloud_lighting_cache.h"
 
-// One density field and three cumulative integrals serve every viewing ray.
+// One density field and two cumulative integrals serve every viewing ray.
 // These tables contain optical depth, not view-dependent cloud radiance.
 public struct CloudLightingCache
 {
   public Sampler3D<float> sun;
   public Sampler3D<float> moon;
-  public Sampler3D<float2> column;
 };
 
 [ForceInline]
@@ -200,43 +199,6 @@ public int cloudCachedLightIndex(CloudArgs args, float3 direction)
   return -1;
 }
 
-[ForceInline]
-float3 cloudColumnTextureCoordinate(CloudArgs args, float2 horizontal, float height)
-{
-  const float resolution = float(cloudLightingResolution(args) / CLOUD_LIGHTING_COLUMN_HEIGHT_DIVISOR);
-  return float3(horizontal, (saturate((height - args.baseHeight) / args.thickness)
-    * (resolution - 1.0f) + 0.5f) / resolution).xzy;
-}
-
-public bool cloudCachedColumnCoordinate(CloudArgs args, float3 position, out float2 coordinate)
-{
-  const float3 radial = position - args.groundReference + args.up * args.planetRadius;
-  const float projection = dot(radial, args.up);
-  const float3 onPlane = radial * (args.planetRadius / max(projection, 1.0f));
-  coordinate = 0.5f + float2(onPlane.x, dot(onPlane, cloudSecondHorizontalAxis(args)))
-    / (2.0f * cloudLightingRadius(args));
-  return all(coordinate >= 0) && all(coordinate <= 1) && projection > 0;
-}
-
-public float2 cloudCachedColumn(CloudArgs args, CloudLightingCache cache, float2 horizontal, float height)
-{
-  return cache.column.SampleLevel(cloudColumnTextureCoordinate(args, horizontal, height), 0);
-}
-
-public float cloudCachedColumnProjection(CloudArgs args, CloudLightingCache cache, float2 horizontal,
-  float height, float cosine, float distance)
-{
-  const float2 from = cloudCachedColumn(args, cache, horizontal, height);
-  const float target = height + cosine * distance;
-  const float change = abs(cosine);
-  if (change < 1e-4f)
-  {
-    return from.y * distance;
-  }
-  const float to = cloudCachedColumn(args, cache, horizontal, target).x;
-  return abs(from.x - to) / change;
-}
-
 float cloudCacheExtinction(CloudArgs args, CloudDensityArgs density, float3 position,
   float footprint, float heightFootprint, Sampler2D<float4> weather, Sampler3D<float4> base,
   Sampler3D<float4> detail)
@@ -295,40 +257,5 @@ public void buildCloudLightPrefix(CloudArgs args, CloudDensityArgs density, uint
       }
     }
     output[uint3(column, node - 1)] = depth;
-  }
-}
-
-public void buildCloudColumnPrefix(CloudArgs args, CloudDensityArgs density, uint2 column,
-  Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail, RWTexture3D<float2> output)
-{
-  const uint resolution = cloudLightingResolution(args);
-  const uint heightResolution = resolution / CLOUD_LIGHTING_COLUMN_HEIGHT_DIVISOR;
-  if (any(column >= resolution))
-  {
-    return;
-  }
-  const float radius = cloudLightingRadius(args);
-  const float2 horizontal = ((float2(column) + 0.5f) / float(resolution) - 0.5f) * (2.0f * radius);
-  const float3 plane = float3(horizontal.x, 0, 0) + cloudSecondHorizontalAxis(args) * horizontal.y;
-  const float radialLength = length(args.up * args.planetRadius + plane);
-  const float3 radial = (args.up * args.planetRadius + plane) / radialLength;
-  // Avoid adding and then subtracting a planet radius at every height node.
-  // The sagitta form keeps the metre-scale column profile in local precision.
-  const float sagitta = dot(plane, plane) / (radialLength + args.planetRadius);
-  const float3 surface = args.groundReference
-    + (plane - args.up * sagitta) * (args.planetRadius / radialLength);
-  const float span = args.thickness / float(heightResolution - 1);
-  const float footprint = max(span, 2.0f * radius / float(resolution));
-  float depth = 0;
-  output[uint3(column.x, heightResolution - 1, column.y)] = 0;
-  for (uint node = heightResolution - 1; node > 0; node--)
-  {
-    const float lower = args.baseHeight + float(node - 1) * span;
-    const float3 a = surface + radial * (lower + span * 0.21132486541f);
-    const float3 b = surface + radial * (lower + span * 0.78867513459f);
-    const float extinction = 0.5f * (cloudCacheExtinction(args, density, a, footprint, 0.5f * span, weather, base, detail)
-      + cloudCacheExtinction(args, density, b, footprint, 0.5f * span, weather, base, detail));
-    depth += span * extinction;
-    output[uint3(column.x, node - 1, column.y)] = float2(depth, extinction);
   }
 }
