@@ -43,6 +43,9 @@ def main():
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--views", default="top,45,horizon",
                         help="Comma-separated preview views; defaults to top, oblique and horizon")
+    parser.add_argument("--lighting-cases",
+                        default="day_side:35:20,day_sunward:35:135,day_antisolar:35:270,sunset_side:2:30",
+                        help="Comma-separated name:elevation:azimuth lighting cases")
     parser.add_argument("--skip-radiance", action="store_true",
                         help="Render opacity only when no atmosphere fixture is available")
     args = parser.parse_args()
@@ -55,15 +58,21 @@ def main():
     if args.reference_shader_root:
         variants.insert(0, ("reference", args.reference_shader_root))
 
+    lighting_cases = []
+    for item in args.lighting_cases.split(","):
+        name, elevation, azimuth = item.split(":")
+        lighting_cases.append((name, float(elevation), float(azimuth)))
+
     for variant, shader_root in variants:
-        for name, coverage, weather, thunder, label in SCENARIOS:
-            destination = args.output / variant / name if args.reference_shader_root else args.output / name
-            command = [
+        for lighting_name, elevation, azimuth in lighting_cases:
+            for name, coverage, weather, thunder, label in SCENARIOS:
+                destination = args.output / variant / lighting_name / name if args.reference_shader_root else args.output / lighting_name / name
+                command = [
                 sys.executable, str(preview),
                 "--repo", str(args.repo),
                 "--output", str(destination),
                 "--cache-dir", str(cache),
-                "--label", variant + ": " + label,
+                "--label", variant + ": " + label + " / " + lighting_name,
                 "--width", str(args.width),
                 "--height", str(args.height),
                 "--repeat", str(args.repeat),
@@ -77,23 +86,23 @@ def main():
                 "--low-coverage", str(coverage),
                 "--weather", str(weather),
                 "--thunder", str(thunder),
-                "--sun-elevation", "35",
-                "--sun-azimuth", "20",
+                "--sun-elevation", str(elevation),
+                "--sun-azimuth", str(azimuth),
                 "--exposure", "1.0",
                 "--tone-map", "aces",
                 "--steps", "384",
                 "--light-steps", "16",
                 "--radiance",
             ]
-            if shader_root:
-                command.extend(["--shader-root", str(shader_root)])
-            if args.atmosphere_fixture:
-                command.extend(["--atmosphere-fixture", str(args.atmosphere_fixture), "--air"])
-            elif args.skip_radiance:
-                command.remove("--radiance")
-            print("\n=== {}/{}: coverage={}, weather={}, thunder={} ===".format(
-                variant, name, coverage, weather, thunder), flush=True)
-            subprocess.run(command, check=True)
+                if shader_root:
+                    command.extend(["--shader-root", str(shader_root)])
+                if args.atmosphere_fixture:
+                    command.extend(["--atmosphere-fixture", str(args.atmosphere_fixture), "--air"])
+                elif args.skip_radiance:
+                    command.remove("--radiance")
+                print("\n=== {}/{}/{}: coverage={}, weather={}, thunder={} ===".format(
+                    variant, lighting_name, name, coverage, weather, thunder), flush=True)
+                subprocess.run(command, check=True)
 
     print(f"\nCloud morphology matrix saved under {args.output}", flush=True)
 
