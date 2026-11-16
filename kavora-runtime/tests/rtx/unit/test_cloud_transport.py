@@ -312,6 +312,7 @@ def cloud_textures(device, dump=None):
             assert np.all((cloud_type >= 0) & (cloud_type <= 1)), "cloud family type must stay normalized"
             coverage_mean = float(np.mean(coverage))
             coverage_p10, coverage_p90 = np.quantile(coverage, [0.10, 0.90])
+            type_p10, type_p90 = np.quantile(cloud_type, [0.10, 0.90])
             adjacent_correlation = float(0.5 * (
                 np.corrcoef(coverage[:, :-1].ravel(), coverage[:, 1:].ravel())[0, 1]
                 + np.corrcoef(coverage[:-1, :].ravel(), coverage[1:, :].ravel())[0, 1]))
@@ -321,9 +322,11 @@ def cloud_textures(device, dump=None):
             regional_correlation = float(0.5 * (
                 np.corrcoef(coverage[:, :-128].ravel(), coverage[:, 128:].ravel())[0, 1]
                 + np.corrcoef(coverage[:-128, :].ravel(), coverage[128:, :].ravel())[0, 1]))
-            assert 0.12 < coverage_mean < 0.88, ("weather coverage collapsed", coverage_mean)
-            assert coverage_p10 < 0.65 and coverage_p90 > 0.35, (
-                "weather field must retain both openings and cloud-rich regions", coverage_p10, coverage_p90)
+            assert 0.30 < coverage_mean < 0.55, ("weather coverage outside cloud-rich baseline", coverage_mean)
+            assert coverage_p10 < 0.20 and coverage_p90 > 0.70, (
+                "weather field must retain broad openings and cloud-rich regions", coverage_p10, coverage_p90)
+            assert type_p10 < 0.30 and type_p90 > 0.65, (
+                "weather field must retain both stratiform and developed cloud families", type_p10, type_p90)
             assert adjacent_correlation > 0.95 and mesoscale_correlation > 0.6, (
                 "cloud occupancy must form coherent parent groups", adjacent_correlation, mesoscale_correlation)
             assert 0.1 < regional_correlation < 0.85, (
@@ -333,7 +336,8 @@ def cloud_textures(device, dump=None):
                 np.savez(dump / "cloud-weather-field.npz", coverage=coverage, cloudType=cloud_type,
                          cirrus=data[..., 3])
             print(f"PASS weather morphology: coverage mean/p10/p90 {coverage_mean:.4f}/"
-                  f"{coverage_p10:.4f}/{coverage_p90:.4f}, adjacent/32px/128px correlation "
+                  f"{coverage_p10:.4f}/{coverage_p90:.4f}, type p10/p90 {type_p10:.4f}/{type_p90:.4f}, "
+                  f"adjacent/32px/128px correlation "
                   f"{adjacent_correlation:.4f}/{mesoscale_correlation:.4f}/{regional_correlation:.4f}")
         if floating:
             # The mean and its square are independently quantized to half precision.
