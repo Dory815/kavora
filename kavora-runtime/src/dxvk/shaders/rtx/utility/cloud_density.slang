@@ -49,55 +49,66 @@ float cloudNoiseLod(float footprint, float period, float resolution)
   return max(0.0f, log2(max(footprint * resolution / period, 1.0f)));
 }
 
-// Integrate a clipped ramp and its square over a moment-matched uniform shape distribution.
+// Return the mean and central variance of a clamped, uniform-distribution ramp.
+// Central moments retain constant fields without subtracting nearly equal squares.
 [ForceInline]
-public float2 cloudThresholdMoments(float shape, float secondMoment, float threshold, float rampWidth)
+public float2 cloudThresholdStatistics(float mean, float variance, float threshold, float rampWidth)
 {
-  const float value = shape - threshold;
-  const float width = sqrt(3.0f * max(secondMoment - shape * shape, 0.0f));
+  const float value = mean - threshold;
+  const float width = sqrt(3.0f * max(variance, 0.0f));
+  const float ramp = max(rampWidth, 1e-4f);
   if (width <= 1e-4f)
   {
-    const float density = saturate(value / max(rampWidth, 1e-4f));
-    return float2(density, density * density);
+    return float2(saturate(value / ramp), 0);
   }
-  const float ramp = max(rampWidth, 1e-4f);
   if (value + width <= 0)
   {
     return 0;
   }
   if (value - width >= ramp)
   {
-    return 1;
+    return float2(1, 0);
   }
   if (value - width >= 0 && value + width <= ramp)
   {
-    const float mean = value / ramp;
-    return float2(mean, mean * mean + width * width / (3.0f * ramp * ramp));
+    return float2(value / ramp, variance / (ramp * ramp));
   }
   if (value + width <= ramp)
   {
     const float tail = value + width;
     const float fraction = tail / (2.0f * width);
     const float maximum = tail / ramp;
-    return float2(0.5f * fraction * maximum, fraction * maximum * maximum / 3.0f);
+    return float2(0.5f * fraction * maximum,
+      fraction * maximum * maximum * (1.0f / 3.0f - 0.25f * fraction));
   }
   if (value - width >= 0)
   {
-    // Integrate the deficit from one instead of subtracting nearby plateaus.
     const float tail = ramp - value + width;
     const float fraction = tail / (2.0f * width);
     const float maximum = tail / ramp;
-    const float deficit = 0.5f * fraction * maximum;
-    return float2(1.0f - deficit, 1.0f - 2.0f * deficit + fraction * maximum * maximum / 3.0f);
+    return float2(1.0f - 0.5f * fraction * maximum,
+      fraction * maximum * maximum * (1.0f / 3.0f - 0.25f * fraction));
   }
-  const float plateau = value + width - ramp;
-  return saturate((float2(0.5f, 1.0f / 3.0f) * ramp + plateau) / (2.0f * width));
+  const float linearMass = ramp / (2.0f * width);
+  const float upperMass = saturate((value + width - ramp) / (2.0f * width));
+  const float lowerMass = saturate(1.0f - linearMass - upperMass);
+  const float resultMean = upperMass + 0.5f * linearMass;
+  const float lowerDelta = resultMean;
+  const float upperDelta = 1.0f - resultMean;
+  const float linearDelta = 0.5f - resultMean;
+  const float resultVariance = lowerMass * lowerDelta * lowerDelta
+    + upperMass * upperDelta * upperDelta
+    + linearMass * (linearDelta * linearDelta + 1.0f / 12.0f);
+  return float2(saturate(resultMean), max(resultVariance, 0.0f));
 }
 
+// Raw-moment callers have an explicit, single-rounding variance convention.
 [ForceInline]
-float2 cloudCoverageMoments(float shape, float secondMoment, float coverage)
+public float2 cloudThresholdMoments(float mean, float secondMoment, float threshold, float rampWidth)
 {
-  return coverage > 0 ? cloudThresholdMoments(shape, secondMoment, 1.0f - coverage, coverage) : float2(0);
+  const float variance = max(fma(-mean, mean, secondMoment), 0.0f);
+  const float2 statistics = cloudThresholdStatistics(mean, variance, threshold, rampWidth);
+  return float2(statistics.x, fma(statistics.x, statistics.x, statistics.y));
 }
 
 [ForceInline]
@@ -159,16 +170,16 @@ CloudWeatherSample cloudWeatherSample(Sampler2D<float4> weatherSampler, float2 u
   // Collapse the child footprint continuously onto the resolved center tap.
   const float offset = 0.25f * exp2(lod) * saturate(lod) / float(kCloudWeatherResolution);
   const float childLod = max(0.0f, lod - 1.0f);
-  float2 secondMoment = 0;
-  [unroll]
-  for (uint corner = 0; corner < 4; corner++)
-  {
-    const float2 direction = float2(corner & 1u, corner >> 1) * 2.0f - 1.0f;
-    const float4 sample = weatherSampler.SampleLevel(uv + direction * offset, childLod);
-    result.mean += 0.25f * sample;
-    secondMoment += 0.25f * sample.rg * sample.rg;
-  }
-  result.variance = max(secondMoment - result.mean.rg * result.mean.rg, float2(0));
+  const float4 a = weatherSampler.SampleLevel(uv + float2(-offset, -offset), childLod);
+  const float4 b = weatherSampler.SampleLevel(uv + float2(offset, -offset), childLod);
+  const float4 c = weatherSampler.SampleLevel(uv + float2(-offset, offset), childLod);
+  const float4 d = weatherSampler.SampleLevel(uv + float2(offset, offset), childLod);
+  result.mean = 0.5f * (0.5f * (a + b) + 0.5f * (c + d));
+  const float2 da = a.rg - result.mean.rg;
+  const float2 db = b.rg - result.mean.rg;
+  const float2 dc = c.rg - result.mean.rg;
+  const float2 dd = d.rg - result.mean.rg;
+  result.variance = 0.25f * (da * da + db * db + dc * dc + dd * dd);
   return result;
 }
 
@@ -210,16 +221,14 @@ public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D
   const float development = smoothstep(0.15f, 0.85f, type);
   const float cumulusMean = weather.mean.r + bias;
   const float deckMean = weather.mean.g + bias;
-  const float2 cumulus = cloudCoverageMoments(cumulusMean,
-    cumulusMean * cumulusMean + weather.variance.x, 1.0f);
-  const float2 deck = cloudCoverageMoments(deckMean,
-    deckMean * deckMean + weather.variance.y, 1.0f);
+  const float2 cumulus = cloudThresholdStatistics(cumulusMean, weather.variance.x, 0, 1);
+  const float2 deck = cloudThresholdStatistics(deckMean, weather.variance.y, 0, 1);
 
   CloudColumn column;
   column.coverage = max(cumulus.x, deck.x);
   column.type = type;
   column.familyCoverage = float2(cumulus.x, deck.x);
-  column.familyVariance = max(float2(cumulus.y, deck.y) - column.familyCoverage * column.familyCoverage, float2(0));
+  column.familyVariance = float2(cumulus.y, deck.y);
   // Convective bodies and spreading decks coexist at distinct condensation
   // levels within the transport shell. Their extents remain independently bounded.
   column.familyBase = args.thickness * float2(0.02f + 0.04f * (1.0f - development),
@@ -269,8 +278,8 @@ float cloudFamilyDensity(float4 body, float profile, float coverage, float varia
   // Stretch the body spectrum before thresholding so humid parent groups still
   // contain individual billows instead of saturating into a featureless slab.
   const float mean = (body.r - 0.40f) / 0.60f;
-  const float secondMoment = (body.g - 0.80f * body.r + 0.16f) / 0.36f;
-  return cloudThresholdMoments(mean * profile, secondMoment * profile * profile + variance,
+  const float bodyVariance = max(fma(-body.r, body.r, body.g), 0.0f) / 0.36f;
+  return cloudThresholdStatistics(mean * profile, bodyVariance * profile * profile + variance,
     1.0f - coverage + erosion, rampWidth).x;
 }
 

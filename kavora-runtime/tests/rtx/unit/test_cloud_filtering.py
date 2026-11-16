@@ -7,28 +7,44 @@ from pathlib import Path
 import re
 
 import numpy as np
-import slangpy as spy
 
 
-def check_filter_transition(probe, textures, clouds, texel_width):
+def check_filter_transition(probe, textures, clouds, texel_width, dump=None):
     rng = np.random.default_rng(7281)
     count = 65536
     points = np.column_stack((rng.uniform(-32768, 32768, count),
                               rng.uniform(clouds["baseHeight"], clouds["baseHeight"] + clouds["thickness"], count),
                               rng.uniform(-32768, 32768, count), np.zeros(count))).astype(np.float32)
-    values = []
-    for footprint in (texel_width - 0.001, texel_width, texel_width + 0.001, texel_width + 0.002):
-        points[:, 3] = footprint
-        values.append(probe.run("densities", points, clouds=clouds, textures=textures)[:, 0])
-    values = np.asarray(values)
-    assert np.isfinite(values).all() and np.any((values > 0.01) & (values < 0.99))
-    maximum = float(np.max(np.abs(np.diff(values, axis=0))))
-    assert maximum < 1e-3, ("weather filtering jumps at its first mip transition", maximum)
-    print(f"PASS weather filter transition: {count} positions, maximum adjacent density delta {maximum:.7f}")
-    return maximum
+    report = []
+    for level in range(5):
+        edge = texel_width * (2 ** level)
+        footprints = np.asarray([edge - 0.001, edge, edge + 0.001, edge + 0.002], np.float32)
+        values = []
+        for footprint in footprints:
+            points[:, 3] = footprint
+            values.append(probe.run("densities", points, clouds=clouds, textures=textures)[:, 0])
+        values = np.asarray(values)
+        differences = np.abs(np.diff(values, axis=0))
+        worst = np.unravel_index(np.argmax(differences), differences.shape)
+        maximum = float(differences[worst])
+        # Keep the failing positions and outputs before asserting so a device
+        # precision/filtering failure can be reproduced without a new trace.
+        if dump:
+            dump.mkdir(parents=True, exist_ok=True)
+            np.savez(dump / f"cloud-filter-transition-{level}.npz", points=points[:, :3],
+                     footprints=footprints, density=values, worstIndex=worst)
+        assert np.isfinite(values).all() and np.any((values > 0.01) & (values < 0.99))
+        assert maximum < 1e-3, ("weather filtering jumps across a mip transition", level,
+                                maximum, points[worst[1], :3].tolist(), values[:, worst[1]].tolist())
+        report.append({"level": level, "footprintMeters": edge, "positions": count,
+                       "maximumAdjacentDensityDelta": maximum})
+    print(f"PASS weather filter transitions: {count} positions at five mip boundaries, "
+          f"maximum adjacent density delta {max(row['maximumAdjacentDensityDelta'] for row in report):.7f}")
+    return report
 
 
 def main():
+    import slangpy as spy
     from test_cloud_transport import OPTIONS, SHADERS, Probe, cloud_parameters, cloud_textures, cloud_weather_periods
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -39,11 +55,10 @@ def main():
     configuration = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
     resolution = int(re.search(r"kCloudWeatherResolution\s*=\s*(\d+)", configuration)[1])
     texel_width = cloud_weather_periods()[0] * clouds["shapeScale"] / resolution
-    delta = check_filter_transition(Probe(device), cloud_textures(device, args.dump), clouds, texel_width)
+    report = check_filter_transition(Probe(device), cloud_textures(device, args.dump), clouds, texel_width, args.dump)
     if args.dump:
         args.dump.mkdir(parents=True, exist_ok=True)
-        (args.dump / "cloud-filter-transition.json").write_text(json.dumps({
-            "positions": 65536, "maximumAdjacentDensityDelta": delta, "weatherTexelMeters": texel_width}, indent=2))
+        (args.dump / "cloud-filter-transition.json").write_text(json.dumps(report, indent=2))
 
 
 if __name__ == "__main__":
