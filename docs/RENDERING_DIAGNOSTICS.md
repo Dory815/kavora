@@ -49,6 +49,59 @@ For water, distinguish the reflected and transmitted paths and their temporal
 guides. Medium attenuation belongs to each segment; applying it twice can
 produce dark overlays or visible quad boundaries.
 
+## Cloud inspection without a game window
+
+The opt-in scripts in `kavora-runtime/tests/rtx/unit/` execute production cloud
+shaders on a Vulkan device, including a software ICD. Install NumPy, Pillow,
+SlangPy and the Python `vulkan` binding in the test environment. The atmosphere
+export also needs `glslangValidator` and a JDK with `Math.clamp` (Java 21 or
+newer). These tools are not runtime dependencies.
+
+`render_cloud_atmosphere.py` compiles the repository's `SkyAtmosphere.java` for
+its optical constants and altitude-dependent direct irradiance, then runs the
+four passes of `sky_atmosphere.comp`. It saves the sky, irradiance and optical
+tables with source hashes and lighting parameters. From the repository root:
+
+```sh
+python kavora-runtime/tests/rtx/unit/render_cloud_atmosphere.py \
+  --output /tmp/cloud-day --sun-elevation 40 --sun-azimuth 135 \
+  --world-height 139 --profile-heights 400 1900 6300 6500
+python kavora-runtime/tests/rtx/unit/render_cloud_preview.py \
+  --output /tmp/cloud-inspection --layers low --radiance \
+  --atmosphere-fixture /tmp/cloud-day --origin 8043,139,1240 \
+  --low-base 400 --low-thickness 1500 --low-coverage 0.45 \
+  --width 1280 --height 800 --views zenith,45,horizon --exposure 0.1
+```
+
+Use the actual native cloud parameters for the revision under inspection;
+`--shader-root` changes the shader source, not the CLI defaults. Update the
+four light-profile heights when changing the low/high layer bounds. The
+fixture's observer height must match the preview camera. The scripts also
+have explicit Meson run targets, `render_cloud_atmosphere` and
+`render_cloud_preview`, for their default diagnostic inputs.
+
+Keep camera, sun, cloud parameters, view size and display exposure identical
+for a revision comparison. Inspect several world positions and views toward,
+across and away from the sun, including the zenith and horizon. Repeat with a
+low sun. Inspect the opacity panels separately from radiance to distinguish
+distribution problems from lighting problems. Raw linear HDR values and
+manifests accompany the PNGs; the PNG display uses fixed exposure and sRGB,
+without the game's tonemapper or automatic exposure.
+
+Compare whole views with attributed natural photographs: clear openings,
+cluster sizes and near-to-far distribution matter as much as individual cloud
+edges. Photos with different exposure, white balance or camera processing are
+shape and relative-lighting references, not absolute radiance calibration.
+Keep rejected views in the review record. Finite values, shader compilation
+and coverage statistics are correctness checks, not visual acceptance.
+
+This preview contains production cloud transport and the production sky as
+background and ambient input. It does not contain terrain, the scene fog
+cache, celestial disks, temporal reconstruction or the full presentation
+pipeline. The constant environment used without `--atmosphere-fixture` is a
+diagnostic input and is unsuitable for judging daylight cloud brightness.
+Use an in-game capture to assess those remaining interactions and performance.
+
 ## GPU analysis
 
 On the host, `KavoraSceneFrame.renderAndSubmitFrame` orders captured lights,
