@@ -233,6 +233,9 @@ run_target('test_cloud_transport',
   command: [python_interpreter, files('test_cloud_transport.py')])
 run_target('test_atmosphere_moments',
   command: [python_interpreter, files('test_atmosphere_moments.py')])
+run_target('render_cloud_atmosphere',
+  command: [python_interpreter, files('render_cloud_atmosphere.py'),
+    '--output', meson.current_build_dir() / 'cloud-atmosphere'])
 run_target('render_cloud_preview',
   command: [python_interpreter, files('render_cloud_preview.py'),
     '--output', meson.current_build_dir() / 'cloud-preview'])
