@@ -681,6 +681,40 @@ def check_light_support(probe, textures):
     print("PASS shared light prefixes: local/external partition and bounded outside-domain rays")
 
 
+def check_horizon_cloud_openings(probe, textures):
+    azimuth = np.linspace(0.0, 2.0 * np.pi, 96, endpoint=False)
+    elevation = np.radians(10.0)
+    horizontal = np.cos(elevation)
+    directions = np.column_stack((horizontal * np.cos(azimuth),
+                                  np.full_like(azimuth, np.sin(elevation)),
+                                  horizontal * np.sin(azimuth),
+                                  np.zeros_like(azimuth)))
+    rays = np.tile([8043.0, 139.0, 1240.0, 12000.0], (len(azimuth), 1))
+
+    cases = (
+        ("broken", cloud_parameters(coverage=0.45, weather=0.0, thunder=0.0)),
+        ("cloud-rich deck", cloud_parameters(coverage=0.82, weather=0.65, thunder=0.0)),
+    )
+    for name, clouds in cases:
+        transmission = probe.run("viewTransmission", rays, directions, clouds, textures)[:, 0]
+        assert np.isfinite(transmission).all()
+        assert np.all((0.0 <= transmission) & (transmission <= 1.0))
+        open_count = int(np.count_nonzero(transmission > 0.1))
+        cloud_count = int(np.count_nonzero(transmission < 0.95))
+        assert open_count >= 4, (
+            f"{name} horizon rays lost all meaningful openings", open_count)
+        assert cloud_count >= 4, (
+            f"{name} horizon rays lost all cloud-bearing directions", cloud_count)
+        assert np.quantile(transmission, 0.9) > 0.1, (
+            f"{name} horizon field collapsed into a continuous opaque band")
+        print(f"PASS horizon cloud openings ({name}): open/cloud-bearing rays "
+              f"{open_count}/{cloud_count}, transmission p10/p50/p90 "
+              f"{np.quantile(transmission, 0.1):.4f}/"
+              f"{np.quantile(transmission, 0.5):.4f}/"
+              f"{np.quantile(transmission, 0.9):.4f}")
+
+
+
 def check_high_density(probe, textures, dump):
     axis = np.linspace(-8192, 8192, 128, endpoint=False, dtype=np.float32)
     x, z = np.meshgrid(axis, axis)
@@ -901,6 +935,7 @@ def main():
     check_light_profiles(probe)
     textures = cloud_textures(device, args.dump)
     check_density(probe, textures, args.dump)
+    check_horizon_cloud_openings(probe, textures)
     check_low_wind_wrap(probe, textures)
     check_shape_phase(probe, textures)
     check_high_density(probe, textures, args.dump)
