@@ -238,15 +238,23 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   }
   // The weather map owns the parent cloud. The periodic 3D field only shapes
   // its billows; anchoring its height to the base preserves cloud-altitude controls.
-  const float period = float(kCloudBasePeriod);
-  const float3 bodyCoordinates = float3(p.x, heightAboveBase / args.shapeScale, p.z) / period;
+  // The broad type field selects the parent-body scale. Shallow stratiform
+  // formations use a wider, flatter volume; ordinary cumulus retains the
+  // original billow scale; stronger development keeps a compact, tall body.
+  // This changes the actual 3D morphology, not just the thresholded 2D map.
+  const float stratiform = 1.0f - smoothstep(0.20f, 0.62f, column.type);
+  const float bodyPeriod = lerp(float(kCloudBasePeriod), 8.0f, stratiform);
+  const float3 bodyCoordinates = float3(p.x, heightAboveBase / args.shapeScale, p.z) / bodyPeriod;
+  const float3 phase = column.shapePhase * (float(kCloudBasePeriod) / bodyPeriod);
   const float3 shapeCoordinates = float3(frac(bodyCoordinates.x), bodyCoordinates.y,
-    frac(bodyCoordinates.z)) + column.shapePhase;
-  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * period * 0.0625f, 32.0f);
-  const float3 detail = detailSampler.SampleLevel(shapeCoordinates * 16.0f, detailLod).rgb;
+    frac(bodyCoordinates.z)) + phase;
+  // Keep erosion at its physical world scale while the parent billow scale varies.
+  const float detailScale = bodyPeriod / float(kCloudBasePeriod);
+  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod * 0.0625f, 32.0f);
+  const float3 detail = detailSampler.SampleLevel(shapeCoordinates * (16.0f * detailScale), detailLod).rgb;
   // Small-scale motion perturbs a connected surface before it is eroded.
-  const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * 0.04f;
-  const float baseLod = cloudNoiseLod(footprint, args.shapeScale * period, 128.0f);
+  const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * (0.04f / detailScale);
+  const float baseLod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod, 128.0f);
   const float4 base = baseSampler.SampleLevel(warpedCoordinates, baseLod);
   const float coverageVariance = column.coverageVariance * coverageScale * coverageScale;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
