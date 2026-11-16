@@ -309,42 +309,47 @@ def cloud_textures(device, dump=None):
         assert np.isfinite(data).all(), (name, "generated nonfinite noise")
         assert np.ptp(data[..., 0]) > (0.12 if floating else 32), (name, "degenerate generated noise")
         if name == "Weather":
-            coverage = data[..., 0]
+            cumulus = data[..., 0]
+            stratiform = data[..., 1]
             cloud_type = data[..., 2]
-            assert np.all((coverage >= 0) & (coverage <= 1)), "weather coverage must stay normalized"
-            assert np.all((cloud_type >= 0) & (cloud_type <= 1)), "cloud family type must stay normalized"
-            coverage_mean = float(np.mean(coverage))
-            coverage_p10, coverage_p90 = np.quantile(coverage, [0.10, 0.90])
+            assert np.all((data[..., :4] >= 0) & (data[..., :4] <= 1)), (
+                "weather family masks, type and cirrus must stay normalized")
+            assert np.ptp(cumulus) > 0.12 and np.ptp(stratiform) > 0.12, (
+                "both low-cloud families must retain spatial variation")
+            cumulus_p10, cumulus_p90 = np.quantile(cumulus, [0.10, 0.90])
+            stratiform_p10, stratiform_p90 = np.quantile(stratiform, [0.10, 0.90])
             type_p10, type_p90 = np.quantile(cloud_type, [0.10, 0.90])
             adjacent_correlation = float(0.5 * (
-                np.corrcoef(coverage[:, :-1].ravel(), coverage[:, 1:].ravel())[0, 1]
-                + np.corrcoef(coverage[:-1, :].ravel(), coverage[1:, :].ravel())[0, 1]))
+                np.corrcoef(cumulus[:, :-1].ravel(), cumulus[:, 1:].ravel())[0, 1]
+                + np.corrcoef(cumulus[:-1, :].ravel(), cumulus[1:, :].ravel())[0, 1]))
             mesoscale_correlation = float(0.5 * (
-                np.corrcoef(coverage[:, :-32].ravel(), coverage[:, 32:].ravel())[0, 1]
-                + np.corrcoef(coverage[:-32, :].ravel(), coverage[32:, :].ravel())[0, 1]))
+                np.corrcoef(cumulus[:, :-32].ravel(), cumulus[:, 32:].ravel())[0, 1]
+                + np.corrcoef(cumulus[:-32, :].ravel(), cumulus[32:, :].ravel())[0, 1]))
             regional_correlation = float(0.5 * (
-                np.corrcoef(coverage[:, :-128].ravel(), coverage[:, 128:].ravel())[0, 1]
-                + np.corrcoef(coverage[:-128, :].ravel(), coverage[128:, :].ravel())[0, 1]))
-            assert 0.30 < coverage_mean < 0.55, ("weather coverage outside cloud-rich baseline", coverage_mean)
-            assert coverage_p10 < 0.20 and coverage_p90 > 0.70, (
-                "weather field must retain broad openings and cloud-rich regions", coverage_p10, coverage_p90)
+                np.corrcoef(cumulus[:, :-128].ravel(), cumulus[:, 128:].ravel())[0, 1]
+                + np.corrcoef(cumulus[:-128, :].ravel(), cumulus[128:, :].ravel())[0, 1]))
+            assert cumulus_p10 < 0.25 and cumulus_p90 > 0.65, (
+                "cumulus field must retain openings and cloud-rich groups", cumulus_p10, cumulus_p90)
+            assert stratiform_p10 < 0.25 and stratiform_p90 > 0.65, (
+                "stratiform field must retain broad openings and connected decks", stratiform_p10, stratiform_p90)
             assert type_p10 < 0.30 and type_p90 > 0.65, (
                 "weather field must retain both stratiform and developed cloud families", type_p10, type_p90)
             assert adjacent_correlation > 0.95 and mesoscale_correlation > 0.6, (
-                "cloud occupancy must form coherent parent groups", adjacent_correlation, mesoscale_correlation)
+                "cumulus occupancy must form coherent parent groups", adjacent_correlation, mesoscale_correlation)
             assert 0.1 < regional_correlation < 0.85, (
-                "cloud field must retain both regional organization and local variation", regional_correlation)
+                "cumulus field must retain regional organization and local variation", regional_correlation)
             if dump:
                 dump.mkdir(parents=True, exist_ok=True)
-                np.savez(dump / "cloud-weather-field.npz", coverage=coverage, cloudType=cloud_type,
-                         cirrus=data[..., 3])
-            print(f"PASS weather morphology: coverage mean/p10/p90 {coverage_mean:.4f}/"
-                  f"{coverage_p10:.4f}/{coverage_p90:.4f}, type p10/p90 {type_p10:.4f}/{type_p90:.4f}, "
-                  f"adjacent/32px/128px correlation "
+                np.savez(dump / "cloud-weather-field.npz", cumulus=cumulus, stratiform=stratiform,
+                         cloudType=cloud_type, cirrus=data[..., 3])
+            print(f"PASS weather morphology: cumulus p10/p90 {cumulus_p10:.4f}/{cumulus_p90:.4f}, "
+                  f"stratiform p10/p90 {stratiform_p10:.4f}/{stratiform_p90:.4f}, "
+                  f"type p10/p90 {type_p10:.4f}/{type_p90:.4f}, "
+                  f"cumulus adjacent/32px/128px correlation "
                   f"{adjacent_correlation:.4f}/{mesoscale_correlation:.4f}/{regional_correlation:.4f}")
-        if floating:
-            # The mean and its square are independently quantized to half precision.
-            mean_channels = list(range(0, data.shape[-1], 2)) if name == "Base" else [0]
+        if floating and name != "Weather":
+            # The base volume stores each shape mean beside its second moment.
+            mean_channels = list(range(0, data.shape[-1], 2))
             moment_channels = [channel + 1 for channel in mean_channels]
             np.testing.assert_allclose(data[..., moment_channels], data[..., mean_channels].astype(np.float32) ** 2,
                                        atol=np.finfo(np.float16).eps, rtol=0, err_msg="unfiltered shape moments")
