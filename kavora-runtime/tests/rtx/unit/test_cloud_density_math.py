@@ -21,13 +21,11 @@ def moment_cases():
 
 
 def moment_reference(samples):
-    # The raw-moment API explicitly uses fma(-mean, mean, secondMoment).
-    # A float32 product is exact in float64; round only the final subtraction.
-    # Rounding the square first changes narrow distributions at clipping edges.
+    # Match the raw API's two precise float32 operations. Slang emits
+    # NoContraction on the square and subtraction; GLSL.std.450 Fma alone
+    # does not guarantee a single rounding on every Vulkan implementation.
     shape = samples[:, 0]
-    exact_shape = shape.astype(np.float64)
-    variance = np.maximum((samples[:, 1].astype(np.float64)
-                           - exact_shape * exact_shape).astype(np.float32), 0).astype(np.float64)
+    variance = np.maximum(samples[:, 1] - shape * shape, 0).astype(np.float64)
     width = np.sqrt(3.0 * variance)
     value = (shape - samples[:, 2]).astype(np.float64)
     ramp = np.maximum(samples[:, 3], 1e-4).astype(np.float64)

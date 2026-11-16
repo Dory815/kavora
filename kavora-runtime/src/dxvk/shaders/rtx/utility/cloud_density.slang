@@ -102,13 +102,21 @@ public float2 cloudThresholdStatistics(float mean, float variance, float thresho
   return float2(saturate(resultMean), max(resultVariance, 0.0f));
 }
 
-// Raw-moment callers have an explicit, single-rounding variance convention.
+// Raw-moment variance uses two explicitly rounded operations on every target.
+[ForceInline]
+float cloudRawVariance(float mean, float secondMoment)
+{
+  precise float square = mean * mean;
+  precise float difference = secondMoment - square;
+  return max(difference, 0.0f);
+}
+
 [ForceInline]
 public float2 cloudThresholdMoments(float mean, float secondMoment, float threshold, float rampWidth)
 {
-  const float variance = max(fma(-mean, mean, secondMoment), 0.0f);
-  const float2 statistics = cloudThresholdStatistics(mean, variance, threshold, rampWidth);
-  return float2(statistics.x, fma(statistics.x, statistics.x, statistics.y));
+  const float2 statistics = cloudThresholdStatistics(mean, cloudRawVariance(mean, secondMoment),
+    threshold, rampWidth);
+  return float2(statistics.x, statistics.x * statistics.x + statistics.y);
 }
 
 [ForceInline]
@@ -278,7 +286,7 @@ float cloudFamilyDensity(float4 body, float profile, float coverage, float varia
   // Stretch the body spectrum before thresholding so humid parent groups still
   // contain individual billows instead of saturating into a featureless slab.
   const float mean = (body.r - 0.40f) / 0.60f;
-  const float bodyVariance = max(fma(-body.r, body.r, body.g), 0.0f) / 0.36f;
+  const float bodyVariance = cloudRawVariance(body.r, body.g) / 0.36f;
   return cloudThresholdStatistics(mean * profile, bodyVariance * profile * profile + variance,
     1.0f - coverage + erosion, rampWidth).x;
 }
