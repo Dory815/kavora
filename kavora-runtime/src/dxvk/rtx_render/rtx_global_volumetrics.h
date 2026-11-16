@@ -55,6 +55,9 @@ namespace dxvk {
       args.minValue = 0.0f, args.maxValue = 0.95f);
     RTX_OPTION_ARGS("rtx.clouds", float, multipleScattering, 0.8f, "Strength of the higher-order cloud illumination approximation.",
       args.minValue = 0.0f, args.maxValue = 1.0f);
+    RTX_OPTION_ARGS("rtx.clouds", float, groundAlbedo, 0.18f,
+      "Mean Lambertian terrain reflectance used by the local cloud illumination approximation. Surface path tracing still uses each material's actual albedo.",
+      args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, altitudeOffsetMeters, 608.0f, "Cumulus condensation height relative to the host cloud height.",
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, thicknessMeters, 1500.0f, "Maximum cumulus thickness. Local weather determines the height of each formation.",
@@ -77,7 +80,7 @@ namespace dxvk {
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, steps, 160u, "Spatial integration quality of the cloud field. Longer rays use proportionally more density samples.",
       args.minValue = 8u, args.maxValue = 256u);
-    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow integration steps.",
+    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow grid levels. Wide cells use deterministic quadrature sub-samples.",
       args.minValue = 1u, args.maxValue = 16u);
   };
 

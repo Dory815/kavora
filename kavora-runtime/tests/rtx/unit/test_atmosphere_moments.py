@@ -79,6 +79,21 @@ def main():
     np.testing.assert_array_equal(composed[:, 2], 0)
     print(f"PASS prefix/tail composition: {len(split)} subdivisions including zero-length cells")
 
+    grids = np.asarray([(begin, spacing, cone, split)
+                        for begin in (0, 139, 800, 6300, 12000, 91700, MAX_DISTANCE)
+                        for spacing in (8, 25, 51.2)
+                        for cone in (0, 0.0005, 0.0038, 0.012)
+                        for split in (0, 0.031, 0.5, 0.999, 1)], dtype=np.float32)
+    values = run(device, "rayGrid", grids)
+    begin = grids[:, 0].astype(np.float64)
+    expected_depth = 1e-6 * (MAX_DISTANCE - begin + (MAX_DISTANCE**2 - begin**2) / 20000)
+    np.testing.assert_allclose(values[:, 0], expected_depth, rtol=3e-5, atol=1e-7)
+    np.testing.assert_allclose(values[:, 1], values[:, 0], rtol=3e-5, atol=1e-7)
+    np.testing.assert_array_equal(values[:, 2], 0)
+    assert np.isfinite(values).all()
+    assert np.all(values[:, 3] <= np.ceil((MAX_DISTANCE - begin) / grids[:, 1]) + 1)
+    print(f"PASS adaptive cloud ray grid: {len(grids)} full/prefix/tail integrations through 96 km")
+
 
 if __name__ == "__main__":
     main()

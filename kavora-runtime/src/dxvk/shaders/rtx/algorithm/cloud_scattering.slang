@@ -15,6 +15,21 @@ public float3 cloudDiffuseBoundaryRadiance(float3 upperRadiance, float3 lowerRad
     + (kCloudStreamCosine + transportDepth.x) * lowerRadiance) / denominator;
 }
 
+// A Lambertian terrain boundary receives the transmitted sky and beam. Sum
+// its repeated reflections with the conservative column, without adding that
+// light a second time to the cloud source. Terrain reflectance is a local
+// average here; the surface path tracer continues to use the actual materials.
+public float3 cloudGroundBoundaryRadiance(float3 upperRadiance, float3 beamIrradianceOverPi,
+  float totalOpticalDepth, float meanCosine, float groundAlbedo)
+{
+  const float transportDepth = totalOpticalDepth * (1.0f - meanCosine);
+  const float transmission = 2.0f * kCloudStreamCosine / (2.0f * kCloudStreamCosine + transportDepth);
+  const float reflectance = 1.0f - transmission;
+  const float albedo = saturate(groundAlbedo);
+  return albedo * (transmission * upperRadiance + beamIrradianceOverPi)
+    / max(1.0f - albedo * reflectance, 1e-6f);
+}
+
 float3 cloudBeamIntegrals(float opticalDepth, float cosine)
 {
   const float x = opticalDepth / cosine;
@@ -50,4 +65,55 @@ public float cloudDiffuseBeamRadiance(float2 opticalDepth, float cosine)
   const float normalization = cosine / (4.0f * 3.14159265359f * d * d
     * (opticalDepth.x + opticalDepth.y + 2.0f * d));
   return normalization * (upper + lower);
+}
+
+// Exact integral of a linear vertical extinction segment along a finite ray.
+// The horizontal case is the continuous limit and never divides by its cosine.
+public float cloudLinearColumnIntegral(float2 interval, float2 extinction, float cosine, float distance)
+{
+  if (cosine == 0)
+  {
+    if (interval.x > 0 || interval.y <= 0)
+    {
+      return 0;
+    }
+    return lerp(extinction.x, extinction.y, saturate(-interval.x / (interval.y - interval.x))) * distance;
+  }
+  const float2 crossings = interval / cosine;
+  const float begin = max(0.0f, min(crossings.x, crossings.y));
+  const float end = min(distance, max(crossings.x, crossings.y));
+  if (end <= begin)
+  {
+    return 0;
+  }
+  const float middleHeight = cosine * (0.5f * (begin + end));
+  const float value = lerp(extinction.x, extinction.y,
+    saturate((middleHeight - interval.x) / (interval.y - interval.x)));
+  return value * (end - begin);
+}
+
+// Compare two estimates over the SAME finite neighborhood. Exterior blockers
+// cannot change this geometric weight: otherwise a darker external boundary
+// could switch the blend back to a brighter planar branch.
+public float cloudFiniteSideWeight(float predictedLocalDepth, float measuredLocalDepth)
+{
+  return saturate((predictedLocalDepth - measuredLocalDepth) / (predictedLocalDepth + 1e-5f));
+}
+
+// Approximate the finite neighborhood by a slab along the beam, with measured
+// optical depths on both sides. Exterior clouds supply direct-beam extinction,
+// not local diffusion. A convex blend retains the vertical slab in its planar
+// limit. This is a local-neighborhood closure, not an exact 3D transport solve.
+public float cloudDiffuseDirectionalRadiance(float2 verticalDepth, float lightCosine,
+  float2 directionalDepth, float reverseLocalDepth, float predictedLocalDepth)
+{
+  const float cosine = abs(lightCosine);
+  const float lightOpticalDepth = directionalDepth.x + directionalDepth.y;
+  const float2 facingDepth = lightCosine >= 0 ? verticalDepth : verticalDepth.yx;
+  const float externalDepth = cosine > 0 ? max(lightOpticalDepth - facingDepth.x / cosine, 0.0f) : 0;
+  const float planar = cloudDiffuseBeamRadiance(facingDepth, cosine) * exp(-externalDepth);
+  const float sideWeight = cloudFiniteSideWeight(predictedLocalDepth, directionalDepth.x);
+  const float side = cloudDiffuseBeamRadiance(float2(directionalDepth.x, reverseLocalDepth), 1.0f)
+    * exp(-directionalDepth.y);
+  return lerp(planar, side, sideWeight);
 }

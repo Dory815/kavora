@@ -175,7 +175,7 @@ namespace dxvk {
         {DEBUG_VIEW_VOLUME_PREINTEGRATION, "Volume Preintegration Result"},
         {DEBUG_VIEW_PRIMARY_VOLUME_TRANSMITTANCE, "Primary Volume Transmittance"},
         {DEBUG_VIEW_CLOUD_TRANSMITTANCE, "Cloud Transmittance"},
-        {DEBUG_VIEW_CLOUD_LIGHT_IRRADIANCE, "Cloud Light Irradiance"},
+        {DEBUG_VIEW_CLOUD_LIGHT_IRRADIANCE, "Cloud Base Light Irradiance"},
         {DEBUG_VIEW_VOLUME_RESERVOIR_WEIGHTS, "Volume Reservoir Weights"},
         {DEBUG_VIEW_LIGHT_HISTORY_VALIDITY, "Light History Validity"},
         {DEBUG_VIEW_VOLUME_HISTORY, "Volume History Age"},

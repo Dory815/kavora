@@ -897,8 +897,12 @@ namespace dxvk {
           }
           powers[index] = power;
           cloudLights[index].directionToLight = -distant.getDirection();
-          cloudLights[index].irradiance = radiance * 3.14159265359f;
           const auto& profile = distant.getCloudRadianceProfile();
+          // Profiles supply altitude-dependent cloud lighting. Keep the host's
+          // surface illumination for the reflected terrain boundary below them.
+          const Vector3 boundaryRadiance = profile.has_value()
+            ? distant.getRadiance() : distant.getCloudIncidentRadiance();
+          cloudLights[index].irradiance = boundaryRadiance * 3.14159265359f;
           cloudLights[index].hasRadianceProfile = profile.has_value();
           if (profile.has_value()) {
             for (size_t sampleIndex = 0; sampleIndex < profile->size(); sampleIndex++) {

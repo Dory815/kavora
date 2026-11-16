@@ -12,6 +12,7 @@
 CLOUD_PARAMETER struct CloudLight {
   CLOUD_PARAMETER vec3 directionToLight;
   CLOUD_PARAMETER uint hasRadianceProfile;
+  // Surface irradiance when a profile exists; otherwise uniform illumination.
   CLOUD_PARAMETER vec3 irradiance;
   CLOUD_PARAMETER float padding1;
   CLOUD_PARAMETER vec4 radianceProfile[4];
@@ -48,7 +49,7 @@ CLOUD_PARAMETER struct CloudArgs {
   CLOUD_PARAMETER float highExtinction;
   CLOUD_PARAMETER float highCoverage;
   CLOUD_PARAMETER float highMaxDistance;
-  CLOUD_PARAMETER float padding2;
+  CLOUD_PARAMETER float groundAlbedo;
   CLOUD_PARAMETER float padding3;
   CLOUD_PARAMETER float padding4;
 };

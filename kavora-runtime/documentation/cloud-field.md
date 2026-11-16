@@ -33,6 +33,46 @@ High-cloud morphology also draws on these published methods and observations:
 The procedural high-cloud field is independently authored. These references
 contribute modeling principles, not copied shader code or texture assets.
 
+## Low-cloud morphology
+
+The low layer follows the weather/shape/detail separation described in
+[Schneider and Vos, 2015](https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn).
+The implementation and texture weights are authored here. Inverse-Worley
+feature centers add convex billows to a broader Perlin envelope. A periodic
+detail field displaces those billows and erodes their boundaries, so smaller
+lobes remain attached to the main cloud instead of appearing only as detached
+fragments. No Beer-Powder brightness term is used.
+
+Coverage controls occupancy separately from the condensation ramp. The height
+profile and erosion are applied before the density threshold; decreasing
+regional coverage therefore opens the sky without turning every remaining
+cloud into transparent smoke. Vertical noise coordinates are relative to the
+cloud base, so changing altitude moves the same field instead of silently
+selecting another three-dimensional noise slice. The default condensation offset
+is 608 meters above the host cloud height: an 800-meter base with the usual
+192-meter host height. A 1500-meter maximum thickness still bounds the layer;
+local weather determines each formation's smaller actual height.
+
+The default unit-density extinction is 0.03 per meter. Separating coverage
+from condensation increased density inside the retained cores; keeping the
+former 0.06-per-meter coefficient made the fair-weather field too optically
+thick in the photo comparisons. Recalibrating that coefficient changes optical
+depth rather than color or exposure. For scale, the large-droplet relation
+`sigma = 3 * LWC / (2 * rho_water * r_effective)` in
+[Wood, 2006, equation 5](https://faculty.washington.edu/robwood2/wordpress/wp-content/uploads/2014/06/optical_depth_relations.pdf)
+associates 0.03 per meter at unit density with 0.2 grams of liquid water per cubic
+meter if the effective droplet radius is 10 micrometers. These are illustrative
+microphysical assumptions, not values measured from the reference photographs.
+
+Review uses both individual clouds and whole-sky views of natural shallow
+cumulus, including [Toby Hudson's whole-sky photograph](https://commons.wikimedia.org/wiki/File:Cumulus_humilis_clouds.jpg)
+and [Juan Lacruz's shallow cumulus photograph](https://commons.wikimedia.org/wiki/File:Cumulus-humilis.jpg):
+unequal connected lobes, mostly white sunlit bodies with local soft gray
+undersides, irregular blue openings, and a continuous near/middle/far size
+hierarchy. Mixed cumulus/stratocumulus photographs also retain locally darker
+cloud bases; the review does not require every shaded face to become white.
+Numerical density moments are filtering checks, not a visual acceptance criterion.
+
 ## Density and filtering
 
 `Resources::prepareCloudNoise` generates three periodic textures once per
@@ -44,7 +84,7 @@ device. All three have complete mip chains, built by the cloud noise filter:
 | Erosion | 32 cubed | RGBA8 | Three detail frequencies |
 | Weather | 512 square | RGBA16F | Coverage and its square, cumulus type, finished high-cloud density |
 
-The base period defaults to 1024 meters. Erosion occupies one quarter of that
+The base period defaults to 1024 meters. Erosion occupies one sixteenth of that
 period and weather sixteen periods. Camera motion neither regenerates noise
 nor publishes a different density field. Wind translates both layers in the
 same world frame, with a shared sixteen-period wrap.
@@ -70,12 +110,13 @@ reducing the horizontal averaging of fine filaments along oblique rays.
 The runtime keeps it at least 1000 meters above the cumulus top. Its coverage
 can be set to zero without changing lower-cloud transport.
 
-For cumulus, `cloud_density.slang` applies the coverage threshold once, followed
-by bounded erosion and a continuous height profile. Footprints select the noise
-mip level. The first and second moments preserve unresolved variation through the
-nonlinear coverage threshold, using a moment-matched distribution. This is a
-filtering approximation: it does not retain every correlation between weather,
-shape and the local height profile. The smooth height profile is integrated
+For cumulus, `cloud_density.slang` applies its continuous height profile,
+bounded shape displacement and boundary erosion before one condensation
+threshold. View footprints select the noise mip level. The first and second
+moments preserve unresolved variation through this nonlinear threshold, using
+a moment-matched distribution. This is a filtering approximation: it does not
+retain every correlation between weather, shape, erosion and the local height
+profile. The smooth height profile is integrated
 analytically over the vertical footprint so a coarse sample cannot lose an
 entire thin column just because its midpoint lies above the column top.
 At a shell boundary, that vertical footprint uses the actual last cell span.
@@ -141,10 +182,22 @@ visibility use the same density field, with footprints appropriate to each
 integration. View distance fading remains a rendering approximation; it does
 not shorten the celestial shadow path.
 
+The shared `CloudRayGrid` resolves nearby clouds at the spatial budget and
+grows cells geometrically once the projected pixel footprint is wider. Its
+forward boundaries and inverse cell lookup are shared by view transmission,
+atmosphere segments and the sky pass. Prefix checkpoints and clipped tails
+therefore retain the same samples. Density filtering uses the actual cell span
+and pixel cone, including the final partial cell.
+
 Self-shadowing integrates optical depth toward the sun and moon on fixed
 exponential cells. The moving shell exit clips the last cell instead of
-stretching every cell. Wide cells use two-point Gaussian quadrature, with the
-refinement decision based on the unclipped cell width. Light rays keep one
+stretching every cell. The refinement decision uses the unclipped cell
+width. Low-cloud cells use one, two or four Gaussian samples, or two eight-point
+subintervals for cells wider than one shape period. Density lookups are filtered
+to at most one base texel across the light ray: a cell-sized isotropic mip would
+mix neighboring off-ray clouds into otherwise clear sunlight paths. Height
+profile integration still uses each quadrature sample's vertical support.
+High-cloud cells retain two-point quadrature when wide enough. Light rays keep one
 grid across the inner clear-air gap, so a new grazing intersection cannot
 reset the far segment's samples. Each sample evaluates only the current layer.
 The high shell uses its maximum chord above the lower atmosphere and a smaller
@@ -162,12 +215,24 @@ depths above and below the scattering point are reused for sky and celestial
 illumination.
 
 `cloud_scattering.slang` solves a two-stream boundary-lit slab with ordinate
-cosine `1 / sqrt(3)`. Its upper boundary is the measured sky radiance and its lower
-boundary is black. The boundary solution uses transport optical depth
-`(1 - meanCosine) * opticalDepth`. It preserves a uniform environment on both
-boundaries, approaches the hemisphere average as the slab becomes transparent,
-and attenuates the sky reaching a thick cloud base. No ground-reflection source
-is assumed.
+cosine `1 / sqrt(3)`. Its upper boundary is the measured sky radiance. The
+lower boundary is a local Lambertian terrain approximation with mean reflectance
+`rtx.clouds.groundAlbedo` (default 0.18). Terrain receives the sky and celestial
+flux transmitted through the cloud, including the downward diffuse beam flux.
+The closure sums repeated reflections between the conservative column and the
+terrain: `L_ground = rho * (T * L_sky + E_beam / pi) / (1 - rho * R)`, where
+`T + R = 1`. Reflected flux returns only through the lower boundary; it is not
+also added directly to the cloud source. A black terrain recovers the previous
+boundary, while a uniformly lit conservative white cavity preserves radiance.
+
+The boundary solution uses transport optical depth
+`(1 - meanCosine) * opticalDepth`. This is an average local terrain boundary,
+not a readback of actual terrain materials or full three-dimensional indirect
+lighting. Surface path tracing continues to use the scene's materials. Cloud
+irradiance profiles describe the cloud-altitude light; the separate light
+irradiance member supplies the host's actual observer-height irradiance for
+the terrain approximation, avoiding use of the brighter high-cloud profile
+as a ground source at sunset.
 
 The collimated-light solution generates a separate diffuse source from the
 incident beam. Its two vertical streams use unit cosine, a conservative escape
@@ -178,6 +243,28 @@ optical depth beyond that local column attenuates its incident beam. The direct
 source retains the full three-dimensional light ray. This closure approximates
 horizontal diffusion and multiple scattering in an irregular cloud. It does
 not replace their transport with a second density field or a color ramp.
+
+For finite cumulus, the same directional shadow trace separates optical depth
+inside one shape-period neighborhood from optical depth outside it. A cell
+crossing this fixed boundary is integrated on both sides, rather than assigning
+its Gaussian samples discontinuously to a side. A second ray measures only the
+opposite half of that local neighborhood when a side-light contribution is
+needed. The existing vertical samples also define a continuous piecewise-linear
+profile; integrating it along each light ray predicts the optical depth of a
+plane-parallel column over the **same local range**, without additional density
+lookups. The difference between that prediction and the measured local depth
+controls a convex blend with a beam-axis two-stream slab. Exterior blockers
+attenuate the side slab's incident beam exponentially and cannot change the
+geometric blend weight. A homogeneous column recovers the vertical model; a
+horizontal beam can illuminate a finite cloud through its side. No tint or
+ambient brightness floor is added.
+
+This finite neighborhood is not a connected-cloud detector: it can include
+several nearby billows or truncate a larger cloud. The method also omits diffuse
+exchange between separate neighborhoods and does not solve a full 3D radiance
+field. [Hogan et al., 2016](https://www.met.reading.ac.uk/~swrhgnrj/publications/spartacus_part2.pdf)
+explains the physical role of lateral cloud transport; this local rendering
+closure is independently derived and does not implement the SPARTACUS solver.
 
 Fog subdivisions reuse a cloud cell's extinction and incident source. A prefix
 checkpoint recomputes the same fixed cell sample, so splitting a ray preserves
@@ -215,15 +302,26 @@ model:
 
 Maps have a 2:1 aspect ratio. World-volume mode can generate a separate
 64-pixel-high map for fog illumination. View quality controls spatial spacing,
-so long rays can take more samples than the quality value. Light cells are
-integration intervals; a wide interval uses two density queries. The upper
-layer uses half the light-cell budget with a minimum of four cells.
+so long rays can take more samples than the quality value. At the default
+1024-meter shape period, the low-layer base spacing is 8 meters at Ultra, down
+from 16 meters before this rework. Light cells are integration intervals, not
+a density-query count. With 16 cells and a 60-kilometer shadow range, the
+low-layer quadrature uses 16, 24, 60 and 124 density evaluations for unoccluded
+paths of approximately 0.25, 1, 5 and 60 kilometers respectively. Opaque
+external blockers terminate the ray early. An out-of-column evaluation returns
+after its weather lookup; occupied samples also read base and detail textures.
+Splitting the local boundary can add another four queries to the Ultra
+forward-light trace. A finite-side solve can add up to 24 queries for its
+1024-meter reverse ray, giving a 152-query maximum per celestial light before
+opaque early termination. Light visibility does not need that local split or
+reverse trace. The upper layer uses half the light-cell budget with a minimum
+of four cells and at most two density queries per cell.
 
-Diffuse-column sampling uses half the light-cell budget, rounded up with a
-minimum of two. Ultra, High, Medium and Low therefore use 8, 6, 4 and 2 samples
-per occupied low-cloud cell. One shared weather lookup and at most two
-base/detail lookups per sample add at most 17 texture reads at Ultra. The
-high layer uses two density samples. Both celestial lights and the sky reuse
+Diffuse-column sampling uses the light-cell budget with a minimum of two.
+Ultra, High, Medium and Low therefore use 16, 12, 8 and 4 samples per occupied
+low-cloud cell. One shared weather lookup and two base/detail lookups per
+sample add at most 33 texture reads at Ultra. The high layer uses two density
+samples. Both celestial lights and the sky reuse
 the same column. No additional volume texture or lighting history is allocated.
 The environment integral uses one 256-thread workgroup and 8192 texture reads
 per frame, shared across all quality levels. Its output contains one RGBA32F
@@ -263,7 +361,8 @@ thicknesses with the independent height-profile integral. They do not validate
 game presentation, temporal reconstruction quality or GPU frame time.
 The scattering test checks sky quadrature normalization and angular moments
 in several up frames. It compares the production boundary and beam solutions
-with independent integrals, exercises the thin and grazing limits, and integrates
+with independent integrals, exercises reflective-terrain, finite-domain,
+external-blocker, thin and grazing limits, and integrates
 outgoing slab flux with the actual dual-HG single-scattering phase. Its parameter
 grid covers the supported anisotropy range and maximum multiple-scattering
 strength. This checks that grid, not energy conservation for every heterogeneous

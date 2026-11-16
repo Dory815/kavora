@@ -665,6 +665,7 @@ namespace dxvk {
     clouds.lightSteps = CloudOptions::lightSteps();
     clouds.anisotropy = CloudOptions::anisotropy();
     clouds.multipleScattering = CloudOptions::multipleScattering();
+    clouds.groundAlbedo = CloudOptions::groundAlbedo();
 
     volumeArgs.froxelGridDimensions.x = static_cast<uint>(m_froxelVolumeExtent.width);
     volumeArgs.froxelGridDimensions.y = static_cast<uint>(m_froxelVolumeExtent.height);

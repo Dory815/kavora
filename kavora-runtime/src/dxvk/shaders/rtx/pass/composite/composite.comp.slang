@@ -623,7 +623,9 @@ vec4 compositeResult(
   }
   if (cb.debugViewIdx == DEBUG_VIEW_CLOUD_LIGHT_IRRADIANCE)
   {
-    storeInDebugView(pixelCoordinate, cb.volumeArgs.clouds.lights[0].irradiance + cb.volumeArgs.clouds.lights[1].irradiance);
+    const CloudArgs cloudArgs = cb.volumeArgs.clouds;
+    storeInDebugView(pixelCoordinate, cloudLightIrradiance(cloudArgs.lights[0], cloudArgs.baseHeight)
+      + cloudLightIrradiance(cloudArgs.lights[1], cloudArgs.baseHeight));
   }
 
   // Apply fog

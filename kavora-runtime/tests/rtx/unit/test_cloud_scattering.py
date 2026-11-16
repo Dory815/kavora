@@ -24,17 +24,22 @@ class Probe:
         self.device = device
         self.kernels = {}
 
-    def run(self, entry, samples):
+    def run(self, entry, samples, extra=None):
         data = np.asarray(samples, dtype=np.float32).reshape(-1, 4)
         if entry not in self.kernels:
             program = self.device.load_program("cloud_scattering_contracts.comp.slang", [entry])
             self.kernels[entry] = self.device.create_compute_kernel(program)
         output = self.device.create_buffer(element_count=len(data), struct_size=16,
                                            usage=spy.BufferUsage.unordered_access)
-        self.kernels[entry].dispatch(thread_count=[len(data), 1, 1], vars={
+        bindings = {
             "Inputs": self.device.create_buffer(data=data, usage=spy.BufferUsage.shader_resource),
             "Results": output, "Count": len(data),
-        })
+        }
+        if extra is not None:
+            extra_data = np.asarray(extra, dtype=np.float32).reshape(len(data), 4)
+            bindings["ExtraInputs"] = self.device.create_buffer(data=extra_data,
+                                                                usage=spy.BufferUsage.shader_resource)
+        self.kernels[entry].dispatch(thread_count=[len(data), 1, 1], vars=bindings)
         return output.to_numpy().view(np.float32).reshape(-1, 4)
 
 
@@ -81,6 +86,29 @@ def check_boundaries(probe):
     print(f"PASS diffuse boundaries: {len(samples)} upper/lower columns, thin limit and white furnace")
 
 
+def check_ground_boundary(probe):
+    samples = np.array([(tau, g, albedo, beam)
+                        for tau in (0, 1e-8, 0.01, 1, 10, 100, 10000)
+                        for g in (-0.0375, 0.515, 0.77)
+                        for albedo in (0, 0.18, 0.8, 1)
+                        for beam in (0, 0.1, 1)], dtype=np.float32)
+    actual = probe.run("groundBoundary", samples)[:, :3].astype(np.float64)
+    depth, g, albedo, beam = samples.astype(np.float64).T
+    transmission = (2 / np.sqrt(3)) / (2 / np.sqrt(3) + depth * (1 - g))
+    expected = albedo[:, None] * (transmission[:, None] * [0.25, 1.5, 8.0] + beam[:, None])
+    expected /= (1 - albedo * (1 - transmission))[:, None]
+    np.testing.assert_allclose(actual, expected, atol=2e-5, rtol=4e-4)
+    assert np.isfinite(actual).all() and np.all(actual >= 0)
+    np.testing.assert_array_equal(actual[albedo == 0], 0)
+    empty = depth == 0
+    np.testing.assert_allclose(actual[empty], albedo[empty, None] * (
+        [0.25, 1.5, 8.0] + beam[empty, None]), rtol=2e-7, atol=1e-7)
+    white = (albedo == 1) & (beam == 0)
+    np.testing.assert_allclose(actual[white], np.broadcast_to([0.25, 1.5, 8.0], actual[white].shape),
+                               rtol=4e-4, atol=2e-5)
+    print(f"PASS terrain boundary: {len(samples)} black/white terrain, empty/thick columns and reflected-beam feedback")
+
+
 def beam_reference(above, below, cosine):
     """Integrate the positive Robin Green kernel against the incident beam."""
     if cosine == 0 or above + below == 0:
@@ -100,6 +128,101 @@ def beam_reference(above, below, cosine):
                          (above + d) * (total - source_depth + d))
         integral += np.sum(weights * green * np.exp(-v)) * 0.5 * (upper - lower)
     return cosine * integral / (4 * np.pi * d * d * (total + 2 * d))
+
+
+def check_column_projection(probe):
+    samples, extra, expected = [], [], []
+    nodes, weights = leggauss(12)
+    for lower, upper in ((-500, -100), (-200, 100), (-50, 250), (0, 200), (100, 500)):
+        for a, b in ((0, 0), (0.01, 0.01), (0, 0.06), (0.06, 0)):
+            for mu in (-1, -0.3, -0.001, -1e-8, 0, 1e-8, 0.001, 0.3, 1):
+                for distance in (1, 100, 1024):
+                    samples.append((lower, upper, a, b))
+                    extra.append((mu, distance, 0, 0))
+                    if mu == 0:
+                        reference = (a + (b - a) * (-lower) / (upper - lower)) * distance if lower <= 0 < upper else 0
+                    else:
+                        crossing = sorted((lower / mu, upper / mu))
+                        begin, end = max(0, crossing[0]), min(distance, crossing[1])
+                        if end <= begin:
+                            reference = 0
+                        else:
+                            positions = begin + (nodes + 1) * (end - begin) / 2
+                            density = a + (b - a) * (mu * positions - lower) / (upper - lower)
+                            reference = np.sum(weights * density) * (end - begin) / 2
+                    expected.append(reference)
+    actual = probe.run("columnProjection", samples, extra)[:, 0]
+    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)
+    # The two segments share the same value at their join. Their sum therefore
+    # approaches one horizontal result from either sign even at the join itself.
+    near = []
+    for mu in (-1e-7, 0, 1e-7):
+        near.append(probe.run("columnProjection", [(-100, 0, 0.01, 0.02), (0, 100, 0.02, 0.04)],
+                              [(mu, 1024, 0, 0)] * 2)[:, 0].sum())
+    np.testing.assert_allclose(near, 0.02 * 1024, rtol=2e-6, atol=2e-6)
+    print(f"PASS finite column projection: {len(samples)} linear profiles, clipped ranges and horizontal limit")
+
+
+def check_directional_diffusion(probe):
+    samples, extra, expected = [], [], []
+    for above in (0, 0.001, 0.1, 1, 10):
+        for below in (0, 0.001, 0.1, 1, 10):
+            for mu in (-1, -0.1, -1e-4, 1e-4, 0.1, 1):
+                facing, other = (above, below) if mu > 0 else (below, above)
+                for fraction in (0, 0.5, 1):
+                    tau = facing / abs(mu)
+                    samples.append((above, below, mu, tau * fraction))
+                    extra.append((tau * (1 - fraction), 2.0, tau * fraction, 0))
+                    expected.append(beam_reference(facing, other, abs(mu)))
+    actual = probe.run("directionalRadiance", samples, extra)[:, 0]
+    np.testing.assert_allclose(actual, expected, atol=4e-8, rtol=5e-5,
+                               err_msg="homogeneous slabs must recover the original vertical two-stream closure")
+
+    samples, extra = [], []
+    blockers = np.array((0, 0.01, 0.1, 1, 10, 80), dtype=np.float64)
+    for forward in (0, 0.01, 1, 10):
+        for reverse in (0, 0.01, 1, 10):
+            for blocker in blockers:
+                samples.append((1, 3, 0, forward))
+                extra.append((blocker, reverse, 20, 0))
+    blocked = probe.run("directionalRadiance", samples, extra)[:, 0].reshape(-1, len(blockers))
+    assert np.isfinite(blocked).all() and np.all(blocked >= 0)
+    assert np.all(np.diff(blocked, axis=1) <= 1e-8)
+    # With horizontal incidence the planar source vanishes. A separate external
+    # blocker can only attenuate the side boundary, never turn into local MS.
+    upper = blocked[:, :1] * np.exp(-blockers)[None, :]
+    assert np.all(blocked <= upper * (1 + 2e-5) + 1e-9)
+    assert np.max(blocked[:, -1]) < 1e-30
+
+    # Regression: when the blend weight depended on total shadow depth, adding
+    # an exterior blocker could switch from the side model to a brighter planar
+    # model. Geometry and local illumination stay fixed in this sweep.
+    samples, extra = [], []
+    for above, below in ((0.001, 10), (10, 0.001), (1, 3)):
+        for mu in (-0.7, -0.1, -0.001, 0, 0.001, 0.1, 0.7):
+            for forward, reverse in ((0.001, 0.001), (0.1, 1), (1, 10)):
+                for blocker in blockers:
+                    samples.append((above, below, mu, forward))
+                    extra.append((blocker, reverse, 2 * forward, 0))
+    sweep = probe.run("directionalRadiance", samples, extra)[:, 0].reshape(-1, len(blockers))
+    assert np.all(np.diff(sweep, axis=1) <= 1e-8), "an external beam blocker must not brighten a cloud"
+
+    samples, extra = [], []
+    for above, below in ((0, 0), (0, 1), (1, 0), (0.001, 10), (1, 10), (10, 1)):
+        for forward in (0, 0.01, 1, 10):
+            for reverse in (0, 0.1, 10):
+                for mu in (-1e-7, 0, 1e-7):
+                    samples.append((above, below, mu, forward))
+                    extra.append((0.1, reverse, 20, 0))
+    horizon = probe.run("directionalRadiance", samples, extra)[:, 0].reshape(-1, 3)
+    assert np.isfinite(horizon).all() and np.all(horizon >= 0)
+    horizon_delta = float(np.max(np.abs(np.diff(horizon, axis=1))))
+    assert horizon_delta < 2e-5, horizon_delta
+    empty = probe.run("directionalRadiance", [(0, 0, mu, 0) for mu in (-1, 0, 1)],
+                      [(0, 0, 0, 0)] * 3)[:, 0]
+    np.testing.assert_array_equal(empty, 0)
+    print(f"PASS finite-cloud diffusion: {len(expected)} planar limits, separated blocker sweep, "
+          f"empty media and horizontal continuity (max delta {horizon_delta:.8f})")
 
 
 def check_beam(probe):
@@ -213,7 +336,10 @@ def main():
     probe = Probe(device)
     check_hemisphere(probe)
     check_boundaries(probe)
+    check_ground_boundary(probe)
     check_beam(probe)
+    check_column_projection(probe)
+    check_directional_diffusion(probe)
     check_column_support(probe)
     check_slab_energy(probe)
 

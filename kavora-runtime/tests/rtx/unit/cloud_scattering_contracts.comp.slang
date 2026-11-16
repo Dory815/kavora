@@ -6,6 +6,7 @@ import "rtx/pass/cloud_parameters.slang";
 import "rtx/utility/cloud_density.slang";
 
 StructuredBuffer<float4> Inputs;
+StructuredBuffer<float4> ExtraInputs;
 RWStructuredBuffer<float4> Results;
 uint Count;
 
@@ -49,6 +50,46 @@ void beamRadiance(uint index : SV_DispatchThreadID)
   const float4 sample = Inputs[index];
   const float2 depth = sample.z >= 0 ? sample.xy : sample.yx;
   Results[index] = float4(cloudDiffuseBeamRadiance(depth, abs(sample.z)), 0, 0, 0);
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void groundBoundary(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  const float4 sample = Inputs[index];
+  const float3 ground = cloudGroundBoundaryRadiance(float3(0.25f, 1.5f, 8.0f), sample.w,
+    sample.x, sample.y, sample.z);
+  Results[index] = float4(ground, 0);
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void directionalRadiance(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  const float4 sample = Inputs[index];
+  const float4 extra = ExtraInputs[index];
+  Results[index] = float4(cloudDiffuseDirectionalRadiance(sample.xy, sample.z,
+    float2(sample.w, extra.x), extra.y, extra.z), 0, 0, 0);
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void columnProjection(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  Results[index] = float4(cloudLinearColumnIntegral(Inputs[index].xy, Inputs[index].zw,
+    ExtraInputs[index].x, ExtraInputs[index].y), 0, 0, 0);
 }
 
 [shader("compute")]

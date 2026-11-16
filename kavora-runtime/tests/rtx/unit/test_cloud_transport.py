@@ -18,6 +18,8 @@ OPTIONS = {"include_paths": [str(HERE), str(SHADERS)], "defines": {"__SLANG__": 
 
 
 def cloud_parameters(**changes):
+    # These are fixed numerical fixtures, including the 400 m shell used by the
+    # geometry probes below. The visual preview passes current native defaults.
     result = {
         "up": [0, 1, 0], "enable": 1, "windOffset": [0, 0, 0],
         "baseHeight": 400.0, "thickness": 1500.0, "shapeScale": 1024.0,
@@ -29,7 +31,7 @@ def cloud_parameters(**changes):
         "lightMaxDistance": 60000.0, "previousWindDelta": [0, 0, 0],
         "viewAngularFootprint": 0.0, "highBaseHeight": 6000.0,
         "highThickness": 900.0, "highExtinction": 0.0, "highCoverage": 0.4,
-        "highMaxDistance": 60000.0,
+        "highMaxDistance": 60000.0, "groundAlbedo": 0.18,
     }
     result.update(changes)
     return result
@@ -350,9 +352,9 @@ def check_high_column_transmission(probe, textures):
             column = clouds | {"groundReference": [x, 0.0, z]}
             result = probe.run("viewTransmission", [[x, 0.0, z, distance]], [[0.0, 1.0, 0.0, 0.0]],
                                column, textures)[0]
-            # Use the actual view spacing as the density footprint. The 800m layer
-            # selects a coarser mip than the thin layers, so their raw densities differ.
-            density = probe.run("densities", [[x, center_height, z, result[1]]],
+            # A vertical ray has no horizontal span in the two-dimensional high
+            # field. Layer thickness must not select a coarser horizontal mip.
+            density = probe.run("densities", [[x, center_height, z, 0.0]],
                                 clouds=column, textures=textures)[0, 0]
             # Smooth ramps over [0, .15] and [.65, 1] enclose area .75; the midpoint
             # lies on the unit plateau. This is an independent Beer-law column reference.

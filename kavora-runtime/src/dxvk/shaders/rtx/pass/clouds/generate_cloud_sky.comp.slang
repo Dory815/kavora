@@ -56,7 +56,8 @@ void main(uint2 pixel : SV_DispatchThreadID)
         nearest = i;
       }
     }
-    const CloudRayGrid grid = { intervals[nearest], cloudSampleSpacing(args, direction, nearest / 2) };
+    const CloudRayGrid grid = createCloudRayGrid(intervals[nearest], cloudSampleSpacing(args, direction, nearest / 2),
+      3.14159265359f / float(args.skyResolution));
     intervals[nearest].x = 3.402823466e+38f;
     float previous = grid.interval.x;
     for (uint cell = 0; previous < grid.interval.y; cell++)
@@ -65,7 +66,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const float distance = grid.sampleAt(cell);
       const float3 position = origin + direction * distance;
       const float pixelFootprint = distance * 3.14159265359f / float(args.skyResolution);
-      const float footprint = max(grid.spacing, pixelFootprint);
+      const float footprint = cloudDensityFootprint(args, direction, grid.spanAt(cell), pixelFootprint, nearest / 2);
       const float extinction = cloudViewExtinction(args, position, distance, CloudWeatherSampler, CloudBaseSampler,
         CloudDetailSampler, footprint, cloudHeightFootprint(args, position, direction, grid.spanAt(cell), pixelFootprint));
       if (extinction > 0)
