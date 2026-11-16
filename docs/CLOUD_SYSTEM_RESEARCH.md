@@ -363,3 +363,10 @@ openings from averaging into a continuous deck. It must be verified against
 the same horizon and top-down views, while retaining the accepted cloud-rich
 side-lit and zenith morphology. Do not solve the band by simply fading all
 distant clouds or by making the whole sky sparse.
+
+
+The rain-driven stratiform contribution is also multiplied by the sampled
+family coverage. This prevents a nonzero weather scalar from creating a
+globally continuous low-altitude sheet through otherwise dry regions. Strong
+rain still thickens the existing cloud-bearing regions; it does not erase
+their weather-map openings.
