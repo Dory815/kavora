@@ -123,6 +123,18 @@ The existing world-space extinction, in-scattering, atmosphere coupling, path-tr
 
 The first implementation step is to prototype the new multi-family distribution as a deterministic weather bake and inspect top-down and whole-sky previews before changing transport. Later steps will integrate each family into a shared shell traversal, then validate performance and all affected ray consumers (camera, PSR, reflection, transmission and visibility).
 
+## First implementation: mesoscale low-cloud organization
+
+The first implementation step changes the low-cloud weather bake and the existing 3D parent-body scale without adding a new runtime texture or a new raymarch.
+
+The previous weather bake emphasized 2 km, 1 km and 0.5 km group frequencies. These are useful billow and sub-group scales, but made small disconnected cells dominate the visible low-cloud footprint. The revised bake uses 8 km, 4 km and 2 km group frequencies. Broad 32 km / 16 km regional moisture gates remain, so high cloud amount can still occur across a broad sky; the goal is not to maximize blue-sky gaps. Cloud development type now varies at approximately 16 km and 8 km rather than changing independently at 4 km and 2 km.
+
+The continuous development type also selects the 3D parent-body period: shallow/stratiform formations approach an 8 km period, while ordinary and strongly developed cumulus retain the original 2 km period. The vertical profile and local thickness continue to vary with type. The erosion texture is rescaled in texture coordinates so its world-space feature size remains unchanged; its LOD is likewise kept at the same physical scale. This avoids turning broad parent clouds into featureless blobs or silently making erosion coarser.
+
+The first implementation deliberately does not add a separate stratocumulus raymarch, another texture, or another light cache. It reuses the existing weather bake and low-shell density evaluation. Runtime density sampling keeps the same weather, base and detail texture lookup count; the extra work is in the one-time weather bake, whose Perlin octave frequencies are lower than before. The type-dependent coordinate scale is arithmetic only.
+
+This is a first structural step, not a claim that the whole sky now models all cloud genera. Mid-level altocumulus and additional independent cloud families remain future work if the full-sky comparisons show they are needed. Review must include cloud-rich and overcast skies as well as scattered cumulus; cloud occupancy is not a pass/fail metric by itself.
+
 ## Licensing
 
 References are studied for visual and architectural ideas only. The Kavora implementation remains independently authored. No ARR/custom shaderpack source, binaries, textures or photographs are shipped. Any separately licensed reference material used for a diagnostic mask must be explicitly attributed, license-checked and stored as a derived scalar field with source and transformation records; the preferred production direction is an independently generated procedural distribution.
