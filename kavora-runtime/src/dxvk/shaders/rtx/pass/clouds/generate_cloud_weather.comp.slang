@@ -46,8 +46,6 @@ void main(uint2 id : SV_DispatchThreadID)
   const float typeNoise = 0.65f * cloudPerlin(float3(uv * 4.0f, 0.71f), 4, kCloudNoiseSeed + 241)
     + 0.35f * cloudPerlin(float3(uv * 8.0f, 0.13f), 8, kCloudNoiseSeed + 251);
   const float type = saturate(0.5f + 0.9f * typeNoise + 0.18f * regional);
-  const float stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type);
-
   // Preserve both family masks through the weather-map mip chain. The density
   // evaluator blends them after filtering, using the local cloud-family type.
   const float highDensity = cloudCirrusHorizontalDensity(uv, CloudCirrusAtlas);
