@@ -276,11 +276,13 @@ The weather-map regression now checks both masks independently for normalized
 range, spatial variation and broad opening/cloud-rich quantiles. The existing
 cumulus autocorrelation checks remain tied to the cumulus channel. The weather
 map no longer stores the old R mean / G second-moment pair; both family masks
-are mip-filtered independently. Consequently the combined coverage variance
-is currently reconstructed as zero at the density-evaluation point. This is a
-known quality tradeoff: if visual inspection shows excessive mip smoothing or
-loss of subpixel coverage, the next iteration should add a separately filtered
-coverage-moment resource or a compact moment encoding rather than silently
+are mip-filtered independently. The density evaluator reconstructs a bounded
+unresolved-coverage variance from each family mean and the selected weather-map
+LOD. This is deliberately conservative rather than pretending the two family
+means contain exact second moments. The grazing/horizon preview must verify
+that this approximation retains openings without inflating cloud coverage into
+a continuous opaque deck. If it cannot meet both requirements, the next
+iteration should add separately filtered family moments instead of silently
 reinterpreting either family channel.
 
 This change is a structural foundation, not a claim that stratiform and
