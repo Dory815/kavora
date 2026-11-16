@@ -181,7 +181,8 @@ public float cloudColumnThickness(CloudDensityArgs args, CloudColumn column)
 }
 
 [ForceInline]
-float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudType, float coverage, float heightFootprint)
+float overcastDensity(CloudDensityArgs args, float heightAboveBase,
+  float cloudType, float coverage, float heightFootprint)
 {
   const float precipitation = max(args.weather, args.thunder);
   if (precipitation <= 0)
