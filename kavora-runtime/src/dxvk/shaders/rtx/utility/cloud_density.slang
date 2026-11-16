@@ -142,10 +142,13 @@ public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D
   const float4 weather = weatherSampler.SampleLevel(position / float(kCloudWeatherPeriod), lod);
   const float bias = (args.coverage - 0.45f) * 0.9f + 0.51f * args.weather
     + 0.15f * args.thunder - 0.17f * args.night * (1.0f - args.weather);
-  const float variance = max(weather.g - weather.r * weather.r, 0.0f);
-  const float mean = weather.r + bias;
-  const float2 coverage = cloudCoverageMoments(mean, mean * mean + variance, 1.0f);
   const float type = saturate(weather.b * (1.0f - 0.4f * args.weather) + 0.85f * args.thunder);
+  const float stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type);
+  const float cumulusMean = saturate(weather.r + bias);
+  const float deckMean = saturate(weather.g + bias);
+  const float2 cumulusCoverage = cloudCoverageMoments(cumulusMean, cumulusMean * cumulusMean, 1.0f);
+  const float2 deckCoverage = cloudCoverageMoments(deckMean, deckMean * deckMean, 1.0f);
+  const float2 coverage = lerp(cumulusCoverage, deckCoverage, stratiformBlend);
   // Cloud type varies across groups. Local condensation controls development
   // above a shared base, rather than assigning independent heights to columns.
   const float thickness = args.thickness * (0.22f + 0.78f * smoothstep(0.1f, 0.9f, type))
