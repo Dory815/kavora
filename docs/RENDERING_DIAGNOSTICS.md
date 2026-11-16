@@ -65,7 +65,7 @@ tables with source hashes and lighting parameters. From the repository root:
 ```sh
 python kavora-runtime/tests/rtx/unit/render_cloud_atmosphere.py \
   --output /tmp/cloud-day --sun-elevation 40 --sun-azimuth 135 \
-  --world-height 139 --profile-heights 800 2300 6300 6500
+  --world-height 139 --profile-heights 800 2300 6375 6425
 python kavora-runtime/tests/rtx/unit/render_cloud_preview.py \
   --output /tmp/cloud-inspection --layers low --radiance \
   --atmosphere-fixture /tmp/cloud-day --origin 8043,139,1240 \

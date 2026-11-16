@@ -235,7 +235,7 @@ def main():
     parser.add_argument('--sun-radiance', type=float, default=30)
     parser.add_argument('--world-height', type=float, default=139)
     parser.add_argument('--sea-level', type=float, default=63)
-    parser.add_argument('--profile-heights', type=float, nargs=4, default=[800, 2300, 6300, 6500])
+    parser.add_argument('--profile-heights', type=float, nargs=4, default=[800, 2300, 6375, 6425])
     parser.add_argument('--width', type=int, default=512)
     parser.add_argument('--height', type=int, default=512)
     parser.add_argument('--mie-anisotropy', type=float, default=0.9)

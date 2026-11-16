@@ -219,7 +219,11 @@ void main(uint2 pixel : SV_DispatchThreadID)
 #else
       const float footprint = max(grid.spacing, pixelFootprint);
 #endif
+#if defined(CLOUD_PREVIEW_HAS_LAYER_HEIGHT_FOOTPRINT)
+      const float heightFootprint = cloudHeightFootprint(Clouds, position, direction, cellSpan, pixelFootprint, nearest / 2);
+#else
       const float heightFootprint = cloudHeightFootprint(Clouds, position, direction, cellSpan, pixelFootprint);
+#endif
       const float extinction = Projection == 1
         ? cloudExtinction(Clouds, position, weather, base, detail, footprint, heightFootprint)
         : cloudViewExtinction(Clouds, position, distance, weather, base, detail, footprint, heightFootprint);

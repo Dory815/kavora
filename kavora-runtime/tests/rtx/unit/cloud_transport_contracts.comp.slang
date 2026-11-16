@@ -182,3 +182,20 @@ void emptyLightSupports(uint index : SV_DispatchThreadID)
   }
   Results[index] = float4(count, maximumProfileHeight, empty.x, empty.y);
 }
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void heightFootprints(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  const float4 input = Inputs[index];
+  const float4 direction = Directions[index];
+  Results[index] = float4(
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, direction.w, 0u),
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, direction.w, 1u),
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, 0, 1u),
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, direction.w));
+}

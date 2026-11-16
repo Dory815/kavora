@@ -569,6 +569,114 @@ def check_high_column_transmission(probe, textures):
           f"maximum Beer-law error {np.max(np.abs(actual - expected)):.7f}")
 
 
+def high_column_reference(origin, direction, base, thickness, extinction, distance, radius):
+    """Integrate a constant horizontal field between spherical profile knots."""
+    origin = np.asarray(origin, np.float64)
+    direction = np.asarray(direction, np.float64)
+    point = origin + [0, radius, 0]
+    projection = point @ direction
+    boundaries = [0.0, distance]
+    for altitude in (base, base + 0.15 * thickness, base + 0.65 * thickness, base + thickness):
+        height = origin[1]
+        squared = origin[0] ** 2 + origin[2] ** 2 + (height - altitude) * (2 * radius + height + altitude)
+        discriminant = projection * projection - squared
+        if discriminant >= 0:
+            root = np.sqrt(discriminant)
+            boundaries.extend(t for t in (-projection - root, -projection + root) if 0 < t < distance)
+    boundaries = sorted(set(boundaries))
+    nodes, weights = np.polynomial.legendre.leggauss(48)
+    depth = 0.0
+    for begin, end in zip(boundaries[:-1], boundaries[1:]):
+        middle = 0.5 * (begin + end)
+        altitude = np.linalg.norm(point + direction * middle) - radius
+        if not base < altitude < base + thickness:
+            continue
+        samples = middle + 0.5 * (end - begin) * nodes
+        positions = point[None, :] + samples[:, None] * direction
+        height = (np.linalg.norm(positions, axis=1) - radius - base) / thickness
+        bottom = np.clip(height / 0.15, 0, 1)
+        top = np.clip((height - 0.65) / 0.35, 0, 1)
+        profile = bottom * bottom * (3 - 2 * bottom) * (1 - top * top * (3 - 2 * top))
+        depth += 0.5 * (end - begin) * np.dot(weights, profile) * extinction
+    return depth
+
+
+def check_high_filtered_columns(probe, textures):
+    weather = probe.device.create_texture(type=spy.TextureType.texture_2d, format=spy.Format.rgba32_float,
+                                          width=1, height=1, mip_count=1, usage=spy.TextureUsage.shader_resource)
+    weather.copy_from_numpy(np.ones((1, 1, 4), dtype=np.float32))
+    sampler = probe.device.create_sampler(address_u=spy.TextureAddressingMode.wrap,
+                                          address_v=spy.TextureAddressingMode.wrap)
+    constant = {**textures, "Weather": weather.create_view(sampler=sampler)}
+    radius = 6370937.0
+    maximum_error = 0.0
+    maximum_angular_delta = 0.0
+    cases = 0
+    for thickness in (50.0, 200.0):
+        base = 6400.0 - 0.5 * thickness
+        extinction = 0.005 / (0.75 * thickness)
+        origins, directions = [], []
+        for height, angles in ((139.0, (90, 45, 20, 10, 5, 0)),
+                                (6400.0, (-0.4, -0.001, 0, 0.001, 0.4, 90)), (7000.0, (-90,))):
+            for angle in np.radians(angles):
+                origins.append([0, height, 0, 1e6])
+                directions.append([np.cos(angle), np.sin(angle), 0, 0])
+        origins = np.asarray(origins, dtype=np.float32)
+        directions = np.asarray(directions, dtype=np.float32)
+        expected = np.array([high_column_reference(origin[:3], direction[:3], base, thickness,
+                                                   extinction, origin[3], radius)
+                             for origin, direction in zip(origins, directions)])
+        # Keep the numerical rays before distance fading, including spherical
+        # horizontal intersections beyond the ordinary game view range.
+        clouds = cloud_parameters(extinction=0.0, highExtinction=extinction, highBaseHeight=base,
+                                  highThickness=thickness, highCoverage=1.0, highMaxDistance=1e6,
+                                  maxDistance=1e6, planetRadius=radius)
+        for steps in (64, 96, 160, 320):
+            for footprint in (0.0, 0.00191831747, 0.00383663494, 0.01):
+                parameters = clouds | {"steps": steps, "viewAngularFootprint": footprint}
+                transmission = probe.run("viewTransmission", origins, directions, parameters, constant)[:, 0]
+                assert np.isfinite(transmission).all() and np.all((0 < transmission) & (transmission <= 1))
+                depth = -np.log(transmission.astype(np.float64))
+                np.testing.assert_allclose(depth, expected, atol=2e-5, rtol=0.005,
+                                           err_msg="high-layer filtering must preserve its spherical column")
+                maximum_error = max(maximum_error, np.max(np.abs(depth - expected) / expected))
+                cases += len(origins)
+        tangent = -np.arccos((radius + base) / (radius + 6400.0))
+        angles = np.array([center + offset for center in (0.0, tangent)
+                           for offset in np.radians([-0.001, -0.0001, 0, 0.0001, 0.001])])
+        rays = np.tile([0, 6400, 0, 1e6], (len(angles), 1))
+        sunlight = np.column_stack([np.cos(angles), np.sin(angles), np.zeros((len(angles), 2))])
+        visibility = probe.run("visibility", rays, sunlight, clouds, constant)[:, 0].reshape(2, -1)
+        assert np.isfinite(visibility).all() and np.all((0 <= visibility) & (visibility <= 1))
+        assert np.any((visibility > 0.01) & (visibility < 0.99))
+        delta = np.max(np.abs(np.diff(visibility, axis=1)))
+        assert delta < 0.01, ("high-layer visibility jumps at a small solar-angle change", delta)
+        maximum_angular_delta = max(maximum_angular_delta, delta)
+    print(f"PASS filtered high-layer columns: {cases} thickness/angle/step/footprint cases, "
+          f"maximum relative depth error {maximum_error:.6f}, solar-angle delta {maximum_angular_delta:.6f}")
+
+
+def check_layer_height_footprints(probe):
+    for up in ([0, 1, 0], [0, 0, 1]):
+        clouds = cloud_parameters(up=up)
+        vertical = np.asarray(up)
+        origins, directions, expected = [], [], []
+        for height in (0.0, 6400.0):
+            for cosine, sine in ((1.0, 0.0), (0.0, 1.0), (0.6, 0.8)):
+                direction = cosine * vertical + [sine, 0, 0]
+                for span in (8.0, 50.0, 500.0):
+                    radial = cosine * span + sine * sine * span * span / (4 * (clouds["planetRadius"] + height))
+                    for pixel in (0.0, 5.0, 1000.0):
+                        origins.append([*(height * vertical), span])
+                        directions.append([*direction, pixel])
+                        expected.append([max(radial, pixel * sine), radial])
+        actual = probe.run("heightFootprints", origins, directions, clouds)
+        np.testing.assert_allclose(actual[:, :2], expected, atol=2e-5, rtol=1e-6)
+        np.testing.assert_array_equal(actual[:, 0], actual[:, 3], err_msg="default footprint must retain low-layer semantics")
+        np.testing.assert_array_equal(actual[:, 1], actual[:, 2], err_msg="high height integration must ignore the pixel cone")
+    print("PASS layer height footprints: low/default pixel filtering unchanged, high radial support, Y-up and Z-up")
+
+
 def check_tangent_visibility(probe, textures):
     maximum_change = 0.0
     offsets = np.radians([-0.001, -0.0001, 0.0, 0.0001, 0.001])
@@ -611,6 +719,8 @@ def main():
     check_shape_phase(probe, textures)
     check_high_density(probe, textures, args.dump)
     check_high_column_transmission(probe, textures)
+    check_high_filtered_columns(probe, textures)
+    check_layer_height_footprints(probe)
     check_visibility(probe, textures, args.dump)
     check_light_support(probe, textures)
     check_empty_light_support(probe)

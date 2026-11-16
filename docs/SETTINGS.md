@@ -185,7 +185,7 @@ current cloud defaults, reset the Clouds category and choose **Apply**, leaving
 other categories alone. Restart if you had changed native effect controls, as
 described under [Resetting](#resetting). This also restores the low-layer
 608-meter height offset, 0.03-per-meter extinction and 96-kilometer range, and
-the high layer's 6300-meter base, 200-meter thickness and 0.006-per-meter extinction.
+the high layer's 6375-meter base, 50-meter thickness and 0.024-per-meter extinction.
 
 **Weather & Volumes → Volumetric Fog** has separate Overworld, Nether, and End folders.
 Each dimension exposes transmittance, optical distance,
