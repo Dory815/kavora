@@ -183,3 +183,26 @@ capture is available from this GitHub-only editing session; previews must state
 their renderer, inputs, resolution and whether full game presentation is used.
 The separate fix/cloud-shape-and-cost validation artifact is not evidence for
 this branch and is not treated as a pass/fail result here.
+
+
+## Reproducible preview matrix
+
+The branch includes `kavora-runtime/tests/rtx/unit/render_cloud_morphology_matrix.py`.
+From the repository root, run it in the runtime's Python environment:
+
+```powershell
+python kavora-runtime/tests/rtx/unit/render_cloud_morphology_matrix.py --output .scratch/cloud-morphology
+```
+
+It reuses the production shader preview path and texture cache while rendering
+five fixed low-cloud cases: broken fair-weather cumulus, cloud-rich fair
+weather, mixed development, a stratiform deck, and a rain/thunder transition.
+Each case uses the same five views, camera, sun, transport budget and exposure.
+If a matching atmosphere fixture is available, pass
+`--atmosphere-fixture PATH` to include the production air integrator. Without
+that fixture the preview uses its documented diagnostic sky. The outputs are
+offline production-shader previews, not full Minecraft captures.
+
+The numerical transport test also writes `cloud-weather-field.npz` and
+`cloud-density.npz` when invoked with `--dump DIRECTORY`. These retain the
+generated weather field and density maps for quantitative inspection.
