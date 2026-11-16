@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import struct
+import time
 
 import numpy as np
 import slangpy as spy
@@ -291,6 +292,7 @@ def cloud_textures(device, dump=None):
                                        depth=size if dimensions == 3 else 1,
                                        mip_count=int(np.log2(size)) + 1, usage=usage)
         view = texture.create_view(mip=0, mip_count=1)
+        weather_started = time.perf_counter() if name == "Weather" else None
         if dimensions == 3:
             noise[name].dispatch(thread_count=[size, size, size], vars={"CloudNoise": view, "cb": {"detail": name == "Detail"}})
         else:
@@ -299,6 +301,8 @@ def cloud_textures(device, dump=None):
                 bindings["CloudCirrusAtlas"] = atlas.descriptor_handle_combined
             weather.dispatch(thread_count=[size, size, 1], vars=bindings)
         data = texture.to_numpy()
+        if weather_started is not None:
+            print(f"Cloud weather generation and readback: {time.perf_counter() - weather_started:.4f}s")
         assert np.isfinite(data).all(), (name, "generated nonfinite noise")
         assert np.ptp(data[..., 0]) > (0.12 if floating else 32), (name, "degenerate generated noise")
         if name == "Weather":
