@@ -323,3 +323,40 @@ not mean a uniformly filled noise texture. Stratocumulus can occupy most of
 the sky while retaining irregular holes, rounded rolls and banding; cumulus
 can coexist in front of or below broad sheets; congestus should be a relatively
 rare vertical accent rather than the default shape everywhere.
+
+
+## Historical production-preview baseline (not validation of this branch)
+
+A separate, earlier cloud/atmosphere branch completed a 24-view perspective
+matrix plus two 32 km top-down diagnostics using the production cloud and air
+Slang shaders on software Vulkan. Its source tree was
+`038e1d7618c8bee9a8bc0b85f8449ce20c2185b3` (branch
+`fix/low-cloud-lighting`); it is an ancestor of this redesign's starting
+point, but its preview results are not a pass for the current changes.
+
+The useful findings are:
+
+- Fair-weather cumulus in side-lit, antisolar and zenith views had readable
+  white bodies, grey folds, irregular openings and acceptable distribution.
+- The 32 km low-cloud top-down distribution was broadly acceptable, although
+  local shapes remained somewhat similar.
+- The horizon view still showed a dense, nearly continuous horizontal cloud
+  band. The top-down and horizon views therefore expose different failure
+  modes; one cannot replace the other.
+- Strong sunset orange/red illumination did not match the natural references.
+  This is a lighting/atmosphere issue as well as a cloud-shape issue.
+- High-cloud fibre shapes were generally acceptable, but dense heads were too
+  soft in several views.
+
+The complete historical side-by-side review and source provenance are retained
+in the Library artifact `kavora-cloud-natural-photo-review.html`. Its renders
+exclude Minecraft terrain, sun/moon disks, game fog and temporal
+reconstruction, so they are production-shader offline previews, not in-game
+captures.
+
+For this redesign, the horizon band is a specific regression target. The
+family-mask mip variance reconstruction is intended to keep distant cloud
+openings from averaging into a continuous deck. It must be verified against
+the same horizon and top-down views, while retaining the accepted cloud-rich
+side-lit and zenith morphology. Do not solve the band by simply fading all
+distant clouds or by making the whole sky sparse.
