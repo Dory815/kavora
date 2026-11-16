@@ -324,6 +324,22 @@ float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 
     footprint, layer, heightFootprint) * span;
 }
 
+[ForceInline]
+public uint2 cloudLowLightEmptySupports(CloudArgs args, float3 origin, float3 direction, float end, float supportLength)
+{
+  const float3 radialOrigin = origin - args.groundReference + args.planetRadius * args.up;
+  const float minimumRadius = length(radialOrigin) - args.lightMaxDistance - 2.0f * supportLength;
+  if (supportLength >= minimumRadius)
+  {
+    return 0;
+  }
+  // A full support inside this smaller sphere is below every filtered cloud profile.
+  // The radial footprint is at most supportLength while supportLength < 2*radius.
+  const float2 inner = cloudSphereRoots(args, origin, direction, args.baseHeight - supportLength);
+  return uint2(ceil(max(0.0f, inner.x) / supportLength),
+    floor(max(0.0f, min(inner.y, end)) / supportLength));
+}
+
 float2 cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float2 interval,
   float localRange, float opticalDepthLimit, Sampler2D<float4> weatherSampler,
   Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
@@ -335,9 +351,19 @@ float2 cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction
   // Each fixed Gaussian node represents one half-cell. Only its integration
   // weight is clipped by the shell, finite ray length or local-domain boundary.
   // The density sample and its footprint stay fixed when any of those move.
+  const uint2 emptyTaps = opticalDepthLimit > 0
+    ? cloudLowLightEmptySupports(args, origin, direction, interval.y, supportLength) : uint2(0);
   uint tap = uint(max(0.0f, floor(interval.x / supportLength)));
   for (; tap < sampleBudget && float(tap) * supportLength < interval.y; tap++)
   {
+    if (tap >= emptyTaps.x && tap < emptyTaps.y)
+    {
+      tap = emptyTaps.y;
+      if (tap >= sampleBudget || float(tap) * supportLength >= interval.y)
+      {
+        break;
+      }
+    }
     const float supportBegin = float(tap) * supportLength;
     const float begin = max(interval.x, supportBegin);
     const float end = min(interval.y, supportBegin + supportLength);

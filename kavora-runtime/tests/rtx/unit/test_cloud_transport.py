@@ -455,6 +455,47 @@ def check_light_support(probe, textures):
           "bounded full-range tiny shapes")
 
 
+def check_empty_light_support(probe):
+    base = cloud_parameters(baseHeight=800.0, extinction=0.03, maxDistance=96000.0)
+    configurations = (("default", {}), ("tiny-scale", {"shapeScale": 64.0}),
+                      ("low-quality", {"lightSteps": 4}), ("fine-reference", {"lightSteps": 512}),
+                      ("small-planet-fallback", {"planetRadius": 10000.0}),
+                      ("translated", {"groundReference": [10000.0, 20.0, -5000.0]}),
+                      ("z-up", {"up": [0, 0, 1]}))
+    rays_checked = 0
+    supports_checked = 0
+    for name, changes in configurations:
+        origins, directions = [], []
+        positions = ((8043, 1240), (0, 0), (-12000, 9000)) if name == "default" else ((0, 0),)
+        angles = (-2, -0.4, 0, 2) if name == "fine-reference" else (-15, -2, -0.4, -0.01, 0, 0.01, 0.4, 2, 40)
+        for x, z in positions:
+            for height in (799, 800, 816, 900, 1200, 2299):
+                for angle in np.radians(angles):
+                    origin = [x, height, z]
+                    direction = [np.cos(angle), np.sin(angle), 0]
+                    if name == "z-up":
+                        origin = [x, z, height]
+                        direction = [direction[0], 0, direction[1]]
+                    for endpoint in (1024.0, 60000.0):
+                        origins.append([*origin, endpoint])
+                        directions.append([*direction, 0])
+        values = probe.run("emptyLightSupports", origins, directions, base | changes)
+        assert np.isfinite(values).all()
+        active = values[:, 0] > 0
+        # The shader checks every skipped fixed node through production altitude
+        # and height-footprint functions, not an assumed point-density boundary.
+        assert np.all(values[active, 1] <= 0), ("skipped support reaches nonzero cloud profile", name)
+        np.testing.assert_array_equal(values[:, 0], np.maximum(values[:, 3] - values[:, 2], 0))
+        if name == "small-planet-fallback":
+            assert not np.any(active), "an invalid radial-footprint bound must disable skipping"
+        else:
+            assert np.any(active), ("empty-shell test must exercise skipped supports", name)
+        rays_checked += len(origins)
+        supports_checked += int(values[:, 0].sum())
+    print(f"PASS conservative empty-shell skipping: {rays_checked} rays, "
+          f"{supports_checked} skipped supports with exactly zero profile support")
+
+
 def check_high_density(probe, textures, dump):
     axis = np.linspace(-8192, 8192, 128, endpoint=False, dtype=np.float32)
     x, z = np.meshgrid(axis, axis)
@@ -572,6 +613,7 @@ def main():
     check_high_column_transmission(probe, textures)
     check_visibility(probe, textures, args.dump)
     check_light_support(probe, textures)
+    check_empty_light_support(probe)
     check_tangent_visibility(probe, textures)
 
 

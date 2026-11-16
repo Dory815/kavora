@@ -150,3 +150,35 @@ void viewTransmission(uint index : SV_DispatchThreadID)
     Sampler2D<float4>(Weather), Sampler3D<float4>(Base), Sampler3D<float4>(Detail));
   Results[index] = float4(transmission, cloudSampleSpacing(Clouds, direction, 1), 0, 0);
 }
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void emptyLightSupports(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  const float4 ray = Inputs[index];
+  const float3 direction = Directions[index].xyz;
+  CloudDensityArgs densityArgs = {};
+  densityArgs.groundReference = Clouds.groundReference;
+  densityArgs.up = Clouds.up;
+  densityArgs.planetRadius = Clouds.planetRadius;
+  const float span = cloudLowLightSupportLength(Clouds);
+  const uint2 empty = cloudLowLightEmptySupports(Clouds, ray.xyz, direction, ray.w, span);
+  float maximumProfileHeight = -1e30f;
+  uint count = 0;
+  for (uint tap = empty.x; tap < empty.y; tap++)
+  {
+    const float offset = (tap & 1u) == 0 ? 0.21132486541f : 0.78867513459f;
+    const float distance = (float(tap >> 1) + offset) * (2.0f * span);
+    const float3 position = ray.xyz + direction * distance;
+    // This is the production density's first exact zero condition.
+    const float upper = cloudAltitude(densityArgs, position)
+      + 0.5f * cloudHeightFootprint(Clouds, position, direction, span) - Clouds.baseHeight;
+    maximumProfileHeight = max(maximumProfileHeight, upper);
+    count++;
+  }
+  Results[index] = float4(count, maximumProfileHeight, empty.x, empty.y);
+}

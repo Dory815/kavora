@@ -246,6 +246,15 @@ and the local illumination boundary clip only integration weights. Samples
 and their density and height footprints stay fixed. The local and exterior
 optical depths therefore partition the same positive sampled field.
 
+Low-light rays skip complete supports strictly below the cloud base. For a
+support of length `s`, the radial height footprint is at most `s` when
+`s <= 2 * radius`. A conservative radius bound guards this condition. The ray
+then intersects a smaller sphere at `baseHeight - s`; supports entirely inside
+that sphere satisfy the density's exact zero-profile condition with at least
+half a support of radial margin. Skipping advances the existing support index
+without moving nodes, filtering or weights. The boundary supports remain
+evaluated, and an invalid radius bound disables the optimization.
+
 Ordinary density lookups are filtered to at most one base texel across the
 light ray: a cell-sized isotropic mip would mix neighboring off-ray clouds
 into otherwise clear sunlight paths. Height-profile integration uses each
@@ -373,6 +382,10 @@ column closure; near-horizontal light can require the full range even through
 occupied clouds. The 1875-query bound must not be interpreted as an empty-ray
 case alone. An out-of-column evaluation returns after its weather lookup;
 occupied samples also read base and detail textures.
+The conservative inner-shell skip removes those queries when their entire
+filtered support is below the base. It adds an analytic sphere intersection
+and index-range check. Rays without that clear interval retain the full cost;
+the worst-case query bounds are unchanged.
 Preparing a column with nonzero cumulus coverage adds four integer hashes and
 quintic interpolation for its shape phase, with no additional texture lookup.
 The vertical lighting samples reuse that prepared phase. Empty coverage skips
@@ -442,7 +455,9 @@ coordinates, phase bounds, continuity and derivative bounds at the phase
 lattice boundaries, and independence from coverage and weather controls.
 Fixed light-support checks exercise clipped-prefix linearity, local/exterior
 partition invariance, unchanged default quality grids and full-range traces
-at the smallest supported shape scales.
+at the smallest supported shape scales. Empty-support checks evaluate the
+production profile bound at every skipped node, including below-horizon rays,
+translated origins, Z-up and the radius-bound fallback.
 The scattering test checks sky quadrature normalization and angular moments
 in several up frames. It compares the production boundary and beam solutions
 with independent integrals, exercises reflective-terrain, finite-domain,
