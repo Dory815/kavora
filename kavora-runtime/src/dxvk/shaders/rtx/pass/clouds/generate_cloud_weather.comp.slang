@@ -48,11 +48,9 @@ void main(uint2 id : SV_DispatchThreadID)
   const float type = saturate(0.5f + 0.9f * typeNoise + 0.18f * regional);
   const float stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type);
 
-  // Mix two different occupancy patterns instead of forcing all low clouds
-  // through one universal coverage distribution.
-  const float familyCoverage = lerp(cumulusCoverage, deckCoverage, stratiformBlend);
-  const float coverage = regionalAmount * familyCoverage;
-
+  // Preserve both family masks through the weather-map mip chain. The density
+  // evaluator blends them after filtering, using the local cloud-family type.
   const float highDensity = cloudCirrusHorizontalDensity(uv, CloudCirrusAtlas);
-  CloudWeather[id] = float4(coverage, coverage * coverage, type, highDensity);
+  CloudWeather[id] = float4(regionalAmount * cumulusCoverage,
+    regionalAmount * deckCoverage, type, highDensity);
 }
