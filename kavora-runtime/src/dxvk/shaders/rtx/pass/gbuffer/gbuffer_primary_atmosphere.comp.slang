@@ -22,6 +22,7 @@ SamplerCube<float3> SkyProbe;
 #include "rtx/pass/gbuffer/primary_intersection.slangh"
 #include "rtx/pass/gbuffer/primary_atmosphere.slangh"
 #include "rtx/algorithm/environment_radiance.slangh"
+#include "rtx/algorithm/scene_cloud_lighting.slangh"
 #include "rtx/algorithm/view_distance.slangh"
 
 #include "rtx/pass/gbuffer/primary_atmosphere_cache.slangh"
@@ -44,7 +45,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   {
     storePrimaryAtmosphere(pixel, integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
       VolumeFilteredRadianceCoCg,
-      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, 0, distance, float3(0), sceneAirTables(cb.volumeArgs.air, LinearWrapSampler)));
+      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, sceneCloudLightingCache(), ray, 0, distance, float3(0), sceneAirTables(cb.volumeArgs.air, LinearWrapSampler)));
     return;
   }
   const float3 ambient = ray.hasCloud
@@ -58,7 +59,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       min(distance, cacheEnd), checkpoint);
     const AtmosphereSegment tail = distance > cacheEnd
       ? integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
-          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, cacheEnd, distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler)) : emptyAtmosphereSegment();
+          CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, sceneCloudLightingCache(), ray, cacheEnd, distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler)) : emptyAtmosphereSegment();
     storePrimaryAtmosphere(pixel, composeAtmosphereSegments(prefix, tail));
     return;
   }
@@ -67,6 +68,6 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const AtmosphereSegment prefix = interpolateAtmosphereCheckpoints(pixel, checkpoint);
   const AtmosphereSegment tail = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
     VolumeFilteredRadianceCoCg,
-    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, begin, distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
+    CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, sceneCloudLightingCache(), ray, begin, distance, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
   storePrimaryAtmosphere(pixel, composeAtmosphereSegments(prefix, tail));
 }

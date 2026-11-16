@@ -14,7 +14,8 @@ CLOUD_PARAMETER struct CloudLight {
   CLOUD_PARAMETER uint hasRadianceProfile;
   // Surface irradiance when a profile exists; otherwise uniform illumination.
   CLOUD_PARAMETER vec3 irradiance;
-  CLOUD_PARAMETER float padding1;
+  // Radians; small celestial disks share the central-axis far cloud shadow.
+  CLOUD_PARAMETER float angularRadius;
   CLOUD_PARAMETER vec4 radianceProfile[4];
 };
 

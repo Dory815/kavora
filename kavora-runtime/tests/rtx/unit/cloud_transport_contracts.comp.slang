@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 GBwater
 // SPDX-License-Identifier: MIT
 import "rtx/algorithm/clouds.slang";
+import "rtx/algorithm/cloud_lighting_cache.slang";
 import "rtx/pass/cloud_parameters.slang";
 import "rtx/pass/clouds/cloud_sky_transport.slang";
 import "rtx/utility/cloud_density.slang";
@@ -12,7 +13,15 @@ RWStructuredBuffer<float4> Results;
 Sampler2D<float4>.Handle Weather;
 Sampler3D<float4>.Handle Base;
 Sampler3D<float4>.Handle Detail;
+Sampler3D<float>.Handle CloudSunDepth;
+Sampler3D<float>.Handle CloudMoonDepth;
+Sampler3D<float2>.Handle CloudColumnDepth;
 uint Count;
+
+CloudLightingCache lightingCache()
+{
+  return { Sampler3D<float>(CloudSunDepth), Sampler3D<float>(CloudMoonDepth), Sampler3D<float2>(CloudColumnDepth) };
+}
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
@@ -117,7 +126,7 @@ void visibility(uint index : SV_DispatchThreadID)
   }
   const float4 origin = Inputs[index];
   const float transmission = cloudVisibilityTransmittance(Clouds, origin.xyz, Directions[index].xyz, origin.w,
-    Sampler2D<float4>(Weather), Sampler3D<float4>(Base), Sampler3D<float4>(Detail));
+    Sampler2D<float4>(Weather), Sampler3D<float4>(Base), Sampler3D<float4>(Detail), lightingCache());
   Results[index] = float4(transmission, 0, 0, 0);
 }
 
@@ -131,9 +140,9 @@ void lightDepthParts(uint index : SV_DispatchThreadID)
   }
   const float4 ray = Inputs[index];
   const float4 direction = Directions[index];
-  const float2 depth = cloudLightOpticalDepth(Clouds, ray.xyz, direction.xyz, ray.w,
-    Sampler2D<float4>(Weather), Sampler3D<float4>(Base), Sampler3D<float4>(Detail), direction.w);
-  Results[index] = float4(depth, cloudLowLightSupportLength(Clouds), 0);
+  const CloudOpticalDepth depth = cloudLightOpticalDepth(Clouds, ray.xyz, direction.xyz, ray.w,
+    Sampler2D<float4>(Weather), Sampler3D<float4>(Base), Sampler3D<float4>(Detail), lightingCache(), direction.w);
+  Results[index] = float4(depth.local, depth.external, depth.total, max(4u, 2u * Clouds.lightSteps));
 }
 
 [shader("compute")]
@@ -151,9 +160,11 @@ void viewTransmission(uint index : SV_DispatchThreadID)
   Results[index] = float4(transmission, cloudSampleSpacing(Clouds, direction, 1), 0, 0);
 }
 
+// Independent fine-step reference: it reads the production field directly and
+// does not use the cached transport implementation or its quality parameter.
 [shader("compute")]
 [numthreads(64, 1, 1)]
-void emptyLightSupports(uint index : SV_DispatchThreadID)
+void visibilityReference(uint index : SV_DispatchThreadID)
 {
   if (index >= Count)
   {
@@ -161,26 +172,28 @@ void emptyLightSupports(uint index : SV_DispatchThreadID)
   }
   const float4 ray = Inputs[index];
   const float3 direction = Directions[index].xyz;
-  CloudDensityArgs densityArgs = {};
-  densityArgs.groundReference = Clouds.groundReference;
-  densityArgs.up = Clouds.up;
-  densityArgs.planetRadius = Clouds.planetRadius;
-  const float span = cloudLowLightSupportLength(Clouds);
-  const uint2 empty = cloudLowLightEmptySupports(Clouds, ray.xyz, direction, ray.w, span);
-  float maximumProfileHeight = -1e30f;
-  uint count = 0;
-  for (uint tap = empty.x; tap < empty.y; tap++)
+  float opticalDepth = 0;
+  for (uint segment = 0; segment < 2; segment++)
   {
-    const float offset = (tap & 1u) == 0 ? 0.21132486541f : 0.78867513459f;
-    const float distance = (float(tap >> 1) + offset) * (2.0f * span);
-    const float3 position = ray.xyz + direction * distance;
-    // This is the production density's first exact zero condition.
-    const float upper = cloudAltitude(densityArgs, position)
-      + 0.5f * cloudHeightFootprint(Clouds, position, direction, span) - Clouds.baseHeight;
-    maximumProfileHeight = max(maximumProfileHeight, upper);
-    count++;
+    const float2 interval = cloudLayerInterval(Clouds, ray.xyz, direction,
+      min(ray.w, Clouds.lightMaxDistance), 0, segment);
+    const uint cells = uint(ceil(max(0.0f, interval.y - interval.x) / 2.0f));
+    const float span = (interval.y - interval.x) / float(max(cells, 1u));
+    for (uint cell = 0; cell < cells; cell++)
+    {
+      const float distance = interval.x + (float(cell) + 0.5f) * span;
+      const float3 position = ray.xyz + direction * distance;
+      opticalDepth += span * cloudExtinction(Clouds, position, Sampler2D<float4>(Weather),
+        Sampler3D<float4>(Base), Sampler3D<float4>(Detail), span,
+        cloudHeightFootprint(Clouds, position, direction, span));
+      if (opticalDepth > 20)
+      {
+        Results[index] = float4(exp(-opticalDepth), 0, 0, 0);
+        return;
+      }
+    }
   }
-  Results[index] = float4(count, maximumProfileHeight, empty.x, empty.y);
+  Results[index] = float4(exp(-opticalDepth), 0, 0, 0);
 }
 
 [shader("compute")]

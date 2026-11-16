@@ -92,7 +92,8 @@ def main():
     np.testing.assert_array_equal(values[:, 2], 0)
     assert np.isfinite(values).all()
     assert np.all(values[:, 3] <= np.ceil((MAX_DISTANCE - begin) / grids[:, 1]) + 1)
-    print(f"PASS adaptive cloud ray grid: {len(grids)} full/prefix/tail integrations through 96 km")
+    assert np.all(values[:, 3] <= 160)
+    print(f"PASS bounded cloud ray grid: {len(grids)} full/prefix/tail integrations through 96 km, at most 160 cells")
 
 
 if __name__ == "__main__":

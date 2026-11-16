@@ -1,0 +1,10 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 Kavora contributors
+// SPDX-License-Identifier: MIT
+#pragma once
+
+import "rtx/algorithm/cloud_lighting_cache.slang";
+
+CloudLightingCache sceneCloudLightingCache()
+{
+  return { CloudSunDepthSampler, CloudMoonDepthSampler, CloudColumnDepthSampler };
+}

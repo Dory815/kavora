@@ -5,6 +5,7 @@ import "rtx/algorithm/fog_radiance_cache.slang";
 import "rtx/algorithm/fog_froxel_sampling.slang";
 import "rtx/algorithm/fog_medium.slang";
 import "rtx/algorithm/clouds.slang";
+import "rtx/algorithm/cloud_lighting_cache.slang";
 import "rtx/algorithm/air_medium.slang";
 import "rtx/pass/volume_parameters.slang";
 
@@ -217,7 +218,7 @@ public AtmosphereRay createAtmosphereRay<Fog : IAtmosphereFog>(VolumeArgs args,
 // Integrates a clipped range without moving the ray origin or its medium boundaries.
 public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeArgs args,
   Sampler3D<float4> radianceY, Sampler3D<float2> radianceCoCg,
-  Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail,
+  Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cloudLighting,
   AtmosphereRay ray, float rangeBegin, float rangeEnd, float3 cloudAmbient, AirTables airTables)
 {
   AtmosphereSegment result = emptyAtmosphereSegment();
@@ -262,7 +263,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
         cloudActive = true;
         cloudLayer = i / 2;
         cloudGrid = createCloudRayGrid(cloud, cloudSampleSpacing(args.clouds, direction, i / 2),
-          args.clouds.viewAngularFootprint);
+          args.clouds.viewAngularFootprint, args.clouds.steps);
       }
     }
     if (!fogActive && !cloudActive && !airActive)
@@ -338,7 +339,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
           cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spanAt(cloudCell),
             args.clouds.viewAngularFootprint * cloudSample, cloudLayer));
         cloudSource = cloudSigma > 0 ? cloudSigma * args.clouds.albedo
-          * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail) : 0;
+          * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail, cloudLighting) : 0;
         cloudSampleValid = true;
       }
       const float3 extinction = fogMedium.extinction + cloudSigma + airMedium.extinction + ray.mediumExtinction;
@@ -391,11 +392,11 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
 
 public AtmosphereSegment integrateAtmosphereSegment<Fog : IAtmosphereFog>(VolumeArgs args,
   Sampler3D<float4> radianceY, Sampler3D<float2> radianceCoCg,
-  Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail,
+  Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cloudLighting,
   float3 origin, float3 direction, float distance, float3 cloudAmbient, AirTables airTables,
   uint volumeHint = 0, float3 mediumExtinction = float3(0))
 {
   const AtmosphereRay ray = createAtmosphereRay<Fog>(args, origin, direction, volumeHint, mediumExtinction);
-  return integrateAtmosphereRange<Fog>(args, radianceY, radianceCoCg, weather, base, detail, ray, 0, distance,
+  return integrateAtmosphereRange<Fog>(args, radianceY, radianceCoCg, weather, base, detail, cloudLighting, ray, 0, distance,
     cloudAmbient, airTables);
 }

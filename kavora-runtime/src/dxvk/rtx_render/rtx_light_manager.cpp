@@ -947,6 +947,7 @@ namespace dxvk {
           }
           powers[index] = power;
           cloudLights[index].directionToLight = -distant.getDirection();
+          cloudLights[index].angularRadius = distant.getHalfAngle();
           const auto& profile = distant.getCloudRadianceProfile();
           // Profiles supply altitude-dependent cloud lighting. Keep the host's
           // surface illumination for the reflected terrain boundary below them.

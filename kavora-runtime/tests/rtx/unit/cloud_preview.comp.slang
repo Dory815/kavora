@@ -5,6 +5,9 @@ import "rtx/algorithm/cloud_sky.slang";
 import "rtx/pass/cloud_parameters.slang";
 import "rtx/pass/clouds/cloud_sky_transport.slang";
 import "rtx/utility/lat_long_projection.slang";
+#if defined(CLOUD_PREVIEW_HAS_LIGHTING_CACHE)
+import "rtx/algorithm/cloud_lighting_cache.slang";
+#endif
 #include "rtx/pass/tonemap/ACES.hlsl"
 
 #if defined(CLOUD_PREVIEW_AIR)
@@ -44,6 +47,17 @@ ConstantBuffer<CloudArgs> Clouds;
 Sampler2D<float4>.Handle Weather;
 Sampler3D<float4>.Handle Base;
 Sampler3D<float4>.Handle Detail;
+#if defined(CLOUD_PREVIEW_HAS_LIGHTING_CACHE)
+Sampler3D<float>.Handle CloudSunDepth;
+Sampler3D<float>.Handle CloudMoonDepth;
+Sampler3D<float2>.Handle CloudColumnDepth;
+
+CloudLightingCache previewCloudLighting()
+{
+  return { Sampler3D<float>(CloudSunDepth), Sampler3D<float>(CloudMoonDepth),
+    Sampler3D<float2>(CloudColumnDepth) };
+}
+#endif
 RWStructuredBuffer<float4> Results;
 uint2 Size;
 float3 Origin;
@@ -167,7 +181,11 @@ void main(uint2 pixel : SV_DispatchThreadID)
     const AirTables tables = { Texture2D<float4>(AirTransmission), Texture2D<float4>(AirScattering), SamplerState(AirSampler) };
     const AtmosphereRay ray = createAtmosphereRay<PreviewFog>(volume, origin, direction);
     const AtmosphereSegment result = integrateAtmosphereRange<PreviewFog>(volume, base, Sampler3D<float2>(FogChroma),
-      weather, base, detail, ray, 0, 3.402823466e+38f, ambient, tables);
+      weather, base, detail,
+#if defined(CLOUD_PREVIEW_HAS_LIGHTING_CACHE)
+      previewCloudLighting(),
+#endif
+      ray, 0, 3.402823466e+38f, ambient, tables);
     Results[pixel.y * Size.x + pixel.x] = float4(result.radiance, 1.0f - result.cloudMoments.y);
     TransmissionResults[pixel.y * Size.x + pixel.x] = float4(result.transmittance, 1);
     return;
@@ -197,7 +215,11 @@ void main(uint2 pixel : SV_DispatchThreadID)
     }
 #if defined(CLOUD_PREVIEW_HAS_ADAPTIVE_GRID)
     const CloudRayGrid grid = createCloudRayGrid(intervals[nearest], cloudSampleSpacing(Clouds, direction, nearest / 2),
-      Projection == 1 ? 0.0f : Clouds.viewAngularFootprint);
+      Projection == 1 ? 0.0f : Clouds.viewAngularFootprint
+#if defined(CLOUD_PREVIEW_HAS_LIGHTING_CACHE)
+      , Clouds.steps
+#endif
+      );
 #else
     const CloudRayGrid grid = { intervals[nearest], cloudSampleSpacing(Clouds, direction, nearest / 2) };
 #endif
@@ -231,7 +253,11 @@ void main(uint2 pixel : SV_DispatchThreadID)
       if (Radiance != 0 && extinction > 0)
       {
         accumulateCloudSkyStep(extinction, next - previous, Clouds.albedo,
-          cloudIncidentRadiance(Clouds, position, direction, ambient, weather, base, detail), radiance, transmission);
+          cloudIncidentRadiance(Clouds, position, direction, ambient, weather, base, detail
+#if defined(CLOUD_PREVIEW_HAS_LIGHTING_CACHE)
+            , previewCloudLighting()
+#endif
+            ), radiance, transmission);
       }
       previous = next;
     }

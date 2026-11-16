@@ -53,6 +53,15 @@ the size and every member offset of that block.
 `common_bindings.slangh` owns shared descriptor declarations. The G-buffer
 entries include the implementation for the stage they dispatch.
 
+`cloud_lighting_cache.slang` owns world-space optical-depth prefixes and their
+filtered lookup. Its inputs are cloud parameters, the shared density textures,
+and explicit output textures; it does not access scene globals. The cloud
+lighting entry selects one sun, moon or radial-column dispatch. The existing
+`RtxGlobalVolumetrics` owner allocates these images and prepares them before
+primary traversal. `scene_cloud_lighting.slangh` adapts each consumer's descriptor
+names to the module interface. Camera, PSR, visibility, sky and composite paths
+therefore share lighting data without creating another atmosphere integrator.
+
 | G-buffer stage | Owner | Inputs and outputs |
 | --- | --- | --- |
 | Primary resolve | [`gbuffer_primary.slangh`](pass/gbuffer/gbuffer_primary.slangh) | Camera ray and first intersection in. First-hit material, guides and PSR candidates out. |

@@ -4,11 +4,12 @@ module clouds;
 import "rtx/pass/cloud_parameters.slang";
 import "rtx/utility/cloud_density.slang";
 import "rtx/algorithm/cloud_scattering.slang";
+import "rtx/algorithm/cloud_lighting_cache.slang";
 
 static const float kFloatMax = 3.402823466e+38f;
 
 [ForceInline]
-CloudDensityArgs cloudDensityParameters(CloudArgs args)
+public CloudDensityArgs cloudDensityParameters(CloudArgs args)
 {
   CloudDensityArgs density;
   density.groundReference = args.groundReference;
@@ -53,7 +54,7 @@ float2 cloudSphereRoots(CloudArgs args, float3 origin, float3 direction, float a
 [ForceInline]
 bool cloudLayerEnabled(CloudArgs args, uint layer)
 {
-  return args.enable && (layer == 0 ? args.extinction > 0 && args.thickness > 0
+  return args.enable != 0 && (layer == 0 ? args.extinction > 0 && args.thickness > 0
     : args.highExtinction > 0 && args.highThickness > 0 && args.highCoverage > 0);
 }
 
@@ -197,23 +198,22 @@ public struct VolumeCloud
 public struct CloudRayGrid
 {
   public float2 interval;
-  public float spacing;
-  public uint linearCells;
-  public float farStart;
-  public float farScale;
-  public float logGrowth;
+  public uint cells;
+  public float linearLength;
+  public float quadraticLength;
 
   public uint cellAt(float distance)
   {
-    uint cell = distance < farStart || logGrowth == 0
-      ? uint(floor(max(0.0f, distance - interval.x) / spacing))
-      : linearCells + uint(floor(log(1.0f + max(0.0f, distance - farStart) / farScale) / logGrowth));
-    // Correct roundoff at a boundary using the same forward map as traversal.
+    const float offset = max(0.0f, distance - interval.x);
+    const float denominator = linearLength
+      + sqrt(linearLength * linearLength + 4.0f * quadraticLength * offset);
+    const float fraction = denominator > 0 ? 2.0f * offset / denominator : 0;
+    uint cell = min(uint(floor(fraction * float(cells))), max(cells, 1u) - 1);
     if (cell > 0 && distance < boundary(cell))
     {
       --cell;
     }
-    if (distance >= boundary(cell + 1) && boundary(cell + 1) < interval.y)
+    if (distance >= boundary(cell + 1) && cell + 1 < cells)
     {
       ++cell;
     }
@@ -222,10 +222,9 @@ public struct CloudRayGrid
 
   public float boundary(uint index)
   {
-    const float distance = index <= linearCells || logGrowth == 0
-      ? interval.x + float(index) * spacing
-      : farStart + farScale * (exp(logGrowth * float(index - linearCells)) - 1.0f);
-    return min(interval.y, distance);
+    const float fraction = min(float(index) / float(max(cells, 1u)), 1.0f);
+    return index >= cells ? interval.y
+      : interval.x + fraction * (linearLength + quadraticLength * fraction);
   }
 
   public float sampleAt(uint index)
@@ -239,20 +238,18 @@ public struct CloudRayGrid
   }
 };
 
-public CloudRayGrid createCloudRayGrid(float2 interval, float spacing, float angularFootprint)
+public CloudRayGrid createCloudRayGrid(float2 interval, float spacing, float angularFootprint, uint maxCells)
 {
   CloudRayGrid grid = {};
   grid.interval = interval;
-  grid.spacing = spacing;
-  if (angularFootprint > 1e-6f)
-  {
-    // Resolve the nearby field at its spatial budget. Beyond one pixel's
-    // footprint, geometric cells avoid tracing subpixel detail out to the horizon.
-    grid.linearCells = uint(max(0.0f, ceil((spacing / angularFootprint - interval.x) / spacing)));
-    grid.farStart = interval.x + float(grid.linearCells) * spacing;
-    grid.farScale = max(spacing, angularFootprint * grid.farStart) / angularFootprint;
-    grid.logGrowth = log(1.0f + angularFootprint);
-  }
+  const float length = max(0.0f, interval.y - interval.x);
+  const float nearSpacing = max(spacing, angularFootprint * max(interval.x, 0.0f));
+  grid.cells = min(max(1u, maxCells), max(1u, uint(ceil(length / max(nearSpacing, 1e-5f)))));
+  // Short rays keep their spatial resolution. Long rays spend the same finite
+  // budget with progressively wider, explicitly filtered cells. The full shell
+  // interval fixes every node before endpoint/prefix clipping takes place.
+  grid.linearLength = min(length, float(grid.cells) * nearSpacing);
+  grid.quadraticLength = length - grid.linearLength;
   return grid;
 }
 
@@ -270,10 +267,10 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
     {
       const CloudRayGrid grid = createCloudRayGrid(
         cloudLayerInterval(args, origin, direction, cloudLayerMaxDistance(args, layer), layer, segment),
-        cloudSampleSpacing(args, direction, layer), args.viewAngularFootprint);
+        cloudSampleSpacing(args, direction, layer), args.viewAngularFootprint, args.steps);
       const float end = min(grid.interval.y, distance);
       float previous = grid.interval.x;
-      for (uint cell = 0; previous < end; cell++)
+      for (uint cell = 0; cell < grid.cells && previous < end; cell++)
       {
         const float next = min(end, grid.boundary(cell + 1));
         const float sampleDistance = grid.sampleAt(cell);
@@ -297,16 +294,6 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
 }
 
 [ForceInline]
-public float cloudLowLightSupportLength(CloudArgs args)
-{
-  const uint quality = max(args.lightSteps, 1u);
-  const float nominalSupport = 0.5f * args.shapeScale / float(quality);
-  // Bound extreme user shape scales without moving the default grid. The
-  // budget depends on the full shadow range, never a clipped ray endpoint.
-  return max(nominalSupport, args.lightMaxDistance / float(256u * quality - 1u));
-}
-
-[ForceInline]
 float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 direction, float span,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
@@ -327,61 +314,118 @@ float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 
     footprint, layer, heightFootprint) * span;
 }
 
-[ForceInline]
-public uint2 cloudLowLightEmptySupports(CloudArgs args, float3 origin, float3 direction, float end, float supportLength)
+// Filtering transmitted energy makes effective optical depths non-additive.
+// Keep the complete beam separate from the finite-neighborhood MS inputs.
+public struct CloudOpticalDepth
 {
-  const float3 radialOrigin = origin - args.groundReference + args.planetRadius * args.up;
-  const float minimumRadius = length(radialOrigin) - args.lightMaxDistance - 2.0f * supportLength;
-  if (supportLength >= minimumRadius)
+  public float local;
+  public float external;
+  public float total;
+};
+
+// Detailed local correction has a finite, angle-independent budget. It replaces
+// the same interval in the shared prefix field instead of adding extinction twice.
+float2 cloudLowNearOpticalDepth(CloudArgs args, float3 origin, float3 direction, float2 interval,
+  float correctionRange, float localRange, Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail)
+{
+  const float nominalSupport = 0.5f * args.shapeScale / float(max(args.lightSteps, 1u));
+  const uint samples = min(max(2u, args.lightSteps),
+    max(2u, 2u * uint(ceil(correctionRange / (2.0f * nominalSupport)))));
+  const float support = correctionRange / float(samples);
+  float2 depth = 0;
+  uint tap = uint(max(0.0f, floor(interval.x / support)));
+  for (; tap < samples && float(tap) * support < interval.y; tap++)
   {
-    return 0;
+    const float begin = max(interval.x, float(tap) * support);
+    const float end = min(interval.y, float(tap + 1) * support);
+    const float offset = (tap & 1u) == 0 ? 0.21132486541f : 0.78867513459f;
+    const float distance = (float(tap >> 1) + offset) * (2.0f * support);
+    const float opticalDepth = cloudLightSampleDepth(args, 0, origin + direction * distance, direction,
+      support, weather, base, detail);
+    const float local = max(0.0f, min(end, localRange) - begin);
+    depth += opticalDepth * float2(local, end - begin - local) / support;
   }
-  // A full support inside this smaller sphere is below every filtered cloud profile.
-  // The radial footprint is at most supportLength while supportLength < 2*radius.
-  const float2 inner = cloudSphereRoots(args, origin, direction, args.baseHeight - supportLength);
-  return uint2(ceil(max(0.0f, inner.x) / supportLength),
-    floor(max(0.0f, min(inner.y, end)) / supportLength));
+  return depth;
 }
 
-float2 cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float2 interval,
-  float localRange, float opticalDepthLimit, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+// Uncached non-celestial rays and positions beyond the shared domain still have
+// a strict query budget. Gaussian cell footprints average unresolved density;
+// this path never falls back to a kilometre-scale sequence of 32 m queries.
+CloudOpticalDepth cloudLowLightFallback(CloudArgs args, float3 origin, float3 direction, float2 interval,
+  float localRange, float opticalDepthLimit, Sampler2D<float4> weather,
+  Sampler3D<float4> base, Sampler3D<float4> detail)
 {
-  const float supportLength = cloudLowLightSupportLength(args);
-  const float cellLength = 2.0f * supportLength;
-  const uint sampleBudget = 256u * max(args.lightSteps, 1u);
-  float2 opticalDepth = 0;
-  // Each fixed Gaussian node represents one half-cell. Only its integration
-  // weight is clipped by the shell, finite ray length or local-domain boundary.
-  // The density sample and its footprint stay fixed when any of those move.
-  const uint2 emptyTaps = opticalDepthLimit > 0
-    ? cloudLowLightEmptySupports(args, origin, direction, interval.y, supportLength) : uint2(0);
-  uint tap = uint(max(0.0f, floor(interval.x / supportLength)));
-  for (; tap < sampleBudget && float(tap) * supportLength < interval.y; tap++)
+  const uint samples = max(4u, 2u * args.lightSteps);
+  const float support = (interval.y - interval.x) / float(samples);
+  float2 depth = 0;
+  for (uint tap = 0; tap < samples; tap++)
   {
-    if (tap >= emptyTaps.x && tap < emptyTaps.y)
-    {
-      tap = emptyTaps.y;
-      if (tap >= sampleBudget || float(tap) * supportLength >= interval.y)
-      {
-        break;
-      }
-    }
-    const float supportBegin = float(tap) * supportLength;
-    const float begin = max(interval.x, supportBegin);
-    const float end = min(interval.y, supportBegin + supportLength);
+    const float begin = interval.x + float(tap) * support;
+    const float end = begin + support;
     const float offset = (tap & 1u) == 0 ? 0.21132486541f : 0.78867513459f;
-    const float distance = (float(tap >> 1) + offset) * cellLength;
-    const float depth = cloudLightSampleDepth(args, 0, origin + direction * distance, direction,
-      supportLength, weatherSampler, baseSampler, detailSampler);
-    const float localLength = max(0.0f, min(end, localRange) - begin);
-    opticalDepth += depth * float2(localLength, end - begin - localLength) / supportLength;
-    if (opticalDepth.x + opticalDepth.y >= opticalDepthLimit)
+    const float distance = interval.x + (float(tap >> 1) + offset) * (2.0f * support);
+    const float3 position = origin + direction * distance;
+    const float heightFootprint = cloudHeightFootprint(args, position, direction, support);
+    const float extinction = args.extinction * cloudDensity(cloudDensityParameters(args), position,
+      weather, base, detail, support, 0, heightFootprint);
+    const float local = max(0.0f, min(end, localRange) - begin);
+    depth += extinction * float2(local, end - begin - local);
+    if (depth.x + depth.y >= opticalDepthLimit)
     {
       break;
     }
   }
-  return opticalDepth;
+  return { depth.x, depth.y, depth.x + depth.y };
+}
+
+CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float3 cacheDirection,
+  float2 interval, float localRange, float opticalDepthLimit, Sampler2D<float4> weather,
+  Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight)
+{
+  if (cacheLight < 0)
+  {
+    return cloudLowLightFallback(args, origin, direction, interval, localRange, opticalDepthLimit,
+      weather, base, detail);
+  }
+  const CloudLightGrid grid = cloudLightGrid(args, uint(cacheLight));
+  const float3 cacheCell = grid.cellSize(cloudLightingResolution(args));
+  // A coarse table must not replace near-cloud detail within its own footprint,
+  // including the wider transverse cells at the default 96 km viewing range.
+  const float correctionRange = max(0.25f * args.shapeScale, max(cacheCell.x, max(cacheCell.y, cacheCell.z)));
+  const float correctionEnd = clamp(correctionRange, interval.x, interval.y);
+  const float split = clamp(localRange, correctionEnd, interval.y);
+  CloudOpticalDepth depth = {};
+  bool cached = cloudCachedLightDepth(args, cache, uint(cacheLight), origin + cacheDirection * correctionEnd,
+    origin + cacheDirection * interval.y, depth.total);
+  if (split <= correctionEnd)
+  {
+    depth.external = depth.total;
+  }
+  else if (split >= interval.y)
+  {
+    depth.local = depth.total;
+  }
+  else
+  {
+    cached = cached && cloudCachedLightDepth(args, cache, uint(cacheLight), origin + cacheDirection * correctionEnd,
+      origin + cacheDirection * split, depth.local)
+      && cloudCachedLightDepth(args, cache, uint(cacheLight), origin + cacheDirection * split,
+        origin + cacheDirection * interval.y, depth.external);
+  }
+  if (!cached)
+  {
+    return cloudLowLightFallback(args, origin, direction, interval, localRange, opticalDepthLimit,
+      weather, base, detail);
+  }
+  if (correctionEnd > interval.x)
+  {
+    const float2 fine = cloudLowNearOpticalDepth(args, origin, direction, float2(interval.x, correctionEnd),
+      correctionRange, localRange, weather, base, detail);
+    depth.local += fine.x;
+    depth.external += fine.y;
+    depth.total += fine.x + fine.y;
+  }
+  return depth;
 }
 
 float cloudHighLightCellDepth(CloudArgs args, float3 origin, float3 direction,
@@ -403,11 +447,15 @@ float cloudHighLightCellDepth(CloudArgs args, float3 origin, float3 direction,
 }
 
 // Components contain optical depth inside and outside the finite local domain.
-public float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float distance,
+public CloudOpticalDepth cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float distance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler,
-  float localRange = 0, float opticalDepthLimit = kFloatMax)
+  CloudLightingCache cache, float localRange = 0, float opticalDepthLimit = kFloatMax, int cacheLight = -1)
 {
-  float2 opticalDepth = 0;
+  CloudOpticalDepth opticalDepth = {};
+  const int light = cacheLight >= 0 ? cacheLight : cloudCachedLightIndex(args, direction);
+  const float3 cacheDirection = light >= 0
+    ? args.lights[light].directionToLight * (dot(direction, args.lights[light].directionToLight) >= 0 ? 1.0f : -1.0f)
+    : direction;
   const float altitude = cloudAltitude(cloudDensityParameters(args), origin);
   for (uint layer = 0; layer < 2; layer++)
   {
@@ -416,11 +464,12 @@ public float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direc
       continue;
     }
     const float top = cloudLayerTop(args, layer);
-    const float2 outer = cloudSphereRoots(args, origin, direction, top);
+    const float3 intervalDirection = layer == 0 ? cacheDirection : direction;
+    const float2 outer = cloudSphereRoots(args, origin, intervalDirection, top);
     float begin = max(0.0f, outer.x);
     if (altitude < cloudLayerBase(args, layer))
     {
-      begin = max(begin, cloudSphereRoots(args, origin, direction, cloudLayerBase(args, layer)).y);
+      begin = max(begin, cloudSphereRoots(args, origin, intervalDirection, cloudLayerBase(args, layer)).y);
     }
     // Sunlit high-cloud rays remain above the dense lower atmosphere.
     const float lightRange = layer == 0 ? args.lightMaxDistance
@@ -433,9 +482,13 @@ public float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direc
     }
     if (layer == 0)
     {
-      opticalDepth += cloudLowLightOpticalDepth(args, origin, direction, float2(begin, end), localRange,
-        opticalDepthLimit - opticalDepth.x - opticalDepth.y, weatherSampler, baseSampler, detailSampler);
-      if (opticalDepth.x + opticalDepth.y >= opticalDepthLimit)
+      const CloudOpticalDepth low = cloudLowLightOpticalDepth(args, origin, direction, cacheDirection,
+        float2(begin, end), localRange, opticalDepthLimit - opticalDepth.total,
+        weatherSampler, baseSampler, detailSampler, cache, light);
+      opticalDepth.local += low.local;
+      opticalDepth.external += low.external;
+      opticalDepth.total += low.total;
+      if (opticalDepth.total >= opticalDepthLimit)
       {
         return opticalDepth;
       }
@@ -454,15 +507,19 @@ public float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direc
       const float cellSpan = boundary - previous;
       if (localEnd > previous)
       {
-        opticalDepth.x += cloudHighLightCellDepth(args, origin, direction, previous, localEnd, cellSpan,
+        const float depth = cloudHighLightCellDepth(args, origin, direction, previous, localEnd, cellSpan,
           weatherSampler, baseSampler, detailSampler);
+        opticalDepth.local += depth;
+        opticalDepth.total += depth;
       }
       if (next > localEnd)
       {
-        opticalDepth.y += cloudHighLightCellDepth(args, origin, direction, localEnd, next, cellSpan,
+        const float depth = cloudHighLightCellDepth(args, origin, direction, localEnd, next, cellSpan,
           weatherSampler, baseSampler, detailSampler);
+        opticalDepth.external += depth;
+        opticalDepth.total += depth;
       }
-      if (opticalDepth.x + opticalDepth.y >= opticalDepthLimit)
+      if (opticalDepth.total >= opticalDepthLimit)
       {
         return opticalDepth;
       }
@@ -477,11 +534,12 @@ public float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direc
 }
 
 public float cloudVisibilityTransmittance(CloudArgs args, float3 origin, float3 direction, float distance,
-  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler,
+  CloudLightingCache cache)
 {
-  const float2 opticalDepth = cloudLightOpticalDepth(args, origin, direction, distance,
-    weatherSampler, baseSampler, detailSampler, 0, -log(kOpaqueCloudTransmittance));
-  return exp(-opticalDepth.x - opticalDepth.y);
+  const CloudOpticalDepth opticalDepth = cloudLightOpticalDepth(args, origin, direction, distance,
+    weatherSampler, baseSampler, detailSampler, cache, 0, -log(kOpaqueCloudTransmittance));
+  return exp(-opticalDepth.total);
 }
 
 float cloudPhase(float cosine, float g)
@@ -493,7 +551,7 @@ float cloudPhase(float cosine, float g)
 [ForceInline]
 public float3 cloudLightIrradiance(CloudLight light, float altitude)
 {
-  if (!light.hasRadianceProfile)
+  if (light.hasRadianceProfile == 0)
   {
     return light.irradiance;
   }
@@ -535,7 +593,7 @@ void cloudAccumulateColumnSegment(inout CloudLocalDepth depth, float2 interval, 
 }
 
 CloudLocalDepth cloudLocalOpticalDepth(CloudArgs args, float3 position, Sampler2D<float4> weatherSampler,
-  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler, CloudLightingCache cache)
 {
   const uint layer = cloudLayerAt(args, position);
   if (!cloudLayerEnabled(args, layer))
@@ -545,6 +603,21 @@ CloudLocalDepth cloudLocalOpticalDepth(CloudArgs args, float3 position, Sampler2
   const CloudDensityArgs densityArgs = cloudDensityParameters(args);
   const float altitude = cloudAltitude(densityArgs, position);
   const float3 radialUp = normalize(position - args.groundReference + args.planetRadius * args.up);
+  float2 columnCoordinate;
+  if (layer == 0 && cloudCachedColumnCoordinate(args, position, columnCoordinate))
+  {
+    CloudLocalDepth cached = {};
+    const float above = cloudCachedColumn(args, cache, columnCoordinate, altitude).x;
+    const float total = cloudCachedColumn(args, cache, columnCoordinate, args.baseHeight).x;
+    cached.vertical = float2(above, max(0.0f, total - above));
+    [unroll]
+    for (uint light = 0; light < 2; light++)
+    {
+      cached.lightProjection[light] = cloudCachedColumnProjection(args, cache, columnCoordinate, altitude,
+        dot(args.lights[light].directionToLight, radialUp), args.shapeScale);
+    }
+    return cached;
+  }
   const uint steps = layer == 0 ? max(2u, args.lightSteps) : 2u;
   const float3 coordinates = cloudCoordinates(densityArgs, position);
   CloudColumn column = {};
@@ -595,10 +668,11 @@ CloudLocalDepth cloudLocalOpticalDepth(CloudArgs args, float3 position, Sampler2
 }
 
 public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 direction, float3 ambientRadiance,
-  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler,
+  CloudLightingCache cache)
 {
   float3 source = 0.0f;
-  const CloudLocalDepth localDepth = cloudLocalOpticalDepth(args, position, weatherSampler, baseSampler, detailSampler);
+  const CloudLocalDepth localDepth = cloudLocalOpticalDepth(args, position, weatherSampler, baseSampler, detailSampler, cache);
   const float2 verticalDepth = localDepth.vertical;
   const float meanCosine = 0.85f * args.anisotropy - 0.15f * 0.25f;
   const float totalVerticalDepth = verticalDepth.x + verticalDepth.y;
@@ -619,9 +693,9 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
     // Stop only after external blockers extinguish the diffuse boundary too.
     // Stopping at the single-beam threshold alone would cut off deep-cloud MS.
     const float localRange = cloudLayerAt(args, position) == 0 ? args.shapeScale : 0;
-    const float2 directionalDepth = cloudLightOpticalDepth(args, position, light.directionToLight, kFloatMax,
-      weatherSampler, baseSampler, detailSampler, localRange, localBeamDepth - log(kOpaqueCloudTransmittance));
-    const float opticalDepth = directionalDepth.x + directionalDepth.y;
+    const CloudOpticalDepth directionalDepth = cloudLightOpticalDepth(args, position, light.directionToLight, kFloatMax,
+      weatherSampler, baseSampler, detailSampler, cache, localRange, localBeamDepth - log(kOpaqueCloudTransmittance), int(lightIndex));
+    const float opticalDepth = directionalDepth.total;
     const float cosine = dot(direction, light.directionToLight);
     const float phase = 0.85f * cloudPhase(cosine, args.anisotropy) + 0.15f * cloudPhase(cosine, -0.25f);
     const float singleScattering = phase * exp(-opticalDepth);
@@ -634,12 +708,13 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
       externalTransmission = exp(-externalDepth);
       multipleScattering *= externalTransmission;
     }
-    if (localRange > 0 && cloudFiniteSideWeight(localDepth.lightProjection[lightIndex], directionalDepth.x) > 0)
+    if (localRange > 0 && cloudFiniteSideWeight(localDepth.lightProjection[lightIndex], directionalDepth.local) > 0)
     {
       const float reverseDepth = cloudLightOpticalDepth(args, position, -light.directionToLight, localRange,
-        weatherSampler, baseSampler, detailSampler, localRange).x;
-      multipleScattering = cloudDiffuseDirectionalRadiance(verticalDepth, lightCosine, directionalDepth, reverseDepth,
-        localDepth.lightProjection[lightIndex]);
+        weatherSampler, baseSampler, detailSampler, cache, localRange, kFloatMax, int(lightIndex)).local;
+      multipleScattering = cloudDiffuseDirectionalRadiance(verticalDepth, lightCosine,
+        float2(directionalDepth.local, directionalDepth.external), reverseDepth,
+        localDepth.lightProjection[lightIndex], directionalDepth.total);
     }
     source += irradiance * (singleScattering + args.multipleScattering * args.albedo * multipleScattering);
     if (lightCosine > 0 && args.groundAlbedo > 0)

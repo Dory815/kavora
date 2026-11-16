@@ -345,6 +345,8 @@ def main():
                         help='Test-only generator seed override; production default if omitted')
     parser.add_argument('--top-span', type=float, default=32000)
     parser.add_argument('--radiance', action='store_true')
+    parser.add_argument('--warmup', action='store_true', help='Warm Vulkan pipelines before measured dispatches')
+    parser.add_argument('--repeat', type=int, default=1, help='Measured identical-frame dispatches per view and lighting volume')
     args = parser.parse_args()
     shaders = args.shader_root or args.repo / 'kavora-runtime/src/dxvk/shaders'
     if args.redisplay:
@@ -354,6 +356,8 @@ def main():
     args.tone_map = args.tone_map or 'clip'
     if args.width <= 0 or args.height <= 0 or not np.isfinite(args.top_span) or args.top_span <= 0:
         parser.error('width, height and top-span must be positive')
+    if args.repeat < 1:
+        parser.error('repeat must be positive')
     if not 0 < args.vfov < 180:
         parser.error('vfov must be between 0 and 180 degrees')
     if not np.isfinite(args.yaw):
@@ -403,6 +407,9 @@ def main():
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_DENSITY_FOOTPRINT'] = '1'
     if 'createCloudRayGrid' in (shaders / 'rtx/algorithm/clouds.slang').read_text():
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_ADAPTIVE_GRID'] = '1'
+    has_lighting_cache = (shaders / 'rtx/algorithm/cloud_lighting_cache.slang').exists()
+    if has_lighting_cache:
+        support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_LIGHTING_CACHE'] = '1'
     atmosphere = None
     if args.air and (not args.atmosphere_fixture or not args.radiance):
         parser.error('--air requires --atmosphere-fixture and --radiance')
@@ -449,7 +456,8 @@ def main():
         elevation = np.radians(args.sun_elevation) if args.sun_elevation is not None else np.arcsin(0.8)
         azimuth = np.radians(args.sun_azimuth if args.sun_azimuth is not None else 30.0)
         sun = [np.sin(azimuth) * np.cos(elevation), np.sin(elevation), np.cos(azimuth) * np.cos(elevation)]
-    light = {'directionToLight': sun, 'irradiance': args.sun_irradiance_rgb, 'hasRadianceProfile': 0}
+    light = {'directionToLight': sun, 'irradiance': args.sun_irradiance_rgb, 'hasRadianceProfile': 0,
+             'angularRadius': 0.0}
     if atmosphere:
         profile = np.array(atmosphere['javaLighting']['cloudIrradianceProfile'], np.float32).reshape(4, 4)
         if not np.isfinite(profile).all() or np.any(profile[:, :3] < 0) or np.any(np.diff(profile[:, 3]) <= 0):
@@ -464,12 +472,13 @@ def main():
         if np.shape(surface) != (3,) or not np.isfinite(surface).all() or min(surface) < 0:
             raise ValueError('surface irradiance must contain three finite nonnegative components')
         light = {'directionToLight': sun, 'irradiance': surface,
-                 'hasRadianceProfile': 1, 'radianceProfile': profile.tolist()}
+                 'hasRadianceProfile': 1, 'radianceProfile': profile.tolist(), 'angularRadius': 0.004625123}
     if args.lighting == 'ambient':
         light['irradiance'] = [0, 0, 0]
         if 'radianceProfile' in light:
             light['radianceProfile'] = [[0, 0, 0, row[3]] for row in light['radianceProfile']]
-    dark = {'directionToLight': [0, -1, 0], 'irradiance': [0, 0, 0], 'hasRadianceProfile': 0}
+    dark = {'directionToLight': [0, -1, 0], 'irradiance': [0, 0, 0], 'hasRadianceProfile': 0,
+            'angularRadius': 0.0}
     clouds = support.cloud_parameters(
         baseHeight=args.low_base, thickness=args.low_thickness, shapeScale=args.low_shape_scale,
         extinction=args.low_extinction, coverage=args.low_coverage, maxDistance=args.low_max_distance,
@@ -481,6 +490,9 @@ def main():
         steps=args.steps, lightSteps=args.light_steps, lights=[light, dark])
     if 'groundAlbedo' not in (shaders / 'rtx/pass/cloud_args.h').read_text():
         clouds.pop('groundAlbedo', None)
+    if 'angularRadius' not in (shaders / 'rtx/pass/cloud_args.h').read_text():
+        for source in clouds['lights']:
+            source.pop('angularRadius', None)
     if args.layers == 'high': clouds['extinction'] = 0
     if args.layers == 'low': clouds['highExtinction'] = 0
     air_bindings = {}
@@ -496,6 +508,12 @@ def main():
             'Atmosphere': atmosphere_view.descriptor_handle_combined,
             'AtmosphereVerticalScale': atmosphere['verticalScale'],
             'AmbientScale': float(args.lighting != 'direct')})
+    lighting_bindings = {}
+    if has_lighting_cache:
+        from cloud_lighting_preview import build_lighting_cache
+        lighting_bindings, lighting_resources, lighting_metadata = build_lighting_cache(
+            device, clouds, textures, shaders, args.radiance and any(view != 'top' for view in views),
+            args.warmup, args.repeat)
     args.output.mkdir(parents=True, exist_ok=True)
     manifest = {'label': args.label, 'shaderRoot': str(shaders), 'textureCache': cache,
                 'textureSources': texture_sources,
@@ -520,6 +538,14 @@ def main():
                                                      shaders / 'rtx/pass/cloud_parameters.slang',
                                                      shaders / 'rtx/utility/lat_long_projection.slang'})}}
     display_metadata(manifest, args, shaders)
+    if has_lighting_cache:
+        manifest['cloudLightingCache'] = lighting_metadata
+        for relative in ('rtx/pass/clouds/cloud_lighting_cache.h',
+                         'rtx/pass/clouds/generate_cloud_lighting.comp.slang'):
+            manifest['sourceHashes'][relative] = hashlib.sha256((shaders / relative).read_bytes()).hexdigest()
+        manifest['lightingHarnessHashes'] = {
+            name: hashlib.sha256((HERE / name).read_bytes()).hexdigest()
+            for name in ('cloud_lighting_preview.py', 'cloud_lighting_preview.comp.slang')}
     manifest['finiteDistanceAir'] = bool(args.air)
     if args.air:
         manifest['air'] = air
@@ -542,23 +568,32 @@ def main():
         yaw += args.yaw
         forward, right, up = basis(yaw, pitch)
         origin = [args.origin[0], 10000, args.origin[2]] if view == 'top' else args.origin
-        started = time.monotonic()
         illumination = {'Ambient': args.ambient_rgb if args.lighting != 'direct' else [0, 0, 0]}
         if atmosphere:
             illumination = {'Atmosphere': atmosphere_view.descriptor_handle_combined,
                             'EnvironmentResults': environment,
                             'AtmosphereVerticalScale': atmosphere['verticalScale']}
-        kernel.dispatch(thread_count=[args.width, args.height, 1], vars={
+        view_bindings = {
             'Clouds': clouds, 'Results': output, 'Size': [args.width, args.height],
             'Origin': origin, 'Forward': forward, 'Right': right, 'CameraUp': up,
             'TanHalfFov': np.tan(np.radians(args.vfov) * 0.5), 'TopSpan': args.top_span,
             'Projection': int(view == 'top'), **illumination,
             **air_bindings,
+            **lighting_bindings,
             'Radiance': int(args.radiance and view != 'top'),
             **{name: value.descriptor_handle_combined for name, value in textures.items()},
-        })
-        data = output.to_numpy().view(np.float32).reshape(args.height, args.width, 4)
-        render_seconds = time.monotonic() - started
+        }
+        if args.warmup:
+            kernel.dispatch(thread_count=[args.width, args.height, 1], vars=view_bindings)
+            device.wait_for_idle()
+        started = time.monotonic()
+        render_samples = []
+        for _ in range(args.repeat):
+            sample_started = time.monotonic()
+            kernel.dispatch(thread_count=[args.width, args.height, 1], vars=view_bindings)
+            data = output.to_numpy().view(np.float32).reshape(args.height, args.width, 4)
+            render_samples.append(time.monotonic() - sample_started)
+        render_seconds = float(np.median(render_samples))
         if not np.isfinite(data).all(): raise RuntimeError(f'Nonfinite production output in {view}')
         opacity = 1 - data[:, :, 3]
         background = np.array([0.12, 0.26, 0.48])
@@ -590,6 +625,7 @@ def main():
             save_image(args.output / f'{view}-radiance.png', display.encode(linear_rgb, args.exposure))
         statistics = {'yawDegrees': yaw, 'elevationDegrees': pitch, 'seconds': time.monotonic() - started,
                       'dispatchReadbackSeconds': render_seconds,
+                      'dispatchReadbackSamplesSeconds': render_samples, 'warmedUp': bool(args.warmup),
                       'meanOpacity': float(opacity.mean()), 'maxOpacity': float(opacity.max()),
                       'opacityAboveOnePercent': float(np.mean(opacity > 0.01))}
         manifest['views'][view] = statistics

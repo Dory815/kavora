@@ -20,6 +20,7 @@ SamplerCube<float3> SkyProbe;
 
 #include "rtx/pass/gbuffer/primary_atmosphere_cache.slangh"
 #include "rtx/algorithm/environment_radiance.slangh"
+#include "rtx/algorithm/scene_cloud_lighting.slangh"
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -63,7 +64,7 @@ void main(uint2 column : SV_DispatchThreadID)
     const float next = max(previous, atmosphereCheckpointDistance(ray.fogProjection, checkpoint));
     const AtmosphereSegment segment = integrateAtmosphereRange<SceneAtmosphereFog>(cb.volumeArgs, VolumeFilteredRadianceY,
       VolumeFilteredRadianceCoCg,
-      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, ray, previous, next, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
+      CloudWeatherSampler, CloudBaseSampler, CloudDetailSampler, sceneCloudLightingCache(), ray, previous, next, ambient, sceneAirTables(cb.volumeArgs.air, LinearWrapSampler));
     accumulated = composeAtmosphereSegments(accumulated, segment);
     storeAtmosphereCheckpoint(column, checkpoint, accumulated);
     previous = next;

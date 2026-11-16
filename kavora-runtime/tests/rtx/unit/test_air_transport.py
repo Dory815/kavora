@@ -91,6 +91,7 @@ class Probe:
                          "TableSampler": sampler.descriptor_handle,
                          "Weather": trans.descriptor_handle_combined,
                          "Volume": volume.descriptor_handle_combined,
+                         "CloudDepth": volume.descriptor_handle_combined,
                          "Chroma": chroma.descriptor_handle_combined}
 
     def run(self, entry, args, origins, directions, medium_extinction=(0, 0, 0)):

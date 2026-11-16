@@ -2,6 +2,7 @@
 import "cloud_sky_transport.slang";
 import "rtx/utility/cloud_density.slang";
 #include "rtx/pass/common_bindings.slangh"
+#include "rtx/algorithm/scene_cloud_lighting.slangh"
 #include "rtx/pass/clouds/cloud_sky_binding_indices.h"
 #include "rtx/utility/math.slangh"
 import "rtx/concept/camera/camera.slang";
@@ -57,7 +58,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       }
     }
     const CloudRayGrid grid = createCloudRayGrid(intervals[nearest], cloudSampleSpacing(args, direction, nearest / 2),
-      3.14159265359f / float(args.skyResolution));
+      3.14159265359f / float(args.skyResolution), args.steps);
     intervals[nearest].x = 3.402823466e+38f;
     float previous = grid.interval.x;
     for (uint cell = 0; previous < grid.interval.y; cell++)
@@ -73,7 +74,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       {
         const float opacity = accumulateCloudSkyStep(extinction, next - previous, args.albedo,
           cloudIncidentRadiance(args, position, direction, ambient, CloudWeatherSampler, CloudBaseSampler,
-            CloudDetailSampler), radiance, transmittance);
+            CloudDetailSampler, sceneCloudLightingCache()), radiance, transmittance);
         distanceMoment += opacity * distance;
       }
       if (transmittance < kOpaqueCloudTransmittance)

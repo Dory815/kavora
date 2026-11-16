@@ -1562,6 +1562,15 @@ namespace dxvk {
     bindResourceView(BINDING_CLOUD_SKY_SAMPLER, m_common->metaGlobalVolumetrics().getCloudSky(), nullptr);
     bindResourceSampler(BINDING_CLOUD_SKY_SAMPLER, linearSampler);
     bindResourceView(BINDING_CLOUD_AMBIENT_INPUT, m_common->metaGlobalVolumetrics().getCloudAmbient(), nullptr);
+    const auto cloudDepthSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    const auto& cloudVolumes = m_common->metaGlobalVolumetrics();
+    bindResourceView(BINDING_CLOUD_SUN_DEPTH_INPUT, cloudVolumes.getCloudLightOpticalDepth(0), nullptr);
+    bindResourceSampler(BINDING_CLOUD_SUN_DEPTH_INPUT, cloudDepthSampler);
+    bindResourceView(BINDING_CLOUD_MOON_DEPTH_INPUT, cloudVolumes.getCloudLightOpticalDepth(1), nullptr);
+    bindResourceSampler(BINDING_CLOUD_MOON_DEPTH_INPUT, cloudDepthSampler);
+    bindResourceView(BINDING_CLOUD_COLUMN_DEPTH_INPUT, cloudVolumes.getCloudColumnOpticalDepth(), nullptr);
+    bindResourceSampler(BINDING_CLOUD_COLUMN_DEPTH_INPUT, cloudDepthSampler);
     bindResourceBuffer(BINDING_SAMPLER_READBACK_BUFFER, DxvkBufferSlice(samplerFeedbackBuffer, 0, samplerFeedbackBuffer.ptr() ? samplerFeedbackBuffer->info().size : 0));
   }
 
