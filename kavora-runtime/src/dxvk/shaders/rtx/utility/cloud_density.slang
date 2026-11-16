@@ -146,8 +146,16 @@ public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D
   const float stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type);
   const float cumulusMean = saturate(weather.r + bias);
   const float deckMean = saturate(weather.g + bias);
-  const float2 cumulusCoverage = cloudCoverageMoments(cumulusMean, cumulusMean * cumulusMean, 1.0f);
-  const float2 deckCoverage = cloudCoverageMoments(deckMean, deckMean * deckMean, 1.0f);
+  // Family masks retain their own mip-filtered means. Reconstruct a bounded
+  // unresolved-coverage variance so grazing rays do not turn their average
+  // into a uniform, opaque horizontal deck.
+  const float mipVarianceScale = 0.25f * saturate(lod * 0.25f);
+  const float cumulusVariance = cumulusMean * (1.0f - cumulusMean) * mipVarianceScale;
+  const float deckVariance = deckMean * (1.0f - deckMean) * mipVarianceScale;
+  const float2 cumulusCoverage = cloudCoverageMoments(cumulusMean,
+    cumulusMean * cumulusMean + cumulusVariance, 1.0f);
+  const float2 deckCoverage = cloudCoverageMoments(deckMean,
+    deckMean * deckMean + deckVariance, 1.0f);
   const float2 coverage = lerp(cumulusCoverage, deckCoverage, stratiformBlend);
   // Cloud type varies across groups. Local condensation controls development
   // above a shared base, rather than assigning independent heights to columns.
