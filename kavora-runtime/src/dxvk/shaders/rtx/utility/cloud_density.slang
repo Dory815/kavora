@@ -250,7 +250,7 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
     frac(bodyCoordinates.z)) + phase;
   // Keep erosion at its physical world scale while the parent billow scale varies.
   const float detailScale = bodyPeriod / float(kCloudBasePeriod);
-  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod * 0.0625f, 32.0f);
+  const float detailLod = cloudNoiseLod(footprint, args.shapeScale * float(kCloudBasePeriod) * 0.0625f, 32.0f);
   const float3 detail = detailSampler.SampleLevel(shapeCoordinates * (16.0f * detailScale), detailLod).rgb;
   // Small-scale motion perturbs a connected surface before it is eroded.
   const float3 warpedCoordinates = shapeCoordinates + (detail - 0.5f) * (0.04f / detailScale);
