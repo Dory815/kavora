@@ -370,3 +370,10 @@ family coverage. This prevents a nonzero weather scalar from creating a
 globally continuous low-altitude sheet through otherwise dry regions. Strong
 rain still thickens the existing cloud-bearing regions; it does not erase
 their weather-map openings.
+
+
+The branch's cloud validation workflow now renders a fixed-input A/B matrix
+against the redesign starting point `469319c7df2fa37a4920cda2cef682cf251c8269`.
+It covers five weather presets, side/sunward/antisolar/sunset lighting, and
+oblique plus horizon views. The artifact contains both baseline and candidate
+radiance/opacity images with their manifests and numerical diagnostics.
