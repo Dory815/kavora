@@ -41,6 +41,8 @@ def descriptors(reflection):
             raise ValueError(f'Expected a unique set-zero descriptor for {name}')
         if shader_type['kind'] == 'constantBuffer':
             descriptor, view = 'UNIFORM_BUFFER', None
+        elif shader_type['kind'] == 'samplerState':
+            descriptor, view = 'SAMPLER', None
         elif shader_type['kind'] == 'resource':
             view = {'texture2D': '2D', 'texture3D': '3D', 'textureCube': 'CUBE'}[shader_type['baseShape']]
             if shader_type.get('array'):
