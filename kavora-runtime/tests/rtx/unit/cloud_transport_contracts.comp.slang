@@ -115,3 +115,20 @@ void viewTransmission(uint index : SV_DispatchThreadID)
     Sampler2D<float4>(Weather), Sampler3D<float4>(Base), Sampler3D<float4>(Detail));
   Results[index] = float4(transmission, cloudSampleSpacing(Clouds, direction, 1), 0, 0);
 }
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void heightFootprints(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  const float4 input = Inputs[index];
+  const float4 direction = Directions[index];
+  Results[index] = float4(
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, direction.w, 0u),
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, direction.w, 1u),
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, 0, 1u),
+    cloudHeightFootprint(Clouds, input.xyz, direction.xyz, input.w, direction.w));
+}

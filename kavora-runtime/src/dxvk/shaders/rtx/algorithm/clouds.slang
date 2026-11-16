@@ -133,14 +133,17 @@ public float cloudExtinction(CloudArgs args, float3 position, Sampler2D<float4> 
 
 [ForceInline]
 public float cloudHeightFootprint(CloudArgs args, float3 position, float3 direction, float span,
-  float pixelFootprint = 0)
+  float pixelFootprint = 0, uint layer = 0)
 {
   const float3 radial = position - args.groundReference + args.planetRadius * args.up;
   const float radialLength = length(radial);
   const float cosine = dot(direction, radial) / radialLength;
   const float sineSquared = saturate(1.0f - cosine * cosine);
   const float rayFootprint = abs(cosine) * span + sineSquared * span * span / (4.0f * radialLength);
-  return max(rayFootprint, pixelFootprint * sqrt(sineSquared));
+  // The high layer is a finite horizontal sheet. Its shell already clips the
+  // central ray. Radial pixel-cone filtering would spill mass outside that
+  // interval. Keep pixel filtering in XZ and integrate only the cell in height.
+  return layer == 1 ? rayFootprint : max(rayFootprint, pixelFootprint * sqrt(sineSquared));
 }
 
 [ForceInline]
@@ -242,7 +245,7 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
         const float footprint = cloudDensityFootprint(args, direction, grid.spacing,
           args.viewAngularFootprint * sampleDistance, layer);
         const float heightFootprint = cloudHeightFootprint(args, position, direction, grid.spanAt(cell),
-          args.viewAngularFootprint * sampleDistance);
+          args.viewAngularFootprint * sampleDistance, layer);
         const float extinction = cloudViewExtinction(args, position, sampleDistance,
           weatherSampler, baseSampler, detailSampler, footprint, heightFootprint);
         transmittance *= exp(-extinction * (next - previous));
@@ -261,7 +264,7 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
 float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 direction, float span,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
-  const float heightFootprint = cloudHeightFootprint(args, position, direction, span);
+  const float heightFootprint = cloudHeightFootprint(args, position, direction, span, 0, layer);
   const float extinction = layer == 0 ? args.extinction : args.highExtinction;
   return extinction * cloudDensity(cloudDensityParameters(args), position, weatherSampler, baseSampler, detailSampler,
     cloudDensityFootprint(args, direction, span, 0, layer), layer, heightFootprint) * span;

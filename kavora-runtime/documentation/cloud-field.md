@@ -78,10 +78,13 @@ runtime, and no per-ray atlas lookup or placement loop is added.
 The finished horizontal density is stored in the weather texture's alpha
 channel. Its 32768-meter period and 1024 texels give a 32-meter texel spacing at
 the default scale. A continuous height profile turns this field into a thin
-volume with a base of 6300 meters, thickness of 200 meters and unit-density
-extinction of 0.006 per meter. These defaults retain the 6400-meter layer center
-and extinction-times-thickness product of the former 800-meter layer, while
-reducing the horizontal averaging of fine filaments along oblique rays.
+volume with a base of 6375 meters, thickness of 50 meters and unit-density
+extinction of 0.024 per meter. These defaults retain the 6400-meter layer center
+and extinction-times-thickness product of the former 200-meter layer. A
+thicker extrusion of an already projected morphology image averages away
+fine filaments along oblique rays. The thinner sheet limits this extra
+convolution. Its thickness describes this representation, not a measured
+depth or a common thickness for all natural cirrus clouds.
 The runtime keeps it at least 1000 meters above the cumulus top. Its coverage
 can be set to zero without changing lower-cloud transport.
 The weather mip chain occupies about 10.67 MiB, an 8 MiB increase over the
@@ -102,8 +105,14 @@ Prefix checkpoints retain the original cell's sample and footprint so splitting
 a ray does not change its medium evaluation.
 For the high layer's two-dimensional field, the density footprint uses the
 ray cell's horizontal projection and the pixel footprint. The independent
-height footprint integrates the layer profile. A vertical ray therefore
-does not blur horizontal filaments merely because it advances through height.
+height footprint integrates the fixed cell's radial span within the shell.
+It does not add the pixel cone's radial extent: convolving the profile beyond
+the shell and then clipping to the original shell would lose column density,
+especially for thin distant layers. This is a central-ray thin-layer
+approximation, not an integration of pixel-cone coverage against the sphere.
+A vertical ray therefore does not blur horizontal filaments merely because
+it advances through height. The lower volume retains its existing height
+filtering.
 
 High-cloud amount fades the pre-shaped density, including the tails, instead
 of applying another threshold to filtered fine detail. Low-frequency weather
@@ -241,9 +250,10 @@ python tests/rtx/unit/test_atmosphere_moments.py
 Equivalent Meson run targets have the same names. The tests compare Beer
 integration, shell intersections, noise mip averages, light profiles, shadow
 quadrature and motion moments with independent analytic or numerical
-references. High-cloud checks also compare column transmission at 100-,
-200- and 800-meter layer
-thicknesses with the independent height-profile integral. They do not validate
+references. High-cloud checks also compare column transmission across thin
+and thick layers with the independent height-profile integral. Constant-field
+checks compare spherical-shell column depth across view angles, pixel
+footprints and sampling budgets. They do not validate
 game presentation, temporal reconstruction
 quality or GPU frame time. The normal Slang compiler and SPIR-V validation
 remain separate build gates.

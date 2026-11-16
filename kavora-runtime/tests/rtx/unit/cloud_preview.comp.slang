@@ -77,13 +77,21 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const float distance = grid.sampleAt(cell);
       const float3 position = origin + direction * distance;
       const float pixelFootprint = Projection == 1 ? TopSpan / float(Size.x) : Clouds.viewAngularFootprint * distance;
+#if defined(CLOUD_PREVIEW_HAS_DENSITY_FOOTPRINT)
+      const float footprint = cloudDensityFootprint(Clouds, direction, grid.spacing, pixelFootprint, nearest / 2);
+#else
       const float footprint = max(grid.spacing, pixelFootprint);
+#endif
 #if defined(CLOUD_PREVIEW_HAS_CELL_SPAN)
       const float cellSpan = grid.spanAt(cell);
 #else
       const float cellSpan = grid.spacing;
 #endif
+#if defined(CLOUD_PREVIEW_HAS_LAYER_HEIGHT_FOOTPRINT)
+      const float heightFootprint = cloudHeightFootprint(Clouds, position, direction, cellSpan, pixelFootprint, nearest / 2);
+#else
       const float heightFootprint = cloudHeightFootprint(Clouds, position, direction, cellSpan, pixelFootprint);
+#endif
       const float extinction = Projection == 1
         ? cloudExtinction(Clouds, position, weather, base, detail, footprint, heightFootprint)
         : cloudViewExtinction(Clouds, position, distance, weather, base, detail, footprint, heightFootprint);

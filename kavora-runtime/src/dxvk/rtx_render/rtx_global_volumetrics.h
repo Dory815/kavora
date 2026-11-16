@@ -65,11 +65,11 @@ namespace dxvk {
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, maxDistanceMeters, 12000.0f, "Cloud visibility distance, including the fade to the background sky.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, highAltitudeMeters, 6300.0f, "Thin high-cloud base height. Kept at least 1000 meters above the cumulus top.",
+    RTX_OPTION_ARGS("rtx.clouds", float, highAltitudeMeters, 6375.0f, "Thin high-cloud base height. Kept at least 1000 meters above the cumulus top.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, highThicknessMeters, 200.0f, "Thickness of the high-cloud layer.",
+    RTX_OPTION_ARGS("rtx.clouds", float, highThicknessMeters, 50.0f, "Thickness of the high-cloud layer.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, highExtinctionPerMeter, 0.006f, "High-cloud extinction at unit density, per meter.",
+    RTX_OPTION_ARGS("rtx.clouds", float, highExtinctionPerMeter, 0.024f, "High-cloud extinction at unit density, per meter.",
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, highCoverage, 0.35f, "Regional amount of optically thin high clouds. Zero disables this layer.",
       args.minValue = 0.0f, args.maxValue = 1.0f);

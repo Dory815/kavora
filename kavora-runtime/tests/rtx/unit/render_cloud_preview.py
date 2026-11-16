@@ -177,9 +177,9 @@ def main():
     parser.add_argument('--wind', type=triple, default=[0, 0, 0])
     parser.add_argument('--views', default='top,zenith,45,horizon,zenith90')
     parser.add_argument('--layers', choices=['high', 'low', 'both'], default='high')
-    parser.add_argument('--high-base', type=float, default=6300.0, help='High cloud base in meters')
-    parser.add_argument('--high-thickness', type=float, default=200.0, help='High cloud thickness in meters')
-    parser.add_argument('--high-extinction', type=float, default=0.006, help='High cloud extinction per meter')
+    parser.add_argument('--high-base', type=float, default=6375.0, help='High cloud base in meters')
+    parser.add_argument('--high-thickness', type=float, default=50.0, help='High cloud thickness in meters')
+    parser.add_argument('--high-extinction', type=float, default=0.024, help='High cloud extinction per meter')
     parser.add_argument('--coverage', type=float, default=0.35, help='High layer coverage')
     parser.add_argument('--weather', type=float, default=0)
     parser.add_argument('--sun-elevation', type=float,
@@ -211,6 +211,10 @@ def main():
     support.OPTIONS = {'include_paths': [str(shaders), str(HERE)], 'defines': {'__SLANG__': '1'}}
     if re.search(r'\bpublic\s+float\s+spanAt\s*\(', (shaders / 'rtx/algorithm/clouds.slang').read_text()):
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_CELL_SPAN'] = '1'
+    if re.search(r'cloudHeightFootprint\([^)]*\buint\s+layer', (shaders / 'rtx/algorithm/clouds.slang').read_text(), re.S):
+        support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_LAYER_HEIGHT_FOOTPRINT'] = '1'
+    if 'cloudDensityFootprint' in (shaders / 'rtx/algorithm/clouds.slang').read_text():
+        support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_DENSITY_FOOTPRINT'] = '1'
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=support.OPTIONS)
     if args.noise_seed is not None and not 0 <= args.noise_seed <= 0xffffffff:
         parser.error('--noise-seed must fit in an unsigned 32-bit value')
