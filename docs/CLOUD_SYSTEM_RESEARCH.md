@@ -159,7 +159,10 @@ representation so existing transport can render a richer sky.
 Visual matrix: sparse cumulus; broken cumulus at 30-60% apparent coverage;
 cloud-rich cumulus at 60-85%; irregular stratocumulus deck; mixed cumulus/deck;
 humid congestus; cirrus over low clouds; rain/overcast transition. Review
-side-lit, sunward, antisolar, horizon, zenith, sunset and twilight views.
+side-lit, sunward, antisolar, horizon, zenith, sunset and twilight views. The
+transport tests also cast a ring of 10-degree horizon rays through broken and
+cloud-rich deck weather, rejecting both a uniformly clear horizon and a
+continuous opaque band.
 
 Structural diagnostics: sky coverage, connected-component size distribution,
 multi-scale spatial autocorrelation, edge-length distribution, per-family
