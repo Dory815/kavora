@@ -85,8 +85,17 @@ for a revision comparison. Inspect several world positions and views toward,
 across and away from the sun, including the zenith and horizon. Repeat with a
 low sun. Inspect the opacity panels separately from radiance to distinguish
 distribution problems from lighting problems. Raw linear HDR values and
-manifests accompany the PNGs; the PNG display uses fixed exposure and sRGB,
-without the game's tonemapper or automatic exposure.
+manifests accompany the PNGs; the default PNG display uses fixed exposure and
+sRGB, without the game's tonemapper or automatic exposure.
+
+For a readable display of bright forward-scattering clouds, add
+`--tone-map aces`. This executes the repository's `ACESFitted` curve at the same fixed
+exposure and retains a `*-linear.png` clipped diagnostic. It does not run local
+exposure fusion, automatic exposure or color grading. Redisplay existing raw
+results with `--output <capture-directory> --redisplay --tone-map aces`; no cloud
+transport is recomputed, raw source provenance remains intact, and the manifest
+records the display history and curve source hash. Apply one display mode and
+exposure to an entire comparison group, including its baseline.
 
 Compare whole views with attributed natural photographs: clear openings,
 cluster sizes and near-to-far distribution matter as much as individual cloud

@@ -5,6 +5,7 @@ import "rtx/algorithm/cloud_sky.slang";
 import "rtx/pass/cloud_parameters.slang";
 import "rtx/pass/clouds/cloud_sky_transport.slang";
 import "rtx/utility/lat_long_projection.slang";
+#include "rtx/pass/tonemap/ACES.hlsl"
 
 ConstantBuffer<CloudArgs> Clouds;
 Sampler2D<float4>.Handle Weather;
@@ -28,6 +29,22 @@ float3 Ambient;
 #endif
 uint Projection;
 uint Radiance;
+
+StructuredBuffer<float4> DisplayInput;
+RWStructuredBuffer<float4> DisplayOutput;
+uint DisplayCount;
+float DisplayExposure;
+
+// Reuse the shipped display curve without local exposure fusion or color grading.
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void mainDisplay(uint index : SV_DispatchThreadID)
+{
+  if (index < DisplayCount)
+  {
+    DisplayOutput[index] = float4(ACESFitted(max(DisplayInput[index].rgb, 0.0f) * DisplayExposure), 1);
+  }
+}
 
 #if defined(CLOUD_PREVIEW_ATMOSPHERE)
 float3 sampleAtmosphere(float3 direction)
@@ -129,7 +146,12 @@ void main(uint2 pixel : SV_DispatchThreadID)
         nearest = i;
       }
     }
+#if defined(CLOUD_PREVIEW_HAS_ADAPTIVE_GRID)
+    const CloudRayGrid grid = createCloudRayGrid(intervals[nearest], cloudSampleSpacing(Clouds, direction, nearest / 2),
+      Projection == 1 ? 0.0f : Clouds.viewAngularFootprint);
+#else
     const CloudRayGrid grid = { intervals[nearest], cloudSampleSpacing(Clouds, direction, nearest / 2) };
+#endif
     intervals[nearest].x = 3.402823466e+38f;
     float previous = grid.interval.x;
     for (uint cell = 0; previous < grid.interval.y; cell++)
@@ -138,11 +160,15 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const float distance = grid.sampleAt(cell);
       const float3 position = origin + direction * distance;
       const float pixelFootprint = Projection == 1 ? TopSpan / float(Size.x) : Clouds.viewAngularFootprint * distance;
-      const float footprint = max(grid.spacing, pixelFootprint);
 #if defined(CLOUD_PREVIEW_HAS_CELL_SPAN)
       const float cellSpan = grid.spanAt(cell);
 #else
       const float cellSpan = grid.spacing;
+#endif
+#if defined(CLOUD_PREVIEW_HAS_DENSITY_FOOTPRINT)
+      const float footprint = cloudDensityFootprint(Clouds, direction, cellSpan, pixelFootprint, nearest / 2);
+#else
+      const float footprint = max(grid.spacing, pixelFootprint);
 #endif
       const float heightFootprint = cloudHeightFootprint(Clouds, position, direction, cellSpan, pixelFootprint);
       const float extinction = Projection == 1

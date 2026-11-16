@@ -64,6 +64,11 @@ def texture_cache(device, support, shaders, cache_dir, noise_seed=None):
             digest.update(path.name.encode())
             digest.update(path.read_bytes())
             source_hashes[str(path.relative_to(shaders))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    atlas = support.cloud_atlas_path() if hasattr(support, 'cloud_atlas_path') else None
+    if atlas is not None and atlas.exists():
+        atlas_bytes = atlas.read_bytes()
+        digest.update(atlas_bytes)
+        source_hashes['cirrus_density.dds'] = hashlib.sha256(atlas_bytes).hexdigest()
     if noise_seed is not None:
         # A test-only seed input: compile the unchanged production algorithms
         # against a copied include with just their fixed seed constant changed.
@@ -116,6 +121,77 @@ def save_image(path, rgb):
     Image.fromarray(np.rint(np.clip(rgb, 0, 1) * 255).astype(np.uint8)).save(path)
 
 
+class PreviewDisplay:
+    def __init__(self, device, tone_map):
+        self.device = device
+        self.kernel = None
+        if tone_map == 'aces':
+            self.kernel = device.create_compute_kernel(device.load_program('cloud_preview.comp.slang', ['mainDisplay']))
+
+    def encode(self, linear_rgb, exposure):
+        rgb = linear_rgb * exposure
+        if self.kernel is not None:
+            pixels = np.ones((linear_rgb.shape[0] * linear_rgb.shape[1], 4), np.float32)
+            pixels[:, :3] = linear_rgb.reshape(-1, 3)
+            output = self.device.create_buffer(element_count=len(pixels), struct_size=16,
+                                                usage=spy.BufferUsage.unordered_access)
+            self.kernel.dispatch(thread_count=[len(pixels), 1, 1], vars={
+                'DisplayInput': self.device.create_buffer(data=pixels, usage=spy.BufferUsage.shader_resource),
+                'DisplayOutput': output, 'DisplayCount': len(pixels), 'DisplayExposure': exposure})
+            rgb = output.to_numpy().view(np.float32).reshape(*linear_rgb.shape[:2], 4)[:, :, :3]
+        if not np.isfinite(rgb).all():
+            raise RuntimeError('Nonfinite display output')
+        return np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * np.maximum(rgb, 0) ** (1 / 2.4) - 0.055)
+
+
+def display_metadata(manifest, args, shaders):
+    manifest['toneMap'] = args.tone_map
+    manifest['displayExposure'] = args.exposure
+    manifest['displayTransfer'] = ('production ACESFitted at fixed exposure then sRGB; no local exposure fusion'
+                                   if args.tone_map == 'aces' else 'fixed linear exposure then sRGB; clipped for PNG')
+    if args.tone_map == 'aces':
+        curve = shaders / 'rtx/pass/tonemap/ACES.hlsl'
+        manifest['toneMapSourceHash'] = hashlib.sha256(curve.read_bytes()).hexdigest()
+        manifest['displayShaderHash'] = hashlib.sha256((HERE / 'cloud_preview.comp.slang').read_bytes()).hexdigest()
+    else:
+        manifest.pop('toneMapSourceHash', None)
+        manifest.pop('displayShaderHash', None)
+
+
+def redisplay(args, shaders):
+    path = args.output / 'manifest.json'
+    manifest = json.loads(path.read_text())
+    perspective_views = [view for view in manifest['views'] if view != 'top']
+    if not perspective_views or not manifest.get('radiance', all(
+            (args.output / f'{view}-radiance.png').is_file() for view in perspective_views)):
+        raise ValueError('redisplay requires a capture rendered with --radiance')
+    args.exposure = manifest['displayExposure'] if args.exposure is None else args.exposure
+    args.tone_map = args.tone_map or manifest.get('toneMap', 'clip')
+    if not np.isfinite(args.exposure) or args.exposure <= 0:
+        raise ValueError('exposure must be positive and finite')
+    device = spy.Device(type=spy.DeviceType.vulkan, compiler_options={
+        'include_paths': [str(shaders), str(HERE)], 'defines': {'__SLANG__': '1'}})
+    display = PreviewDisplay(device, args.tone_map)
+    manifest.setdefault('displayHistory', []).append({key: manifest[key] for key in
+        ('displayExposure', 'displayTransfer', 'toneMap', 'toneMapSourceHash') if key in manifest})
+    for view in manifest['views']:
+        if view == 'top':
+            continue
+        with np.load(args.output / f'{view}.npz') as raw:
+            cloud = raw['result']
+            sky = raw['sky'] if 'sky' in raw else np.array(manifest['diagnosticSkyLinearRgb'])
+            linear_rgb = cloud[:, :, :3] + cloud[:, :, 3:] * sky
+        # Retain the unclamped HDR data and a simple clipped diagnostic alongside the display curve.
+        save_image(args.output / f'{view}-linear.png', PreviewDisplay(device, 'clip').encode(linear_rgb, args.exposure))
+        save_image(args.output / f'{view}-radiance.png', display.encode(linear_rgb, args.exposure))
+    display_metadata(manifest, args, shaders)
+    path.write_text(json.dumps(manifest, indent=2))
+    contact_sheet(args.output, manifest['label'], list(manifest['views']), *manifest['resolution'], True,
+                  manifest['camera'], manifest['verticalFovDegrees'], 'atmosphereFixture' in manifest,
+                  manifest['lightingMode'], args.exposure, args.tone_map)
+    print('Redisplayed existing HDR data:', args.output, flush=True)
+
+
 def compare_texture_channels(reference, candidate):
     report = {}
     with np.load(reference) as before, np.load(candidate) as after:
@@ -139,7 +215,7 @@ def compare_texture_channels(reference, candidate):
     return report
 
 
-def contact_sheet(output, label, views, width, height, radiance, origin, vfov, atmosphere, lighting, exposure):
+def contact_sheet(output, label, views, width, height, radiance, origin, vfov, atmosphere, lighting, exposure, tone_map):
     panels = []
     for view in views:
         panels.append((f'{view}: production cloud opacity (white = 1-T)', output / f'{view}-opacity.png'))
@@ -155,7 +231,7 @@ def contact_sheet(output, label, views, width, height, radiance, origin, vfov, a
     draw = ImageDraw.Draw(sheet)
     draw.text((12, 9), label, fill='white')
     sky = 'production atmosphere inputs' if atmosphere else 'constant diagnostic environment'
-    draw.text((12, 29), f'Production Slang; {sky}; lighting={lighting}; exposure={exposure:g}', fill='#bec6d4')
+    draw.text((12, 29), f'Production Slang; {sky}; lighting={lighting}; exposure={exposure:g}; display={tone_map}', fill='#bec6d4')
     draw.text((12, 49), f'VFOV{vfov:g}; camera{tuple(origin)}; cloud-only transport; no terrain/temporal reconstruction', fill='#bec6d4')
     for index, (caption, path) in enumerate(panels):
         x, y = (index % columns) * width, title_height + (index // columns) * (height + caption_height)
@@ -178,12 +254,26 @@ def main():
     parser.add_argument('--origin', type=triple, default=[0, 139, 0])
     parser.add_argument('--wind', type=triple, default=[0, 0, 0])
     parser.add_argument('--views', default='top,zenith,45,horizon,zenith90')
+    parser.add_argument('--yaw', type=float, default=0, help='Rotate all perspective views around world up, in degrees')
     parser.add_argument('--layers', choices=['high', 'low', 'both'], default='high')
+    parser.add_argument('--low-base', type=float, default=800.0, help='Low cloud base in meters')
+    parser.add_argument('--low-thickness', type=float, default=1500.0, help='Maximum low cloud thickness in meters')
+    parser.add_argument('--low-shape-scale', type=float, default=1024.0, help='Low cloud base texture period in meters')
+    parser.add_argument('--low-extinction', type=float, default=0.03, help='Low cloud extinction per meter at unit density')
+    parser.add_argument('--low-coverage', type=float, default=0.45, help='Low cloud regional coverage')
+    parser.add_argument('--low-max-distance', type=float, default=12000.0, help='Low cloud view range in meters')
     parser.add_argument('--high-base', type=float, default=6300.0, help='High cloud base in meters')
     parser.add_argument('--high-thickness', type=float, default=200.0, help='High cloud thickness in meters')
     parser.add_argument('--high-extinction', type=float, default=0.006, help='High cloud extinction per meter')
     parser.add_argument('--coverage', type=float, default=0.35, help='High layer coverage')
     parser.add_argument('--weather', type=float, default=0)
+    parser.add_argument('--thunder', type=float, default=0)
+    parser.add_argument('--ground-albedo', type=float, default=0.18,
+                        help='Mean terrain reflectance used by production cloud illumination')
+    parser.add_argument('--steps', type=int, default=160,
+                        help='View integration budget; values above native Ultra are for convergence inspection')
+    parser.add_argument('--light-steps', type=int, default=16,
+                        help='Light integration budget; values above native Ultra are for convergence inspection')
     parser.add_argument('--sun-elevation', type=float,
                         help='Diagnostic sun elevation in degrees; no atmospheric coloring')
     parser.add_argument('--sun-azimuth', type=float,
@@ -196,17 +286,39 @@ def main():
                         help='Directory containing production atmosphere.npz and its manifest.json')
     parser.add_argument('--lighting', choices=['all', 'direct', 'ambient'], default='all',
                         help='Isolate cloud lighting components while retaining the same sky background')
-    parser.add_argument('--exposure', type=float, default=1.0,
+    parser.add_argument('--exposure', type=float,
                         help='Fixed linear exposure for PNG display only; raw HDR is preserved')
+    parser.add_argument('--tone-map', choices=['clip', 'aces'],
+                        help='Display curve; aces executes the shipped ACES fit without local exposure fusion')
+    parser.add_argument('--redisplay', action='store_true',
+                        help='Redisplay existing NPZ results without recomputing clouds; preserve raw source provenance')
     parser.add_argument('--noise-seed', type=lambda value: int(value, 0),
                         help='Test-only generator seed override; production default if omitted')
     parser.add_argument('--top-span', type=float, default=32000)
     parser.add_argument('--radiance', action='store_true')
     args = parser.parse_args()
+    shaders = args.shader_root or args.repo / 'kavora-runtime/src/dxvk/shaders'
+    if args.redisplay:
+        redisplay(args, shaders)
+        return
+    args.exposure = 1.0 if args.exposure is None else args.exposure
+    args.tone_map = args.tone_map or 'clip'
     if args.width <= 0 or args.height <= 0 or not np.isfinite(args.top_span) or args.top_span <= 0:
         parser.error('width, height and top-span must be positive')
     if not 0 < args.vfov < 180:
         parser.error('vfov must be between 0 and 180 degrees')
+    if not np.isfinite(args.yaw):
+        parser.error('yaw must be finite')
+    if not 1 <= args.steps <= 1024 or not 1 <= args.light_steps <= 256:
+        parser.error('steps must be in [1,1024] and light-steps in [1,256]')
+    if any(not np.isfinite(value) or not 0 <= value <= 1 for value in
+           (args.weather, args.thunder, args.ground_albedo)):
+        parser.error('weather, thunder and ground-albedo must be in [0,1]')
+    if (not np.isfinite([args.low_base, args.low_thickness, args.low_shape_scale,
+                         args.low_extinction, args.low_coverage, args.low_max_distance]).all()
+            or args.low_base < 0 or min(args.low_thickness, args.low_shape_scale) <= 0
+            or args.low_extinction < 0 or args.low_max_distance <= 0 or not 0 <= args.low_coverage <= 1):
+        parser.error('low cloud base/extinction must be nonnegative, thickness/scale/range positive and coverage in [0,1]')
     if args.sun_elevation is not None and not -90 <= args.sun_elevation <= 90:
         parser.error('sun-elevation must be between -90 and 90 degrees')
     if args.sun_azimuth is not None and not np.isfinite(args.sun_azimuth):
@@ -227,7 +339,6 @@ def main():
     unknown_views = sorted(set(views) - VIEWS.keys())
     if unknown_views:
         parser.error('unknown views: ' + ', '.join(unknown_views))
-    shaders = args.shader_root or args.repo / 'kavora-runtime/src/dxvk/shaders'
     support_path = args.repo / 'kavora-runtime/tests/rtx/unit/test_cloud_transport.py'
     spec = importlib.util.spec_from_file_location('cloud_test_support', support_path)
     support = importlib.util.module_from_spec(spec)
@@ -236,6 +347,10 @@ def main():
     support.OPTIONS = {'include_paths': [str(shaders), str(HERE)], 'defines': {'__SLANG__': '1'}}
     if re.search(r'\bpublic\s+float\s+spanAt\s*\(', (shaders / 'rtx/algorithm/clouds.slang').read_text()):
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_CELL_SPAN'] = '1'
+    if 'cloudDensityFootprint' in (shaders / 'rtx/algorithm/clouds.slang').read_text():
+        support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_DENSITY_FOOTPRINT'] = '1'
+    if 'createCloudRayGrid' in (shaders / 'rtx/algorithm/clouds.slang').read_text():
+        support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_ADAPTIVE_GRID'] = '1'
     atmosphere = None
     if args.atmosphere_fixture:
         fixture_path = args.atmosphere_fixture / 'manifest.json'
@@ -246,6 +361,7 @@ def main():
         if 'kCloudAmbientSampleCount' in (shaders / 'rtx/algorithm/cloud_sky.slang').read_text():
             support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_AMBIENT_SAMPLE_COUNT'] = '1'
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=support.OPTIONS)
+    display = PreviewDisplay(device, args.tone_map)
     if args.noise_seed is not None and not 0 <= args.noise_seed <= 0xffffffff:
         parser.error('--noise-seed must fit in an unsigned 32-bit value')
     cache_dir = args.cache_dir or args.output.parent / 'cloud-preview-cache'
@@ -283,7 +399,15 @@ def main():
         if not np.isfinite(profile).all() or np.any(profile[:, :3] < 0) or np.any(np.diff(profile[:, 3]) <= 0):
             raise ValueError('atmosphere light profile must be finite, nonnegative and sorted by height')
         sun = atmosphere['sunDirection']
-        light = {'directionToLight': sun, 'irradiance': profile[0, :3].tolist(),
+        has_ground_boundary = 'groundAlbedo' in (shaders / 'rtx/pass/cloud_args.h').read_text()
+        surface = atmosphere['javaLighting'].get('surfaceIrradiance')
+        if has_ground_boundary and surface is None:
+            parser.error('the terrain boundary needs an atmosphere fixture with Java surfaceIrradiance')
+        if surface is None:
+            surface = profile[:, :3].max(axis=0).tolist()
+        if np.shape(surface) != (3,) or not np.isfinite(surface).all() or min(surface) < 0:
+            raise ValueError('surface irradiance must contain three finite nonnegative components')
+        light = {'directionToLight': sun, 'irradiance': surface,
                  'hasRadianceProfile': 1, 'radianceProfile': profile.tolist()}
     if args.lighting == 'ambient':
         light['irradiance'] = [0, 0, 0]
@@ -291,11 +415,16 @@ def main():
             light['radianceProfile'] = [[0, 0, 0, row[3]] for row in light['radianceProfile']]
     dark = {'directionToLight': [0, -1, 0], 'irradiance': [0, 0, 0], 'hasRadianceProfile': 0}
     clouds = support.cloud_parameters(
+        baseHeight=args.low_base, thickness=args.low_thickness, shapeScale=args.low_shape_scale,
+        extinction=args.low_extinction, coverage=args.low_coverage, maxDistance=args.low_max_distance,
         highBaseHeight=args.high_base, highThickness=args.high_thickness, highExtinction=args.high_extinction,
         highCoverage=args.coverage, highMaxDistance=96000.0,
         groundReference=[args.origin[0], 0, args.origin[2]], windOffset=args.wind,
         viewAngularFootprint=2 * np.tan(np.radians(args.vfov) * 0.5) / args.height,
-        weather=args.weather, lights=[light, dark])
+        weather=args.weather, thunder=args.thunder, groundAlbedo=args.ground_albedo,
+        steps=args.steps, lightSteps=args.light_steps, lights=[light, dark])
+    if 'groundAlbedo' not in (shaders / 'rtx/pass/cloud_args.h').read_text():
+        clouds.pop('groundAlbedo', None)
     if args.layers == 'high': clouds['extinction'] = 0
     if args.layers == 'low': clouds['highExtinction'] = 0
     if atmosphere:
@@ -312,7 +441,8 @@ def main():
                 'previewShaderHash': hashlib.sha256((HERE / 'cloud_preview.comp.slang').read_bytes()).hexdigest(),
                 'previewDefines': support.OPTIONS['defines'],
                 'camera': args.origin, 'verticalFovDegrees': args.vfov, 'resolution': [args.width, args.height],
-                'layers': args.layers, 'topSpanMeters': args.top_span, 'topHeightMeters': 10000.0,
+                'layers': args.layers, 'radiance': bool(args.radiance),
+                'topSpanMeters': args.top_span, 'topHeightMeters': 10000.0,
                 'clouds': clouds, 'views': {},
                 'diagnosticAmbient': args.ambient_rgb if args.lighting != 'direct' else [0, 0, 0],
                 'diagnosticSunElevationDegrees': float(np.degrees(np.arcsin(sun[1]))),
@@ -328,6 +458,7 @@ def main():
                                                      shaders / 'rtx/pass/clouds/cloud_sky_transport.slang',
                                                      shaders / 'rtx/pass/cloud_parameters.slang',
                                                      shaders / 'rtx/utility/lat_long_projection.slang'})}}
+    display_metadata(manifest, args, shaders)
     if atmosphere:
         manifest['atmosphereFixture'] = {
             'path': str(args.atmosphere_fixture), 'manifest': atmosphere,
@@ -339,6 +470,7 @@ def main():
         print('Low-field assets:', json.dumps(manifest['lowFieldTextureComparison']), flush=True)
     for view in views:
         yaw, pitch = VIEWS[view]
+        yaw += args.yaw
         forward, right, up = basis(yaw, pitch)
         origin = [args.origin[0], 10000, args.origin[2]] if view == 'top' else args.origin
         started = time.monotonic()
@@ -372,9 +504,10 @@ def main():
         if view == 'top':
             save_image(args.output / 'top-tau.png', np.repeat(data[:, :, :1], 3, axis=2))
         elif args.radiance:
-            rgb = (data[:, :, :3] + data[:, :, 3:] * background) * args.exposure
-            rgb = np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * np.maximum(rgb, 0) ** (1 / 2.4) - 0.055)
-            save_image(args.output / f'{view}-radiance.png', rgb)
+            linear_rgb = data[:, :, :3] + data[:, :, 3:] * background
+            if args.tone_map == 'aces':
+                save_image(args.output / f'{view}-linear.png', PreviewDisplay(device, 'clip').encode(linear_rgb, args.exposure))
+            save_image(args.output / f'{view}-radiance.png', display.encode(linear_rgb, args.exposure))
         statistics = {'yawDegrees': yaw, 'elevationDegrees': pitch, 'seconds': time.monotonic() - started,
                       'meanOpacity': float(opacity.mean()), 'maxOpacity': float(opacity.max()),
                       'opacityAboveOnePercent': float(np.mean(opacity > 0.01))}
@@ -382,7 +515,7 @@ def main():
         print(view, json.dumps(statistics), flush=True)
         (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
     contact_sheet(args.output, args.label, views, args.width, args.height, args.radiance, args.origin, args.vfov,
-                  bool(atmosphere), args.lighting, args.exposure)
+                  bool(atmosphere), args.lighting, args.exposure, args.tone_map)
     print('Saved', args.output / 'contact-sheet.png', flush=True)
 
 
