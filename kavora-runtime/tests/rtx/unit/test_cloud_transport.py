@@ -328,6 +328,16 @@ def cloud_textures(device, dump=None):
             regional_correlation = float(0.5 * (
                 np.corrcoef(cumulus[:, :-128].ravel(), cumulus[:, 128:].ravel())[0, 1]
                 + np.corrcoef(cumulus[:-128, :].ravel(), cumulus[128:, :].ravel())[0, 1]))
+            deck_adjacent_correlation = float(0.5 * (
+                np.corrcoef(stratiform[:, :-1].ravel(), stratiform[:, 1:].ravel())[0, 1]
+                + np.corrcoef(stratiform[:-1, :].ravel(), stratiform[1:, :].ravel())[0, 1]))
+            deck_meso_correlation = float(0.5 * (
+                np.corrcoef(stratiform[:, :-32].ravel(), stratiform[:, 32:].ravel())[0, 1]
+                + np.corrcoef(stratiform[:-32, :].ravel(), stratiform[32:, :].ravel())[0, 1]))
+            deck_regional_correlation = float(0.5 * (
+                np.corrcoef(stratiform[:, :-128].ravel(), stratiform[:, 128:].ravel())[0, 1]
+                + np.corrcoef(stratiform[:-128, :].ravel(), stratiform[128:, :].ravel())[0, 1]))
+            family_correlation = float(np.corrcoef(cumulus.ravel(), stratiform.ravel())[0, 1])
             assert cumulus_p10 < 0.25 and cumulus_p90 > 0.65, (
                 "cumulus field must retain openings and cloud-rich groups", cumulus_p10, cumulus_p90)
             assert stratiform_p10 < 0.25 and stratiform_p90 > 0.65, (
@@ -338,6 +348,13 @@ def cloud_textures(device, dump=None):
                 "cumulus occupancy must form coherent parent groups", adjacent_correlation, mesoscale_correlation)
             assert 0.1 < regional_correlation < 0.85, (
                 "cumulus field must retain regional organization and local variation", regional_correlation)
+            assert deck_adjacent_correlation > 0.98 and deck_meso_correlation > 0.75, (
+                "stratiform decks must form broader connected structures",
+                deck_adjacent_correlation, deck_meso_correlation)
+            assert 0.1 < deck_regional_correlation < 0.85, (
+                "stratiform field must retain regional organization and openings", deck_regional_correlation)
+            assert 0.1 < family_correlation < 0.9, (
+                "cloud families must be spatially related but not identical", family_correlation)
             if dump:
                 dump.mkdir(parents=True, exist_ok=True)
                 np.savez(dump / "cloud-weather-field.npz", cumulus=cumulus, stratiform=stratiform,
@@ -346,7 +363,10 @@ def cloud_textures(device, dump=None):
                   f"stratiform p10/p90 {stratiform_p10:.4f}/{stratiform_p90:.4f}, "
                   f"type p10/p90 {type_p10:.4f}/{type_p90:.4f}, "
                   f"cumulus adjacent/32px/128px correlation "
-                  f"{adjacent_correlation:.4f}/{mesoscale_correlation:.4f}/{regional_correlation:.4f}")
+                  f"{adjacent_correlation:.4f}/{mesoscale_correlation:.4f}/{regional_correlation:.4f}, "
+                  f"deck adjacent/32px/128px correlation "
+                  f"{deck_adjacent_correlation:.4f}/{deck_meso_correlation:.4f}/{deck_regional_correlation:.4f}, "
+                  f"family correlation {family_correlation:.4f}")
         if floating and name != "Weather":
             # The base volume stores each shape mean beside its second moment.
             mean_channels = list(range(0, data.shape[-1], 2))
