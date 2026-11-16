@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 GBwater
+# SPDX-License-Identifier: MIT
+
+name: cloud shader validation
+
+on:
+  push:
+    branches: [fix/cloud-system-redesign]
+  pull_request:
+    paths:
+      - "kavora-runtime/src/dxvk/shaders/rtx/**"
+      - "kavora-runtime/tests/rtx/unit/**"
+      - ".github/workflows/cloud-shader-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cloud-transport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install software Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libvulkan1 mesa-vulkan-drivers vulkan-tools
+          ICD="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
+          test -n "$ICD"
+          echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"
+          vulkaninfo --summary
+
+      - name: Install shader test dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install numpy pillow slangpy
+
+      - name: Validate production cloud shaders and transport
+        run: |
+          python3 kavora-runtime/tests/rtx/unit/test_cloud_transport.py             --dump "$RUNNER_TEMP/cloud-transport"
