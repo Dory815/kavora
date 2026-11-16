@@ -51,7 +51,7 @@ float cloudNoiseLod(float footprint, float period, float resolution)
 
 // Integrate a clipped ramp and its square over a moment-matched uniform shape distribution.
 [ForceInline]
-float2 cloudThresholdMoments(float shape, float secondMoment, float threshold, float rampWidth)
+public float2 cloudThresholdMoments(float shape, float secondMoment, float threshold, float rampWidth)
 {
   const float value = shape - threshold;
   const float width = sqrt(3.0f * max(secondMoment - shape * shape, 0.0f));
@@ -60,12 +60,38 @@ float2 cloudThresholdMoments(float shape, float secondMoment, float threshold, f
     const float density = saturate(value / max(rampWidth, 1e-4f));
     return float2(density, density * density);
   }
-  const float lower = saturate((value - width) / max(rampWidth, 1e-4f));
-  const float upper = saturate((value + width) / max(rampWidth, 1e-4f));
-  const float2 rampIntegral = float2(0.5f * (upper * upper - lower * lower),
-    (upper * upper * upper - lower * lower * lower) / 3.0f) * rampWidth;
-  const float plateau = max(value + width - max(rampWidth, value - width), 0.0f);
-  return saturate((rampIntegral + plateau) / (2.0f * width));
+  const float ramp = max(rampWidth, 1e-4f);
+  if (value + width <= 0)
+  {
+    return 0;
+  }
+  if (value - width >= ramp)
+  {
+    return 1;
+  }
+  if (value - width >= 0 && value + width <= ramp)
+  {
+    const float mean = value / ramp;
+    return float2(mean, mean * mean + width * width / (3.0f * ramp * ramp));
+  }
+  if (value + width <= ramp)
+  {
+    const float tail = value + width;
+    const float fraction = tail / (2.0f * width);
+    const float maximum = tail / ramp;
+    return float2(0.5f * fraction * maximum, fraction * maximum * maximum / 3.0f);
+  }
+  if (value - width >= 0)
+  {
+    // Integrate the deficit from one instead of subtracting nearby plateaus.
+    const float tail = ramp - value + width;
+    const float fraction = tail / (2.0f * width);
+    const float maximum = tail / ramp;
+    const float deficit = 0.5f * fraction * maximum;
+    return float2(1.0f - deficit, 1.0f - 2.0f * deficit + fraction * maximum * maximum / 3.0f);
+  }
+  const float plateau = value + width - ramp;
+  return saturate((float2(0.5f, 1.0f / 3.0f) * ramp + plateau) / (2.0f * width));
 }
 
 [ForceInline]
@@ -130,7 +156,8 @@ CloudWeatherSample cloudWeatherSample(Sampler2D<float4> weatherSampler, float2 u
 
   // Neighboring children estimate unresolved variation of each family.
   // A constant mask has zero variance at every footprint.
-  const float offset = 0.25f * exp2(lod) / float(kCloudWeatherResolution);
+  // Collapse the child footprint continuously onto the resolved center tap.
+  const float offset = 0.25f * exp2(lod) * saturate(lod) / float(kCloudWeatherResolution);
   const float childLod = max(0.0f, lod - 1.0f);
   float2 secondMoment = 0;
   [unroll]
