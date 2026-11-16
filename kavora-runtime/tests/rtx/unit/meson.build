@@ -58,7 +58,7 @@ exe = executable('test_pnext',  files('test_pnext.cpp'), include_directories : r
 test('test_pnext', exe, env: test_env)
 tests += exe
 
-exe = executable('test_spatial_map',  files('test_spatial_map.cpp'), include_directories : remix_api_include_path,  dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+exe = executable('test_spatial_map',  files('test_spatial_map.cpp'), include_directories : test_include_path,  dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_spatial_map', exe, env: test_env)
 tests += exe
 
@@ -239,6 +239,10 @@ run_target('test_cloud_lighting',
   command: [python_interpreter, files('test_cloud_lighting.py')])
 run_target('test_cloud_scattering',
   command: [python_interpreter, files('test_cloud_scattering.py'), '--device', 'vulkan'])
+foreach test_name : ['test_cloud_morphology', 'test_cloud_density_math', 'test_cloud_filtering',
+                     'test_cloud_view_ranges', 'test_cloud_matrix_plan']
+  run_target(test_name, command: [python_interpreter, files(test_name + '.py')])
+endforeach
 run_target('test_atmosphere_moments',
   command: [python_interpreter, files('test_atmosphere_moments.py')])
 run_target('render_cloud_atmosphere',
