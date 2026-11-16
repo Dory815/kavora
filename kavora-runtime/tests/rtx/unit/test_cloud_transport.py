@@ -306,20 +306,29 @@ def cloud_textures(device, dump=None):
             assert np.all((cloud_type >= 0) & (cloud_type <= 1)), "cloud family type must stay normalized"
             coverage_mean = float(np.mean(coverage))
             coverage_p10, coverage_p90 = np.quantile(coverage, [0.10, 0.90])
-            row_correlation = float(np.corrcoef(coverage[:, :-1].ravel(), coverage[:, 1:].ravel())[0, 1])
-            column_correlation = float(np.corrcoef(coverage[:-1, :].ravel(), coverage[1:, :].ravel())[0, 1])
+            adjacent_correlation = float(0.5 * (
+                np.corrcoef(coverage[:, :-1].ravel(), coverage[:, 1:].ravel())[0, 1]
+                + np.corrcoef(coverage[:-1, :].ravel(), coverage[1:, :].ravel())[0, 1]))
+            mesoscale_correlation = float(0.5 * (
+                np.corrcoef(coverage[:, :-32].ravel(), coverage[:, 32:].ravel())[0, 1]
+                + np.corrcoef(coverage[:-32, :].ravel(), coverage[32:, :].ravel())[0, 1]))
+            regional_correlation = float(0.5 * (
+                np.corrcoef(coverage[:, :-128].ravel(), coverage[:, 128:].ravel())[0, 1]
+                + np.corrcoef(coverage[:-128, :].ravel(), coverage[128:, :].ravel())[0, 1]))
             assert 0.12 < coverage_mean < 0.88, ("weather coverage collapsed", coverage_mean)
             assert coverage_p10 < 0.65 and coverage_p90 > 0.35, (
                 "weather field must retain both openings and cloud-rich regions", coverage_p10, coverage_p90)
-            assert row_correlation > 0.35 and column_correlation > 0.35, (
-                "cloud occupancy must form coherent regions, not pixel noise", row_correlation, column_correlation)
+            assert adjacent_correlation > 0.95 and mesoscale_correlation > 0.6, (
+                "cloud occupancy must form coherent parent groups", adjacent_correlation, mesoscale_correlation)
+            assert 0.1 < regional_correlation < 0.85, (
+                "cloud field must retain both regional organization and local variation", regional_correlation)
             if dump:
                 dump.mkdir(parents=True, exist_ok=True)
                 np.savez(dump / "cloud-weather-field.npz", coverage=coverage, cloudType=cloud_type,
                          cirrus=data[..., 3])
             print(f"PASS weather morphology: coverage mean/p10/p90 {coverage_mean:.4f}/"
-                  f"{coverage_p10:.4f}/{coverage_p90:.4f}, adjacent correlation "
-                  f"{row_correlation:.4f}/{column_correlation:.4f}")
+                  f"{coverage_p10:.4f}/{coverage_p90:.4f}, adjacent/32px/128px correlation "
+                  f"{adjacent_correlation:.4f}/{mesoscale_correlation:.4f}/{regional_correlation:.4f}")
         if floating:
             # The mean and its square are independently quantized to half precision.
             mean_channels = list(range(0, data.shape[-1], 2)) if name == "Base" else [0]
