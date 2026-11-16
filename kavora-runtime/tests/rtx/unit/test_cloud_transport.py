@@ -51,13 +51,20 @@ def check_morphology_configuration():
     for scale in (8, 16, 32):
         assert re.search(rf"uv \\* {scale}\\.0f", weather), f"missing mesoscale group frequency {scale}"
     assert "lerp(0.35f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
+    assert "cumulusCoverage = saturate(0.42f + 1.85f * groups)" in weather
+    assert "deckNoise = 0.75f * regional" in weather
+    assert "deckCoverage = smoothstep(-0.28f, 0.24f, deckNoise)" in weather
+    assert "stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type)" in weather
+    assert "familyCoverage = lerp(cumulusCoverage, deckCoverage, stratiformBlend)" in weather
+    assert "regionalAmount * familyCoverage" in weather
+    assert "0.18f * regional" in weather, "cloud development must correlate with broad moisture"
     assert "smoothstep(0.20f, 0.62f, column.type)" in density, "cloud type must select parent-body scale"
     assert "lerp(float(kCloudBasePeriod), 8.0f, stratiform)" in density
     assert "args.shapeScale * float(kCloudBasePeriod) * 0.0625f" in density, (
         "erosion mip selection must remain in world units when parent scale changes")
     assert "bodyPeriod / float(kCloudBasePeriod)" in density
-    print("PASS cloud morphology configuration: 8/4/2 km groups, residual dry-region coverage, "
-          "type-dependent 2/8 km parent scale and invariant erosion world scale")
+    print("PASS cloud morphology configuration: distinct deck/cumulus masks, shared moisture, "
+          "residual dry-region coverage and type-dependent parent-body scale")
 
 
 def cloud_weather_periods():
