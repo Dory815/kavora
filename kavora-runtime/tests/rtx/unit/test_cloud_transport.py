@@ -49,7 +49,7 @@ def check_morphology_configuration():
     weather = (SHADERS / "rtx/pass/clouds/generate_cloud_weather.comp.slang").read_text()
     density = (SHADERS / "rtx/utility/cloud_density.slang").read_text()
     for scale in (8, 16, 32):
-        assert re.search(rf"uv \\* {scale}\\.0f", weather), f"missing mesoscale group frequency {scale}"
+        assert re.search(rf"uv \* {scale}\.0f", weather), f"missing mesoscale group frequency {scale}"
     assert "lerp(0.35f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
     assert "cumulusCoverage = saturate(0.42f + 1.85f * groups)" in weather
     assert "deckNoise = 0.75f * regional" in weather
