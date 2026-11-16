@@ -54,9 +54,10 @@ def check_morphology_configuration():
     assert "lerp(0.35f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
     assert "cumulusCoverage = saturate(0.42f + 1.85f * groups)" in weather
     assert "deckCells = cloudWorley(float3(uv, 0.0f), 8" in weather
-    assert "deckNoise = 0.60f * regional" in weather
-    assert "0.15f * (deckCells - 0.5f)" in weather
-    assert "deckCoverage = smoothstep(-0.45f, 0.05f, deckNoise)" in weather
+    assert "deckNoise = 0.55f * regional" in weather
+    assert "uv * 16.0f" in weather and "uv * 32.0f" in weather
+    assert "0.05f * (deckCells - 0.5f)" in weather
+    assert "deckCoverage = smoothstep(-0.40f, 0.10f, deckNoise)" in weather
     assert "stratiformBlend = 1.0f - smoothstep(0.20f, 0.62f, type)" in density
     assert "0.18f * regional" in weather, "cloud development must correlate with broad moisture"
     assert "regionalAmount * cumulusCoverage" in weather
