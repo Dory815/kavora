@@ -43,4 +43,24 @@ jobs:
 
       - name: Validate production cloud shaders and transport
         run: |
-          python3 kavora-runtime/tests/rtx/unit/test_cloud_transport.py             --dump "$RUNNER_TEMP/cloud-transport"
+          python3 kavora-runtime/tests/rtx/unit/test_cloud_transport.py \
+            --dump "$RUNNER_TEMP/cloud-transport"
+
+      - name: Render cloud-rich morphology matrix
+        run: |
+          python3 kavora-runtime/tests/rtx/unit/render_cloud_morphology_matrix.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/cloud-morphology" \
+            --cache-dir "$RUNNER_TEMP/cloud-morphology-cache" \
+            --width 512 \
+            --height 288 \
+            --repeat 2
+
+      - name: Upload cloud validation images and diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cloud-morphology-validation
+          path: |
+            ${{ runner.temp }}/cloud-morphology
+            ${{ runner.temp }}/cloud-transport
+          if-no-files-found: error
