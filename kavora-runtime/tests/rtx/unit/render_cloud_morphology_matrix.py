@@ -90,8 +90,8 @@ def main():
                     "--sun-azimuth", str(azimuth),
                     "--exposure", "1.0",
                     "--tone-map", "aces",
-                    "--steps", "384",
-                    "--light-steps", "16",
+                    "--steps", "256",
+                    "--light-steps", "8",
                     "--radiance",
                 ]
                 if shader_root:
