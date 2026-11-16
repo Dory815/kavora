@@ -181,7 +181,7 @@ public float cloudColumnThickness(CloudDensityArgs args, CloudColumn column)
 }
 
 [ForceInline]
-float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudType, float heightFootprint)
+float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudType, float coverage, float heightFootprint)
 {
   const float precipitation = max(args.weather, args.thunder);
   if (precipitation <= 0)
@@ -193,7 +193,9 @@ float overcastDensity(CloudDensityArgs args, float heightAboveBase, float cloudT
   const float layerThickness = cloudOvercastThickness(args, cloudType);
   const float height = heightAboveBase / layerThickness;
   const float profile = cloudHeightProfile(height, 0.16f, 0.65f, heightFootprint / layerThickness);
-  return precipitation * lerp(0.36f, 0.47f, args.thunder) * profile;
+  // Rain deepens existing stratiform regions instead of painting a uniform
+  // shell across every dry opening in the weather field.
+  return precipitation * lerp(0.36f, 0.47f, args.thunder) * coverage * profile;
 }
 
 [ForceInline]
@@ -230,7 +232,8 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   {
     return 0;
   }
-  const float overcast = overcastDensity(args, heightAboveBase, column.type, heightFootprint);
+  const float overcast = overcastDensity(args, heightAboveBase, column.type,
+    column.coverage, heightFootprint);
   const float columnHeight = heightAboveBase / column.thickness;
   const float profileFootprint = heightFootprint / column.thickness;
   if (column.coverage <= 0 || columnHeight - 0.5f * profileFootprint >= 1)
