@@ -4,6 +4,7 @@
 module cloud_density;
 
 #include "rtx/pass/cloud_noise.h"
+#include "rtx/utility/cloud_noise.slangh"
 
 public struct CloudDensityArgs
 {
@@ -105,6 +106,32 @@ public struct CloudColumn
   public float type;
   public float thickness;
   public float coverageVariance;
+  public float3 shapePhase;
+}
+
+[ForceInline]
+float3 cloudUpdraftPhase(float2 position)
+{
+  // Four shape periods per lattice cell keep each component's derivative below 0.2344.
+  // The phase spans +/- one quarter period and shares the weather wrap.
+  const float2 lattice = position * 0.25f;
+  const int2 cell = int2(floor(lattice));
+  const float2 t = frac(lattice);
+  const float2 blend = t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
+  float3 phase = 0;
+  [unroll]
+  for (uint corner = 0; corner < 4; corner++)
+  {
+    const uint2 offset = uint2(corner & 1u, corner >> 1);
+    const uint3 wrapped = cloudNoiseWrap(int3(cell.x + int(offset.x), 0, cell.y + int(offset.y)),
+      kCloudWeatherPeriod / 4u);
+    const uint hash = cloudNoiseHash(wrapped, kCloudNoiseSeed + 431u);
+    const float3 value = float3(hash & 1023u, (hash >> 10) & 1023u, (hash >> 20) & 1023u)
+      * (1.0f / 1023.0f) - 0.5f;
+    const float2 weight = lerp(1.0f - blend, blend, float2(offset));
+    phase += value * (0.5f * weight.x * weight.y);
+  }
+  return phase;
 }
 
 [ForceInline]
@@ -121,7 +148,9 @@ public CloudColumn cloudColumn(CloudDensityArgs args, float2 position, Sampler2D
   const float type = saturate(weather.b * (1.0f - 0.4f * args.weather) + 0.85f * args.thunder);
   const float thickness = args.thickness * ((140.0f + 460.0f * smoothstep(0.1f, 0.6f, type)
     + 900.0f * smoothstep(0.72f, 1.0f, type)) / 1500.0f);
-  return { coverage.x, type, thickness, max(coverage.y - coverage.x * coverage.x, 0.0f) };
+  const float3 shapePhase = coverage.x > 0 ? cloudUpdraftPhase(position) : float3(0);
+  return { coverage.x, type, thickness, max(coverage.y - coverage.x * coverage.x, 0.0f),
+    shapePhase };
 }
 
 [ForceInline]
@@ -207,7 +236,9 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   }
   // Keep the updraft field attached to its condensation level when the host
   // changes cloud altitude; height controls placement rather than a noise slice.
-  const float3 shapeCoordinates = float3(p.x, heightAboveBase / args.shapeScale, p.z);
+  // A prepared column carries one smooth phase into shape and light queries.
+  // Reduce the periodic coordinates before adding that phase to retain precision at the wind wrap.
+  const float3 shapeCoordinates = float3(frac(p.x), heightAboveBase / args.shapeScale, frac(p.z)) + column.shapePhase;
   const float detailLod = cloudNoiseLod(footprint, args.shapeScale * 0.0625f, 32.0f);
   const float3 detail = detailSampler.SampleLevel(shapeCoordinates * 16.0f, detailLod).rgb;
   // Advect the large updraft surface with the small-scale field as well as

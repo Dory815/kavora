@@ -22,15 +22,18 @@ void main(uint2 id : SV_DispatchThreadID)
   float amplitude = 1;
   for (uint octave = 0; octave < 4; octave++)
   {
-    const uint period = 12u << octave;
+    // Regional moisture organizes kilometre-scale groups and clear corridors.
+    // The finest octave remains eight texels wide in the regional weather tile.
+    const uint period = 16u << octave;
     coverage += amplitude * cloudPerlin(float3(uv * float(period), 0.37f), period, kCloudNoiseSeed + 211 + octave);
     amplitude *= 0.5f;
   }
-  coverage = saturate(coverage * (0.8f / 1.875f) + 0.5f);
-  const float clumps = cloudWorley(float3(uv, 0.5f), 32, kCloudNoiseSeed + 223, true);
-  coverage = saturate((0.55f * coverage + 0.45f * clumps) * 1.4f - 0.28f);
-  const float type = 0.6f * cloudPerlin(float3(uv * 2.0f, 0.71f), 2, kCloudNoiseSeed + 241)
-    + 0.4f * cloudPerlin(float3(uv * 4.0f, 0.13f), 4, kCloudNoiseSeed + 251);
+  coverage = saturate(coverage * (1.0f / 1.875f) + 0.5f);
+  // Small updraft groups remain resolved at four texels per weather cell.
+  const float clumps = cloudWorley(float3(uv, 0.5f), 256, kCloudNoiseSeed + 223, true);
+  coverage = saturate((0.75f * coverage + 0.25f * clumps) * 1.4f - 0.28f);
+  const float type = 0.6f * cloudPerlin(float3(uv * 8.0f, 0.71f), 8, kCloudNoiseSeed + 241)
+    + 0.4f * cloudPerlin(float3(uv * 16.0f, 0.13f), 16, kCloudNoiseSeed + 251);
   const float highDensity = cloudCirrusHorizontalDensity(uv, CloudCirrusAtlas);
   CloudWeather[id] = float4(coverage, coverage * coverage,
     saturate(type * 0.9f + 0.5f), highDensity);

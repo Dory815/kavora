@@ -39,13 +39,19 @@ def cloud_parameters(**changes):
     return result
 
 
+def cloud_weather_periods():
+    source = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
+    return tuple(int(re.search(rf"{name}\s*=\s*(\d+)", source).group(1))
+                 for name in ("kCloudWeatherPeriod", "kCloudHighWeatherPeriod"))
+
+
 class Probe:
     def __init__(self, device):
         self.device = device
         self.kernels = {}
 
     def run(self, entry, inputs, directions=None, clouds=None, textures=None):
-        data = np.asarray(inputs, dtype=np.float32).reshape(-1, 4)
+        data = np.ascontiguousarray(inputs, dtype=np.float32).reshape(-1, 4)
         if entry not in self.kernels:
             program = self.device.load_program("cloud_transport_contracts.comp.slang", [entry])
             self.kernels[entry] = self.device.create_compute_kernel(program)
@@ -57,7 +63,7 @@ class Probe:
         }
         if directions is not None:
             bindings["Directions"] = self.device.create_buffer(
-                data=np.asarray(directions, dtype=np.float32), usage=spy.BufferUsage.shader_resource)
+                data=np.ascontiguousarray(directions, dtype=np.float32), usage=spy.BufferUsage.shader_resource)
         if clouds is not None:
             bindings["Clouds"] = clouds
         if textures is not None:
@@ -304,6 +310,78 @@ def check_density(probe, textures, dump):
     print(f"PASS production density: clear/rain means {np.mean(fields[0]):.5f}/{np.mean(fields[2]):.5f}")
 
 
+def check_low_wind_wrap(probe, textures):
+    clouds = cloud_parameters(baseHeight=800.0, extinction=0.03)
+    period = max(cloud_weather_periods()) * clouds["shapeScale"]
+    axis = np.arange(-8192, 8192, 128, dtype=np.float32)
+    x, z = np.meshgrid(axis, axis)
+    points = np.column_stack([x.ravel(), np.full(x.size, 920), z.ravel(), np.zeros(x.size)])
+    reference = probe.run("densities", points, clouds=clouds, textures=textures)[:, 0]
+    assert np.any(reference > 0.1), "wind wrapping must exercise occupied cumulus"
+    maximum_error = 0.0
+    for wind in ([period, 0, 0], [0, 0, period], [-period, 0, period]):
+        wrapped = probe.run("densities", points, clouds=clouds | {"windOffset": wind}, textures=textures)[:, 0]
+        np.testing.assert_allclose(wrapped, reference, atol=5e-4, rtol=1e-3,
+                                   err_msg="low-cloud density jumps at the shared wind wrap")
+        maximum_error = max(maximum_error, np.max(np.abs(wrapped - reference)))
+    print(f"PASS low-layer wind wrap: {period:.0f}m, maximum density difference {maximum_error:.7f}")
+
+
+def check_shape_phase(probe, textures):
+    clouds = cloud_parameters(coverage=1.0, weather=1.0)
+    scale = clouds["shapeScale"]
+    period = cloud_weather_periods()[0] * scale
+    rng = np.random.default_rng(87123)
+    # Eight-meter coordinates keep the period shifts exactly representable in float32.
+    horizontal = np.rint(rng.uniform(-2 * period, 2 * period, (2048, 2)) / 8) * 8
+    points = np.column_stack([horizontal[:, 0], np.zeros(len(horizontal)),
+                              horizontal[:, 1], np.zeros(len(horizontal))]).astype(np.float32)
+    weather = {"Weather": textures["Weather"]}
+
+    def phase(samples, parameters=clouds):
+        return probe.run("columnPhases", samples, clouds=parameters, textures=weather)
+
+    values = phase(points)
+    assert np.isfinite(values).all() and np.all(values[:, 3] > 0)
+    assert np.max(np.abs(values[:, :3])) <= 0.250001
+    for offset in ([period, 0, 0, 0], [0, 0, period, 0], [-period, 0, period, 0]):
+        np.testing.assert_allclose(phase(points + offset)[:, :3], values[:, :3], atol=1e-7, rtol=0,
+                                   err_msg="shape phase must share the low-weather period")
+    for controls in ({"coverage": 0.45, "weather": 0.0},
+                     {"coverage": 0.8, "weather": 0.5, "thunder": 0.7, "night": 1.0}):
+        changed = phase(points, clouds | controls)
+        active = changed[:, 3] > 0
+        assert np.any(active)
+        np.testing.assert_array_equal(changed[active, :3], values[active, :3])
+        np.testing.assert_array_equal(changed[~active, :3], 0)
+
+    maximum_derivative = 0.0
+    delta = 16.0
+    for axis in (0, 2):
+        offset = np.zeros(4)
+        offset[axis] = delta
+        derivative = (phase(points + offset)[:, :3] - phase(points - offset)[:, :3]) * (scale / (2 * delta))
+        maximum_derivative = max(maximum_derivative, np.max(np.abs(derivative)))
+    assert maximum_derivative <= 0.2345, ("shape phase exceeds its no-fold derivative bound", maximum_derivative)
+
+    # Check both lattice and wrap boundaries, including negative coordinates.
+    edges = np.array([[cell * 4 * scale, 0, across, 0]
+                      for cell in range(-33, 34) for across in (-7351.5, 2191.25, 18421.75)], np.float32)
+    for axis in (0, 2):
+        samples = edges if axis == 0 else edges[:, [2, 1, 0, 3]]
+        offset = np.zeros(4)
+        offset[axis] = 8
+        before = phase(samples - offset)[:, :3]
+        center = phase(samples)[:, :3]
+        after = phase(samples + offset)[:, :3]
+        np.testing.assert_allclose(before, after, atol=1e-6, rtol=0,
+                                   err_msg="shape phase has a discontinuous cell boundary")
+        slope_jump = (before + after - 2 * center) * (scale / 8)
+        assert np.max(np.abs(slope_jump)) < 1e-4, "shape phase has a slope discontinuity"
+    print(f"PASS low shape phase: bounds, UI independence, negative/wrapped cell continuity, "
+          f"maximum sampled derivative {maximum_derivative:.6f}")
+
+
 def check_visibility(probe, textures, dump):
     positions = [[x, 540, z] for x in (-1200, -400, 400, 1200) for z in (-700, 0, 700)]
     angles = (0.0, 0.001, 1.0, 1.001, 3.0, 3.001, 10.0, 10.001, 45.0, 45.001, 90.0)
@@ -318,18 +396,104 @@ def check_visibility(probe, textures, dump):
     assert np.isfinite(actual).all() and np.all((0 <= actual) & (actual <= 1))
     values = actual.reshape(len(positions), len(angles))
     differences = np.abs(values[:, 0:10:2] - values[:, 1:10:2])
-    assert np.max(differences) < 0.025, ("low-sun temporal discontinuity", np.max(differences))
     mean_error = np.mean(np.abs(actual - reference))
     maximum_error = np.max(np.abs(actual - reference))
     if dump:
         np.savez(dump / "cloud-visibility.npz", actual=values,
                  reference=reference.reshape(values.shape), angles=angles,
                  origins=np.asarray(origins), directions=np.asarray(directions))
+    assert np.max(differences) < 0.025, ("low-sun temporal discontinuity", np.max(differences))
     # Footprint filtering changes individual rays; bound both aggregate bias and missed thin cells.
     assert mean_error < 0.05, ("self-shadow quadrature diverges from the fine reference", mean_error)
     assert maximum_error < 0.45, ("self-shadow quadrature misses a significant cloud cell", maximum_error)
     print(f"PASS cloud visibility: mean/max reference error {mean_error:.5f}/{maximum_error:.5f}, "
           f"angular delta {np.max(differences):.6f}")
+
+
+def check_light_support(probe, textures):
+    clouds = cloud_parameters()
+    angle = np.radians(10)
+    direction = [np.cos(angle), np.sin(angle), 0]
+    local_ranges = np.array([-100, 0, 13.5, 32, 64, 127.5, 513.25, 943, 1024, 2048, 6000])
+    rays = np.tile([-400, 540, -700, 5000], (len(local_ranges), 1))
+    directions = np.column_stack([np.tile(direction, (len(local_ranges), 1)), local_ranges])
+    parts = probe.run("lightDepthParts", rays, directions, clouds, textures)[:, :2]
+    assert np.isfinite(parts).all() and np.all(parts >= 0)
+    assert np.all(np.diff(parts[:, 0]) >= -1e-6), "local optical depth must be monotone"
+    np.testing.assert_allclose(parts.sum(axis=1), parts[0].sum(), atol=2e-5, rtol=2e-6,
+                               err_msg="changing local range must not resample the light ray")
+    np.testing.assert_array_equal(parts[:2, 0], 0)
+    assert parts[-1, 1] == 0
+
+    # This occupied half-cell was selected from an independent dense ray probe.
+    # Equal prefix increments must integrate the same sample and footprint.
+    endpoints = np.arange(928, 961, 8)
+    rays = np.column_stack([np.tile([-400, 540, -700], (len(endpoints), 1)), endpoints])
+    directions = np.tile([*direction, 0], (len(endpoints), 1))
+    depths = probe.run("lightDepthParts", rays, directions, clouds, textures)[:, :2].sum(axis=1)
+    increments = np.diff(depths)
+    assert np.min(increments) > 1e-4, "the prefix probe must cross occupied cloud"
+    np.testing.assert_allclose(increments, increments[0], atol=2e-6, rtol=2e-5,
+                               err_msg="a moving endpoint must clip weights without moving samples")
+
+    for quality, expected_support in ((4, 128), (8, 64), (12, 1024 / 24), (16, 32), (512, 1)):
+        parameters = clouds | {"lightSteps": quality}
+        empty = probe.run("lightDepthParts", [[0, 540, 0, 0]], [[1, 0, 0, 0]], parameters, textures)
+        np.testing.assert_allclose(empty[0, 2], expected_support, atol=1e-5, rtol=1e-7)
+        if quality == 512:
+            continue
+        for scale in (1, 64):
+            parameters["shapeScale"] = scale
+            # Full horizontal shadow range, with early termination disabled.
+            result = probe.run("lightDepthParts", [[-400, 540, -700, 60000]], [[1, 0, 0, 0]],
+                               parameters, textures)[0]
+            assert np.isfinite(result).all() and np.all(result[:2] >= 0)
+            required_taps = int(np.ceil(parameters["lightMaxDistance"] / float(result[2])))
+            assert required_taps <= 256 * quality, ("tiny shapes exceed the fixed light budget", required_taps)
+            assert result[1] > 0, "budget-limited sampling must still integrate the full occupied ray"
+    print("PASS fixed light support: local/external partition, clipped prefixes, unchanged default grids, "
+          "bounded full-range tiny shapes")
+
+
+def check_empty_light_support(probe):
+    base = cloud_parameters(baseHeight=800.0, extinction=0.03, maxDistance=96000.0)
+    configurations = (("default", {}), ("tiny-scale", {"shapeScale": 64.0}),
+                      ("low-quality", {"lightSteps": 4}), ("fine-reference", {"lightSteps": 512}),
+                      ("small-planet-fallback", {"planetRadius": 10000.0}),
+                      ("translated", {"groundReference": [10000.0, 20.0, -5000.0]}),
+                      ("z-up", {"up": [0, 0, 1]}))
+    rays_checked = 0
+    supports_checked = 0
+    for name, changes in configurations:
+        origins, directions = [], []
+        positions = ((8043, 1240), (0, 0), (-12000, 9000)) if name == "default" else ((0, 0),)
+        angles = (-2, -0.4, 0, 2) if name == "fine-reference" else (-15, -2, -0.4, -0.01, 0, 0.01, 0.4, 2, 40)
+        for x, z in positions:
+            for height in (799, 800, 816, 900, 1200, 2299):
+                for angle in np.radians(angles):
+                    origin = [x, height, z]
+                    direction = [np.cos(angle), np.sin(angle), 0]
+                    if name == "z-up":
+                        origin = [x, z, height]
+                        direction = [direction[0], 0, direction[1]]
+                    for endpoint in (1024.0, 60000.0):
+                        origins.append([*origin, endpoint])
+                        directions.append([*direction, 0])
+        values = probe.run("emptyLightSupports", origins, directions, base | changes)
+        assert np.isfinite(values).all()
+        active = values[:, 0] > 0
+        # The shader checks every skipped fixed node through production altitude
+        # and height-footprint functions, not an assumed point-density boundary.
+        assert np.all(values[active, 1] <= 0), ("skipped support reaches nonzero cloud profile", name)
+        np.testing.assert_array_equal(values[:, 0], np.maximum(values[:, 3] - values[:, 2], 0))
+        if name == "small-planet-fallback":
+            assert not np.any(active), "an invalid radial-footprint bound must disable skipping"
+        else:
+            assert np.any(active), ("empty-shell test must exercise skipped supports", name)
+        rays_checked += len(origins)
+        supports_checked += int(values[:, 0].sum())
+    print(f"PASS conservative empty-shell skipping: {rays_checked} rays, "
+          f"{supports_checked} skipped supports with exactly zero profile support")
 
 
 def check_high_density(probe, textures, dump):
@@ -351,15 +515,15 @@ def check_high_density(probe, textures, dump):
         assert np.all(density >= previous - 1e-6), "increasing high coverage must not remove condensate"
         previous = density
 
-    # The host and both weather lookups share the high field's repeat period.
-    constants = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
-    periods = int(re.search(r"kCloudHighWeatherPeriod\s*=\s*(\d+)", constants).group(1))
-    period = periods * clouds["shapeScale"]
-    for wind in ([period, 0, 0], [0, 0, period], [-period, 0, period]):
-        wrapped = probe.run("densities", points, clouds=clouds | {"windOffset": wind},
-                            textures=textures)[:, 0]
-        np.testing.assert_allclose(wrapped, actual, atol=1e-5, rtol=1e-4,
-                                   err_msg="high clouds jump when the host wraps wind")
+    # The high field retains its own period and also repeats at the shared host wrap.
+    low_period, high_period = cloud_weather_periods()
+    for periods in sorted({high_period, max(low_period, high_period)}):
+        period = periods * clouds["shapeScale"]
+        for wind in ([period, 0, 0], [0, 0, period], [-period, 0, period]):
+            wrapped = probe.run("densities", points, clouds=clouds | {"windOffset": wind},
+                                textures=textures)[:, 0]
+            np.testing.assert_allclose(wrapped, actual, atol=1e-5, rtol=1e-4,
+                                       err_msg="high clouds jump when the host wraps wind")
 
     for height in (5800, 7100):
         points[:, 1] = height
@@ -405,6 +569,114 @@ def check_high_column_transmission(probe, textures):
           f"maximum Beer-law error {np.max(np.abs(actual - expected)):.7f}")
 
 
+def high_column_reference(origin, direction, base, thickness, extinction, distance, radius):
+    """Integrate a constant horizontal field between spherical profile knots."""
+    origin = np.asarray(origin, np.float64)
+    direction = np.asarray(direction, np.float64)
+    point = origin + [0, radius, 0]
+    projection = point @ direction
+    boundaries = [0.0, distance]
+    for altitude in (base, base + 0.15 * thickness, base + 0.65 * thickness, base + thickness):
+        height = origin[1]
+        squared = origin[0] ** 2 + origin[2] ** 2 + (height - altitude) * (2 * radius + height + altitude)
+        discriminant = projection * projection - squared
+        if discriminant >= 0:
+            root = np.sqrt(discriminant)
+            boundaries.extend(t for t in (-projection - root, -projection + root) if 0 < t < distance)
+    boundaries = sorted(set(boundaries))
+    nodes, weights = np.polynomial.legendre.leggauss(48)
+    depth = 0.0
+    for begin, end in zip(boundaries[:-1], boundaries[1:]):
+        middle = 0.5 * (begin + end)
+        altitude = np.linalg.norm(point + direction * middle) - radius
+        if not base < altitude < base + thickness:
+            continue
+        samples = middle + 0.5 * (end - begin) * nodes
+        positions = point[None, :] + samples[:, None] * direction
+        height = (np.linalg.norm(positions, axis=1) - radius - base) / thickness
+        bottom = np.clip(height / 0.15, 0, 1)
+        top = np.clip((height - 0.65) / 0.35, 0, 1)
+        profile = bottom * bottom * (3 - 2 * bottom) * (1 - top * top * (3 - 2 * top))
+        depth += 0.5 * (end - begin) * np.dot(weights, profile) * extinction
+    return depth
+
+
+def check_high_filtered_columns(probe, textures):
+    weather = probe.device.create_texture(type=spy.TextureType.texture_2d, format=spy.Format.rgba32_float,
+                                          width=1, height=1, mip_count=1, usage=spy.TextureUsage.shader_resource)
+    weather.copy_from_numpy(np.ones((1, 1, 4), dtype=np.float32))
+    sampler = probe.device.create_sampler(address_u=spy.TextureAddressingMode.wrap,
+                                          address_v=spy.TextureAddressingMode.wrap)
+    constant = {**textures, "Weather": weather.create_view(sampler=sampler)}
+    radius = 6370937.0
+    maximum_error = 0.0
+    maximum_angular_delta = 0.0
+    cases = 0
+    for thickness in (50.0, 200.0):
+        base = 6400.0 - 0.5 * thickness
+        extinction = 0.005 / (0.75 * thickness)
+        origins, directions = [], []
+        for height, angles in ((139.0, (90, 45, 20, 10, 5, 0)),
+                                (6400.0, (-0.4, -0.001, 0, 0.001, 0.4, 90)), (7000.0, (-90,))):
+            for angle in np.radians(angles):
+                origins.append([0, height, 0, 1e6])
+                directions.append([np.cos(angle), np.sin(angle), 0, 0])
+        origins = np.asarray(origins, dtype=np.float32)
+        directions = np.asarray(directions, dtype=np.float32)
+        expected = np.array([high_column_reference(origin[:3], direction[:3], base, thickness,
+                                                   extinction, origin[3], radius)
+                             for origin, direction in zip(origins, directions)])
+        # Keep the numerical rays before distance fading, including spherical
+        # horizontal intersections beyond the ordinary game view range.
+        clouds = cloud_parameters(extinction=0.0, highExtinction=extinction, highBaseHeight=base,
+                                  highThickness=thickness, highCoverage=1.0, highMaxDistance=1e6,
+                                  maxDistance=1e6, planetRadius=radius)
+        for steps in (64, 96, 160, 320):
+            for footprint in (0.0, 0.00191831747, 0.00383663494, 0.01):
+                parameters = clouds | {"steps": steps, "viewAngularFootprint": footprint}
+                transmission = probe.run("viewTransmission", origins, directions, parameters, constant)[:, 0]
+                assert np.isfinite(transmission).all() and np.all((0 < transmission) & (transmission <= 1))
+                depth = -np.log(transmission.astype(np.float64))
+                np.testing.assert_allclose(depth, expected, atol=2e-5, rtol=0.005,
+                                           err_msg="high-layer filtering must preserve its spherical column")
+                maximum_error = max(maximum_error, np.max(np.abs(depth - expected) / expected))
+                cases += len(origins)
+        tangent = -np.arccos((radius + base) / (radius + 6400.0))
+        angles = np.array([center + offset for center in (0.0, tangent)
+                           for offset in np.radians([-0.001, -0.0001, 0, 0.0001, 0.001])])
+        rays = np.tile([0, 6400, 0, 1e6], (len(angles), 1))
+        sunlight = np.column_stack([np.cos(angles), np.sin(angles), np.zeros((len(angles), 2))])
+        visibility = probe.run("visibility", rays, sunlight, clouds, constant)[:, 0].reshape(2, -1)
+        assert np.isfinite(visibility).all() and np.all((0 <= visibility) & (visibility <= 1))
+        assert np.any((visibility > 0.01) & (visibility < 0.99))
+        delta = np.max(np.abs(np.diff(visibility, axis=1)))
+        assert delta < 0.01, ("high-layer visibility jumps at a small solar-angle change", delta)
+        maximum_angular_delta = max(maximum_angular_delta, delta)
+    print(f"PASS filtered high-layer columns: {cases} thickness/angle/step/footprint cases, "
+          f"maximum relative depth error {maximum_error:.6f}, solar-angle delta {maximum_angular_delta:.6f}")
+
+
+def check_layer_height_footprints(probe):
+    for up in ([0, 1, 0], [0, 0, 1]):
+        clouds = cloud_parameters(up=up)
+        vertical = np.asarray(up)
+        origins, directions, expected = [], [], []
+        for height in (0.0, 6400.0):
+            for cosine, sine in ((1.0, 0.0), (0.0, 1.0), (0.6, 0.8)):
+                direction = cosine * vertical + [sine, 0, 0]
+                for span in (8.0, 50.0, 500.0):
+                    radial = cosine * span + sine * sine * span * span / (4 * (clouds["planetRadius"] + height))
+                    for pixel in (0.0, 5.0, 1000.0):
+                        origins.append([*(height * vertical), span])
+                        directions.append([*direction, pixel])
+                        expected.append([max(radial, pixel * sine), radial])
+        actual = probe.run("heightFootprints", origins, directions, clouds)
+        np.testing.assert_allclose(actual[:, :2], expected, atol=2e-5, rtol=1e-6)
+        np.testing.assert_array_equal(actual[:, 0], actual[:, 3], err_msg="default footprint must retain low-layer semantics")
+        np.testing.assert_array_equal(actual[:, 1], actual[:, 2], err_msg="high height integration must ignore the pixel cone")
+    print("PASS layer height footprints: low/default pixel filtering unchanged, high radial support, Y-up and Z-up")
+
+
 def check_tangent_visibility(probe, textures):
     maximum_change = 0.0
     offsets = np.radians([-0.001, -0.0001, 0.0, 0.0001, 0.001])
@@ -443,9 +715,15 @@ def main():
     check_light_profiles(probe)
     textures = cloud_textures(device)
     check_density(probe, textures, args.dump)
+    check_low_wind_wrap(probe, textures)
+    check_shape_phase(probe, textures)
     check_high_density(probe, textures, args.dump)
     check_high_column_transmission(probe, textures)
+    check_high_filtered_columns(probe, textures)
+    check_layer_height_footprints(probe)
     check_visibility(probe, textures, args.dump)
+    check_light_support(probe, textures)
+    check_empty_light_support(probe)
     check_tangent_visibility(probe, textures)
 
 

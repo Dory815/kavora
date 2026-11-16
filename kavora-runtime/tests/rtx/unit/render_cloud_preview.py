@@ -56,7 +56,7 @@ def texture_cache(device, support, shaders, cache_dir, noise_seed=None):
              'rtx/pass/clouds/generate_cloud_weather.comp.slang',
              'rtx/pass/clouds/filter_cloud_noise.comp.slang',
              'rtx/utility/cloud_noise.slangh', 'rtx/pass/cloud_noise.h',
-             'rtx/utility/cloud_shape.slang')
+             'rtx/utility/cloud_shape.slang', 'rtx/utility/cirrus_shapes.slangh')
     shader_files = [shaders / name for name in files]
     digest = hashlib.sha256()
     source_hashes = {}
@@ -308,9 +308,9 @@ def main():
     parser.add_argument('--low-extinction', type=float, default=0.03, help='Low cloud extinction per meter at unit density')
     parser.add_argument('--low-coverage', type=float, default=0.45, help='Low cloud regional coverage')
     parser.add_argument('--low-max-distance', type=float, default=96000.0, help='Low cloud view range in meters')
-    parser.add_argument('--high-base', type=float, default=6300.0, help='High cloud base in meters')
-    parser.add_argument('--high-thickness', type=float, default=200.0, help='High cloud thickness in meters')
-    parser.add_argument('--high-extinction', type=float, default=0.006, help='High cloud extinction per meter')
+    parser.add_argument('--high-base', type=float, default=6375.0, help='High cloud base in meters')
+    parser.add_argument('--high-thickness', type=float, default=50.0, help='High cloud thickness in meters')
+    parser.add_argument('--high-extinction', type=float, default=0.024, help='High cloud extinction per meter')
     parser.add_argument('--coverage', type=float, default=0.35, help='High layer coverage')
     parser.add_argument('--weather', type=float, default=0)
     parser.add_argument('--thunder', type=float, default=0)
@@ -395,6 +395,8 @@ def main():
     support.OPTIONS = {'include_paths': [str(shaders), str(HERE)], 'defines': {'__SLANG__': '1'}}
     if re.search(r'\bpublic\s+float\s+spanAt\s*\(', (shaders / 'rtx/algorithm/clouds.slang').read_text()):
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_CELL_SPAN'] = '1'
+    if re.search(r'cloudHeightFootprint\([^)]*\buint\s+layer', (shaders / 'rtx/algorithm/clouds.slang').read_text(), re.S):
+        support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_LAYER_HEIGHT_FOOTPRINT'] = '1'
     if 'cloudDensityFootprint' in (shaders / 'rtx/algorithm/clouds.slang').read_text():
         support.OPTIONS['defines']['CLOUD_PREVIEW_HAS_DENSITY_FOOTPRINT'] = '1'
     if 'createCloudRayGrid' in (shaders / 'rtx/algorithm/clouds.slang').read_text():

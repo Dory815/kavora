@@ -336,7 +336,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
           args.clouds.viewAngularFootprint * cloudSample, cloudLayer);
         cloudSigma = cloudViewExtinction(args.clouds, cloudPosition, cloudSample, weather, base, detail, cloudFootprint,
           cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spanAt(cloudCell),
-            args.clouds.viewAngularFootprint * cloudSample));
+            args.clouds.viewAngularFootprint * cloudSample, cloudLayer));
         cloudSource = cloudSigma > 0 ? cloudSigma * args.clouds.albedo
           * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail) : 0;
         cloudSampleValid = true;
