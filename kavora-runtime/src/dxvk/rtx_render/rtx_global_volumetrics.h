@@ -63,7 +63,7 @@ namespace dxvk {
       args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, thicknessMeters, 1500.0f, "Maximum cumulus thickness. Local weather determines the height of each formation.",
       args.minValue = 1.0f);
-    RTX_OPTION_ARGS("rtx.clouds", float, shapeScaleMeters, 1024.0f, "Period of the base shape volume. Low-cloud weather spans sixteen periods, high-cloud weather spans thirty-two, and erosion detail spans one sixteenth period.",
+    RTX_OPTION_ARGS("rtx.clouds", float, shapeScaleMeters, 1024.0f, "Period of the base shape volume. Low-cloud weather spans 128 periods, high-cloud weather spans 32, and erosion detail spans one sixteenth period.",
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", float, extinctionPerMeter, 0.03f, "Cloud extinction at unit density, per meter.",
       args.minValue = 0.0f);
@@ -81,7 +81,7 @@ namespace dxvk {
       args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.clouds", uint32_t, steps, 160u, "Spatial integration quality of the cloud field. Longer rays use proportionally more density samples.",
       args.minValue = 8u, args.maxValue = 256u);
-    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow grid levels. Wide cells use deterministic quadrature sub-samples.",
+    RTX_OPTION_ARGS("rtx.clouds", uint32_t, lightSteps, 16u, "Cloud self-shadow quality. Controls spatial sampling and a bounded low-cloud query budget, plus high-cloud integration cells.",
       args.minValue = 1u, args.maxValue = 16u);
   };
 

@@ -167,7 +167,9 @@ against geometry and cloud parallax between ray origins; use World volume
 when flying through clouds. Its resolution is independent of DLSS.
 
 Low-cloud shape and weather distribution adapt Community Edition's periodic
-Perlin-Worley fields. High clouds use finite feathered shapes derived from
+Perlin-Worley fields. Regional weather forms groups and clear corridors over
+128 shape periods, with a smooth spatial variation in individual cloud shape.
+High clouds use finite feathered shapes derived from
 credited CC0 photographs, distributed in regional groups with clear areas.
 Their colour and lighting come from the volumetric renderer. All ray types
 use the same density including edge erosion.
@@ -178,6 +180,12 @@ tracer. The sky-map transport reuses that integration for background directions.
 Volumetric controls include coverage, thickness, shape scale, density, wind,
 scattering, distance, and view and shadow samples. Classic edge smoothing and
 thickness affect only Classic clouds; the height offset applies to both styles.
+Saved overrides retain their previous values after an update. To reproduce the
+current cloud defaults, reset the Clouds category and choose **Apply**, leaving
+other categories alone. Restart if you had changed native effect controls, as
+described under [Resetting](#resetting). This also restores the low-layer
+608-meter height offset, 0.03-per-meter extinction and 96-kilometer range, and
+the high layer's 6300-meter base, 200-meter thickness and 0.006-per-meter extinction.
 
 **Weather & Volumes → Volumetric Fog** has separate Overworld, Nether, and End folders.
 Each dimension exposes transmittance, optical distance,

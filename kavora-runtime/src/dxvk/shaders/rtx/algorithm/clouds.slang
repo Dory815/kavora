@@ -294,6 +294,16 @@ public float cloudTransmittance(CloudArgs args, float3 origin, float3 direction,
 }
 
 [ForceInline]
+public float cloudLowLightSupportLength(CloudArgs args)
+{
+  const uint quality = max(args.lightSteps, 1u);
+  const float nominalSupport = 0.5f * args.shapeScale / float(quality);
+  // Bound extreme user shape scales without moving the default grid. The
+  // budget depends on the full shadow range, never a clipped ray endpoint.
+  return max(nominalSupport, args.lightMaxDistance / float(256u * quality - 1u));
+}
+
+[ForceInline]
 float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 direction, float span,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
@@ -301,74 +311,70 @@ float cloudLightSampleDepth(CloudArgs args, uint layer, float3 position, float3 
   const float extinction = layer == 0 ? args.extinction : args.highExtinction;
   // Quadrature integrates along the ray. A cell-sized isotropic mip also
   // includes neighbouring off-ray clouds and incorrectly shadows clear gaps.
-  const float footprint = layer == 0 ? min(span, args.shapeScale / 128.0f)
-    : cloudDensityFootprint(args, direction, span, 0, layer);
+  float footprint = cloudDensityFootprint(args, direction, span, 0, layer);
+  if (layer == 0)
+  {
+    const float nominalSupport = 0.5f * args.shapeScale / float(max(args.lightSteps, 1u));
+    const float baseFootprint = min(span, args.shapeScale / 128.0f);
+    // Only budget-limited tiny shapes need extra filtering. Ordinary shadow
+    // samples retain the base-texel footprint and resolved narrow cloud gaps.
+    footprint = sqrt(baseFootprint * baseFootprint + max(0.0f, span * span - nominalSupport * nominalSupport));
+  }
   return extinction * cloudDensity(cloudDensityParameters(args), position, weatherSampler, baseSampler, detailSampler,
     footprint, layer, heightFootprint) * span;
 }
 
-float cloudLightCellDepth(CloudArgs args, uint layer, float3 origin, float3 direction,
+float2 cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float2 interval,
+  float localRange, float opticalDepthLimit, Sampler2D<float4> weatherSampler,
+  Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
+{
+  const float supportLength = cloudLowLightSupportLength(args);
+  const float cellLength = 2.0f * supportLength;
+  const uint sampleBudget = 256u * max(args.lightSteps, 1u);
+  float2 opticalDepth = 0;
+  // Each fixed Gaussian node represents one half-cell. Only its integration
+  // weight is clipped by the shell, finite ray length or local-domain boundary.
+  // The density sample and its footprint stay fixed when any of those move.
+  uint tap = uint(max(0.0f, floor(interval.x / supportLength)));
+  for (; tap < sampleBudget && float(tap) * supportLength < interval.y; tap++)
+  {
+    const float supportBegin = float(tap) * supportLength;
+    const float begin = max(interval.x, supportBegin);
+    const float end = min(interval.y, supportBegin + supportLength);
+    const float offset = (tap & 1u) == 0 ? 0.21132486541f : 0.78867513459f;
+    const float distance = (float(tap >> 1) + offset) * cellLength;
+    const float depth = cloudLightSampleDepth(args, 0, origin + direction * distance, direction,
+      supportLength, weatherSampler, baseSampler, detailSampler);
+    const float localLength = max(0.0f, min(end, localRange) - begin);
+    opticalDepth += depth * float2(localLength, end - begin - localLength) / supportLength;
+    if (opticalDepth.x + opticalDepth.y >= opticalDepthLimit)
+    {
+      break;
+    }
+  }
+  return opticalDepth;
+}
+
+float cloudHighLightCellDepth(CloudArgs args, float3 origin, float3 direction,
   float begin, float end, float cellSpan, Sampler2D<float4> weatherSampler,
   Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler)
 {
-  const float t = (begin + end) * 0.5f;
+  const float middle = (begin + end) * 0.5f;
   const float span = end - begin;
-  float depth = 0;
-  // Use the unclipped width so moving the shell exit cannot switch quadrature rules.
-  // Wide low-cloud cells need directional quadrature: filtering them as
-  // boxes erased the illuminated billows and destabilized grazing shadows.
-  if (layer == 0 && cellSpan > args.shapeScale)
-  {
-    const float4 offsets = float4(0.09171732125f, 0.26276620496f, 0.39833323871f, 0.48014492825f);
-    const float4 weights = float4(0.18134189169f, 0.15685332294f, 0.11119051723f, 0.05061426815f);
-    [unroll]
-    for (uint subcell = 0; subcell < 2; subcell++)
-    {
-      const float localMiddle = begin + (float(subcell) + 0.5f) * (0.5f * span);
-      [unroll]
-      for (uint tap = 0; tap < 4; tap++)
-      {
-        depth += cloudLightSampleDepth(args, layer,
-          origin + direction * (localMiddle - offsets[tap] * (0.5f * span)),
-          direction, span * (0.5f * weights[tap]), weatherSampler, baseSampler, detailSampler);
-        depth += cloudLightSampleDepth(args, layer,
-          origin + direction * (localMiddle + offsets[tap] * (0.5f * span)),
-          direction, span * (0.5f * weights[tap]), weatherSampler, baseSampler, detailSampler);
-      }
-    }
-  }
-  else if (layer == 0 && cellSpan > args.shapeScale * 0.0625f)
-  {
-    const float4 offsets = float4(-0.43056815580f, -0.16999052179f, 0.16999052179f, 0.43056815580f);
-    const float4 weights = float4(0.17392742257f, 0.32607257743f, 0.32607257743f, 0.17392742257f);
-    [unroll]
-    for (uint tap = 0; tap < 4; tap++)
-    {
-      depth += cloudLightSampleDepth(args, layer, origin + direction * (t + offsets[tap] * span),
-        direction, span * weights[tap], weatherSampler, baseSampler, detailSampler);
-    }
-  }
-  else if (cellSpan > args.shapeScale * (layer == 0 ? 0.015625f : 0.25f))
+  if (cellSpan > args.shapeScale * 0.25f)
   {
     const float offset = span * 0.28867513459f;
-    depth += cloudLightSampleDepth(args, layer, origin + direction * (t - offset), direction, 0.5f * span,
-      weatherSampler, baseSampler, detailSampler);
-    depth += cloudLightSampleDepth(args, layer, origin + direction * (t + offset), direction, 0.5f * span,
-      weatherSampler, baseSampler, detailSampler);
+    return cloudLightSampleDepth(args, 1, origin + direction * (middle - offset), direction, 0.5f * span,
+      weatherSampler, baseSampler, detailSampler)
+      + cloudLightSampleDepth(args, 1, origin + direction * (middle + offset), direction, 0.5f * span,
+          weatherSampler, baseSampler, detailSampler);
   }
-  else
-  {
-    depth += cloudLightSampleDepth(args, layer, origin + direction * t, direction, span,
-      weatherSampler, baseSampler, detailSampler);
-  }
-  return depth;
+  return cloudLightSampleDepth(args, 1, origin + direction * middle, direction, span,
+    weatherSampler, baseSampler, detailSampler);
 }
 
-// Split the same directional quadrature at a fixed local-domain boundary.
-// Components contain local and external optical depth respectively. Clipping
-// the crossing cell, rather than classifying its samples, keeps the split
-// continuous as density moves across the boundary.
-float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float distance,
+// Components contain optical depth inside and outside the finite local domain.
+public float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float distance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler,
   float localRange = 0, float opticalDepthLimit = kFloatMax)
 {
@@ -396,9 +402,19 @@ float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, f
     {
       continue;
     }
+    if (layer == 0)
+    {
+      opticalDepth += cloudLowLightOpticalDepth(args, origin, direction, float2(begin, end), localRange,
+        opticalDepthLimit - opticalDepth.x - opticalDepth.y, weatherSampler, baseSampler, detailSampler);
+      if (opticalDepth.x + opticalDepth.y >= opticalDepthLimit)
+      {
+        return opticalDepth;
+      }
+      continue;
+    }
     const float spacing = cloudSampleSpacing(args, direction, layer);
     const float stretch = log(1.0f + lightRange / spacing);
-    const uint steps = layer == 0 ? args.lightSteps : max(4u, (args.lightSteps + 1) / 2);
+    const uint steps = max(4u, (args.lightSteps + 1) / 2);
     // Keep one grid through the inner clear-air gap as a ray crosses the shell's tangent.
     float previous = begin;
     for (uint i = 0; i < steps; i++)
@@ -409,12 +425,12 @@ float2 cloudLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, f
       const float cellSpan = boundary - previous;
       if (localEnd > previous)
       {
-        opticalDepth.x += cloudLightCellDepth(args, layer, origin, direction, previous, localEnd, cellSpan,
+        opticalDepth.x += cloudHighLightCellDepth(args, origin, direction, previous, localEnd, cellSpan,
           weatherSampler, baseSampler, detailSampler);
       }
       if (next > localEnd)
       {
-        opticalDepth.y += cloudLightCellDepth(args, layer, origin, direction, localEnd, next, cellSpan,
+        opticalDepth.y += cloudHighLightCellDepth(args, origin, direction, localEnd, next, cellSpan,
           weatherSampler, baseSampler, detailSampler);
       }
       if (opticalDepth.x + opticalDepth.y >= opticalDepthLimit)
