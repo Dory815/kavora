@@ -685,14 +685,20 @@ def check_light_support(probe, textures):
 
 
 def check_horizon_cloud_openings(probe, textures):
-    azimuth = np.linspace(0.0, 2.0 * np.pi, 96, endpoint=False)
+    origin_azimuth = np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False)
+    ray_azimuth = np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False)
     elevation = np.radians(10.0)
     horizontal = np.cos(elevation)
-    directions = np.column_stack((horizontal * np.cos(azimuth),
-                                  np.full_like(azimuth, np.sin(elevation)),
-                                  horizontal * np.sin(azimuth),
-                                  np.zeros_like(azimuth)))
-    rays = np.tile([8043.0, 139.0, 1240.0, 12000.0], (len(azimuth), 1))
+    directions = np.column_stack((
+        horizontal * np.cos(np.tile(ray_azimuth, len(origin_azimuth))),
+        np.full(len(origin_azimuth) * len(ray_azimuth), np.sin(elevation)),
+        horizontal * np.sin(np.tile(ray_azimuth, len(origin_azimuth))),
+        np.zeros(len(origin_azimuth) * len(ray_azimuth))))
+    origin_x = 8043.0 + 8192.0 * np.cos(origin_azimuth)
+    origin_z = 1240.0 + 8192.0 * np.sin(origin_azimuth)
+    origins = np.repeat(np.column_stack((origin_x, np.full_like(origin_x, 139.0), origin_z)),
+                        len(ray_azimuth), axis=0)
+    rays = np.column_stack((origins, np.full(len(origins), 2000.0)))
 
     cases = (
         ("broken", cloud_parameters(coverage=0.45, weather=0.0, thunder=0.0)),
