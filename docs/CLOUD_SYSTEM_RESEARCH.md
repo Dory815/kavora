@@ -206,3 +206,32 @@ offline production-shader previews, not full Minecraft captures.
 The numerical transport test also writes `cloud-weather-field.npz` and
 `cloud-density.npz` when invoked with `--dump DIRECTORY`. These retain the
 generated weather field and density maps for quantitative inspection.
+
+
+## Natural cloud-field references
+
+These satellite/aerial references are used to check spatial organization, not
+to copy their exact appearance into a ground-level sky renderer:
+
+- [NASA: Open- and Closed-Cell Stratocumulus Clouds over the Pacific](https://science.nasa.gov/earth/earth-observatory/open-and-closed-cells-over-the-pacific-87456/)
+  shows dense cellular cloud fields with open and closed regions. The useful
+  lesson is that cloud-rich coverage can remain highly structured and contain
+  many clear holes.
+- [NASA: Cloud Streets over the Timor Sea](https://science.nasa.gov/earth/earth-observatory/cloud-streets-over-the-timor-sea-88389/)
+  shows broad bands of cumulus groups separated by clear lanes. Cloud streets
+  are a conditional wind/convection regime, not a pattern to impose on every
+  fair-weather sky.
+- [NASA: Cloud Streets Trace Cold Coastal Winds](https://science.nasa.gov/earth/earth-observatory/cloud-streets-trace-cold-coastal-winds-87524/)
+  shows long aligned cloud bands and their associated clear corridors.
+- [WMO International Cloud Atlas: Cumulus rows (streets)](https://cloudatlas.wmo.int/docs/wmo_407_en-v2.pdf)
+  describes the alignment, spacing and physical context of cumulus streets.
+- [NASA: Curving Cloud Streets](https://science.nasa.gov/earth/earth-observatory/earth-a-photo-essay/atmosphere/)
+  is a reminder that mesoscale organization can curve with larger atmospheric
+  circulation rather than remaining a fixed straight stripe.
+
+These references argue against a single isotropic blob distribution: cloud
+fields may organize into cellular decks, irregular openings, broken clusters,
+or wind-aligned streets depending on the weather regime. They also argue
+against globally forcing one such pattern. The current weather field's
+isotropic Perlin groups are a useful baseline, but a future wind-aware street
+component should be conditional and weakly mixed with other organizations.
