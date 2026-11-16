@@ -261,7 +261,7 @@ def cloud_atlas(device):
     return texture.create_view(sampler=sampler)
 
 
-def cloud_textures(device):
+def cloud_textures(device, dump=None):
     usage = spy.TextureUsage.shader_resource | spy.TextureUsage.unordered_access
     sampler = device.create_sampler(address_u=spy.TextureAddressingMode.wrap,
                                     address_v=spy.TextureAddressingMode.wrap,
@@ -297,7 +297,29 @@ def cloud_textures(device):
                 bindings["CloudCirrusAtlas"] = atlas.descriptor_handle_combined
             weather.dispatch(thread_count=[size, size, 1], vars=bindings)
         data = texture.to_numpy()
+        assert np.isfinite(data).all(), (name, "generated nonfinite noise")
         assert np.ptp(data[..., 0]) > (0.12 if floating else 32), (name, "degenerate generated noise")
+        if name == "Weather":
+            coverage = data[..., 0]
+            cloud_type = data[..., 2]
+            assert np.all((coverage >= 0) & (coverage <= 1)), "weather coverage must stay normalized"
+            assert np.all((cloud_type >= 0) & (cloud_type <= 1)), "cloud family type must stay normalized"
+            coverage_mean = float(np.mean(coverage))
+            coverage_p10, coverage_p90 = np.quantile(coverage, [0.10, 0.90])
+            row_correlation = float(np.corrcoef(coverage[:, :-1].ravel(), coverage[:, 1:].ravel())[0, 1])
+            column_correlation = float(np.corrcoef(coverage[:-1, :].ravel(), coverage[1:, :].ravel())[0, 1])
+            assert 0.12 < coverage_mean < 0.88, ("weather coverage collapsed", coverage_mean)
+            assert coverage_p10 < 0.65 and coverage_p90 > 0.35, (
+                "weather field must retain both openings and cloud-rich regions", coverage_p10, coverage_p90)
+            assert row_correlation > 0.35 and column_correlation > 0.35, (
+                "cloud occupancy must form coherent regions, not pixel noise", row_correlation, column_correlation)
+            if dump:
+                dump.mkdir(parents=True, exist_ok=True)
+                np.savez(dump / "cloud-weather-field.npz", coverage=coverage, cloudType=cloud_type,
+                         cirrus=data[..., 3])
+            print(f"PASS weather morphology: coverage mean/p10/p90 {coverage_mean:.4f}/"
+                  f"{coverage_p10:.4f}/{coverage_p90:.4f}, adjacent correlation "
+                  f"{row_correlation:.4f}/{column_correlation:.4f}")
         if floating:
             # The mean and its square are independently quantized to half precision.
             mean_channels = list(range(0, data.shape[-1], 2)) if name == "Base" else [0]
@@ -812,7 +834,7 @@ def main():
     check_intervals(probe)
     check_layer_intervals(probe)
     check_light_profiles(probe)
-    textures = cloud_textures(device)
+    textures = cloud_textures(device, args.dump)
     check_density(probe, textures, args.dump)
     check_low_wind_wrap(probe, textures)
     check_shape_phase(probe, textures)
