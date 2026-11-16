@@ -32,8 +32,8 @@ void main(uint2 id : SV_DispatchThreadID)
   // Dry regions reduce cloud amount but do not become a hard cloud-free mask.
   // This allows cloud-rich skies to remain structured instead of switching
   // between isolated islands and a single continuous overcast sheet.
-  const float regionalAmount = lerp(0.28f, 1.0f, region);
-  const float coverage = regionalAmount * saturate(0.30f + 1.85f * groups);
+  const float regionalAmount = lerp(0.35f, 1.0f, region);
+  const float coverage = regionalAmount * saturate(0.42f + 1.85f * groups);
   // Cloud development changes over broad weather regions, not independently
   // for every small cell. The density evaluator maps this continuous field to
   // shallow sheets, ordinary cumulus and stronger vertical development.
