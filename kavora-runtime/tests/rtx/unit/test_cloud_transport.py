@@ -45,6 +45,21 @@ def cloud_parameters(**changes):
     return result
 
 
+def check_morphology_configuration():
+    weather = (SHADERS / "rtx/pass/clouds/generate_cloud_weather.comp.slang").read_text()
+    density = (SHADERS / "rtx/utility/cloud_density.slang").read_text()
+    for scale in (8, 16, 32):
+        assert re.search(rf"uv \\* {scale}\\.0f", weather), f"missing mesoscale group frequency {scale}"
+    assert "lerp(0.28f, 1.0f, region)" in weather, "dry regions must retain residual cloud amount"
+    assert "smoothstep(0.20f, 0.62f, column.type)" in density, "cloud type must select parent-body scale"
+    assert "lerp(float(kCloudBasePeriod), 8.0f, stratiform)" in density
+    assert "args.shapeScale * float(kCloudBasePeriod) * 0.0625f" in density, (
+        "erosion mip selection must remain in world units when parent scale changes")
+    assert "bodyPeriod / float(kCloudBasePeriod)" in density
+    print("PASS cloud morphology configuration: 8/4/2 km groups, residual dry-region coverage, "
+          "type-dependent 2/8 km parent scale and invariant erosion world scale")
+
+
 def cloud_weather_periods():
     source = (SHADERS / "rtx/pass/cloud_noise.h").read_text()
     return tuple(int(re.search(rf"{name}\s*=\s*(\d+)", source).group(1))
@@ -785,6 +800,7 @@ def main():
     args = parser.parse_args()
     device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=OPTIONS)
     probe = Probe(device)
+    check_morphology_configuration()
     check_homogeneous(probe)
     check_intervals(probe)
     check_layer_intervals(probe)
