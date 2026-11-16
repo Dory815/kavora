@@ -115,7 +115,8 @@ Relevant files:
   and a shared vertical profile. Rain/thunder adds a stratiform contribution
   to the same low layer.
 - pass/clouds/generate_cloud_weather.comp.slang: a 2D weather map combines
-  broad regional Perlin fields with 8/16/32-frequency group fields, derives
+  broad regional Perlin fields, 8/16/32-frequency cumulus groups and a weak
+  cellular Worley contribution for broken stratiform decks. It derives
   coverage and type scalars, and stores cirrus density in channel four.
 - pass/clouds/generate_cloud_noise.comp.slang: periodic 3D Perlin/Worley volume
   supplies billow shape; a separate detail volume supplies erosion.
