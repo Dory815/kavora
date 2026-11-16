@@ -34,6 +34,7 @@ def cloud_parameters(**changes):
         "thunder": 0.0, "groundReference": [0, 0, 0], "planetRadius": 6360000.0,
         "transportMode": 0, "skyResolution": 512, "night": 0.0,
         "lightMaxDistance": 60000.0, "previousWindDelta": [0, 0, 0],
+        "lightingNearDistance": 24000.0,
         "viewAngularFootprint": 0.0, "highBaseHeight": 6000.0,
         "highThickness": 900.0, "highExtinction": 0.0, "highCoverage": 0.4,
         "highMaxDistance": 60000.0, "groundAlbedo": 0.18,
@@ -467,31 +468,83 @@ def check_cloud_boundary_visibility(probe, textures, dump):
     rays = np.column_stack([positions, np.full(len(positions), 60000.0)])
     angles = (0.2, 0.201, 3.0, 3.001, 40.0, 40.001, 90.0)
     azimuth = np.radians(30.0)
-    actual, reference = [], []
-    for angle in angles:
-        elevation = np.radians(angle)
+    for distance in (24000.0, 96000.0):
+        actual, reference = [], []
+        for angle in angles:
+            elevation = np.radians(angle)
+            direction = [np.sin(azimuth) * np.cos(elevation), np.sin(elevation),
+                         np.cos(azimuth) * np.cos(elevation)]
+            parameters = clouds | {"maxDistance": distance, "highMaxDistance": distance,
+                                   "lights": light_parameters(direction)["lights"]}
+            directions = [[*direction, 0]] * len(positions)
+            actual.append(probe.run("visibility", rays, directions, parameters, textures)[:, 0])
+            reference.append(probe.run("visibilityReference", rays, directions, parameters, textures)[:, 0])
+        actual = np.stack(actual, axis=1)
+        reference = np.stack(reference, axis=1)
+        error = np.abs(actual - reference)
+        partial = int(np.count_nonzero((reference > 0.01) & (reference < 0.99)))
+        assert partial >= 12, "boundary validation must include translucent lit/shadow transitions"
+        if dump:
+            suffix = "" if distance == 24000 else "-96000"
+            np.savez(dump / f"cloud-boundary-visibility{suffix}.npz", actual=actual, reference=reference,
+                     angles=angles, positions=positions, selectedDensities=densities[selected],
+                     candidateCount=len(candidates), referenceStepMeters=2.0)
+        assert np.mean(error) < 0.05, ("cloud-boundary mean shadow error", distance, np.mean(error))
+        assert np.max(error) < 0.45, ("cloud-boundary maximum shadow error", distance, np.max(error))
+        angular_delta = np.max(np.abs(actual[:, :6:2] - actual[:, 1:6:2]))
+        assert angular_delta < 0.025, ("cloud-boundary solar-angle discontinuity", distance, angular_delta)
+        print(f"PASS user-region cloud boundaries at {distance:.0f}m: {len(candidates)} density candidates, "
+              f"partial shadows {partial}/{reference.size}, mean/max 2 m error "
+              f"{np.mean(error):.5f}/{np.max(error):.5f}, angular delta {angular_delta:.6f}")
+    return positions
+
+
+def check_cloud_cache_transition(probe, textures, positions, dump):
+    clouds = cloud_parameters(baseHeight=800.0, extinction=0.03, maxDistance=96000.0,
+                              highMaxDistance=96000.0)
+    rays = np.column_stack([positions, np.full(len(positions), 60000.0)])
+    reports = []
+    for angle in (0.2, 40.0):
+        elevation, azimuth = np.radians([angle, 30.0])
         direction = [np.sin(azimuth) * np.cos(elevation), np.sin(elevation),
                      np.cos(azimuth) * np.cos(elevation)]
         parameters = clouds | {"lights": light_parameters(direction)["lights"]}
         directions = [[*direction, 0]] * len(positions)
-        actual.append(probe.run("visibility", rays, directions, parameters, textures)[:, 0])
-        reference.append(probe.run("visibilityReference", rays, directions, parameters, textures)[:, 0])
-    actual = np.stack(actual, axis=1)
-    reference = np.stack(reference, axis=1)
-    error = np.abs(actual - reference)
-    partial = int(np.count_nonzero((reference > 0.01) & (reference < 0.99)))
-    assert partial >= 12, "boundary validation must include translucent lit/shadow transitions"
-    if dump:
-        np.savez(dump / "cloud-boundary-visibility.npz", actual=actual, reference=reference,
-                 angles=angles, positions=positions, selectedDensities=densities[selected],
-                 candidateCount=len(candidates), referenceStepMeters=2.0)
-    assert np.mean(error) < 0.05, ("cloud-boundary mean shadow error", np.mean(error))
-    assert np.max(error) < 0.45, ("cloud-boundary maximum shadow error", np.max(error))
-    angular_delta = np.max(np.abs(actual[:, :6:2] - actual[:, 1:6:2]))
-    assert angular_delta < 0.025, ("cloud-boundary solar-angle discontinuity", angular_delta)
-    print(f"PASS user-region cloud boundaries: {len(candidates)} density candidates, "
-          f"partial shadows {partial}/{reference.size}, mean/max 2 m error "
-          f"{np.mean(error):.5f}/{np.max(error):.5f}, angular delta {angular_delta:.6f}")
+        for edge in (18000.0, 24000.0):
+            actual, reference = [], []
+            for delta in (-1.0, 0.0, 1.0):
+                anchor = [float(positions[0, 0] - edge + delta), 0.0, 1240.0]
+                args = parameters | {"groundReference": anchor}
+                actual.append(probe.run("visibility", rays, directions, args, textures)[:, 0])
+                reference.append(probe.run("visibilityReference", rays, directions, args, textures)[:, 0])
+            actual = np.stack(actual, axis=1)
+            reference = np.stack(reference, axis=1)
+            change_error = np.max(np.abs(np.diff(actual, axis=1) - np.diff(reference, axis=1)))
+            assert change_error < 0.025, ("cascade transition jumps", angle, edge, change_error)
+            if dump:
+                np.savez(dump / f"cloud-cache-transition-{angle}-{edge:.0f}.npz", actual=actual,
+                         reference=reference, positions=positions, anchorOffsets=[-1, 0, 1])
+            reports.append(float(change_error))
+    # A globally empty field must not sample padding between packed cascades.
+    # Coverage is a regional bias, so explicitly provide zero weather moments.
+    device = probe.device
+    weather = device.create_texture(type=spy.TextureType.texture_2d, format=spy.Format.rgba32_float,
+                                    width=1, height=1, usage=spy.TextureUsage.shader_resource)
+    weather.copy_from_numpy(np.zeros((1, 1, 4), np.float32))
+    sampler = device.create_sampler(min_filter=spy.TextureFilteringMode.linear,
+                                    mag_filter=spy.TextureFilteringMode.linear,
+                                    address_u=spy.TextureAddressingMode.wrap,
+                                    address_v=spy.TextureAddressingMode.wrap)
+    empty_textures = textures | {"Weather": weather.create_view(sampler=sampler)}
+    empty_args = clouds | {"groundReference": [8043.0, 0.0, 1240.0],
+                           "lights": light_parameters([0, 0, 1])["lights"]}
+    empty_rays = [[8043.0 + d, 1200, 1240, 60000] for d in
+                  (0, 17999, 18000, 18001, 23999, 24000, 24001, 60000, 96001)]
+    empty = probe.run("visibility", empty_rays, [[0, 0, 1, 0]] * len(empty_rays),
+                      empty_args, empty_textures)[:, 0]
+    np.testing.assert_array_equal(empty, np.ones_like(empty))
+    print(f"PASS cloud cache cascades: 1m transition change error {max(reports):.6f}, "
+          f"{len(empty)} empty-field rays including the outside-domain fallback")
 
 
 def check_light_support(probe, textures):
@@ -745,7 +798,8 @@ def main():
     check_high_filtered_columns(probe, textures)
     check_layer_height_footprints(probe)
     check_visibility(probe, textures, args.dump)
-    check_cloud_boundary_visibility(probe, textures, args.dump)
+    cloud_boundaries = check_cloud_boundary_visibility(probe, textures, args.dump)
+    check_cloud_cache_transition(probe, textures, cloud_boundaries, args.dump)
     check_light_support(probe, textures)
     check_tangent_visibility(probe, textures)
 

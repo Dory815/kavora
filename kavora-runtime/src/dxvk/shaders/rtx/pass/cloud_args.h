@@ -51,7 +51,8 @@ CLOUD_PARAMETER struct CloudArgs {
   CLOUD_PARAMETER float highCoverage;
   CLOUD_PARAMETER float highMaxDistance;
   CLOUD_PARAMETER float groundAlbedo;
-  CLOUD_PARAMETER float padding3;
+  // World-space radius of the full-resolution directional shadow field.
+  CLOUD_PARAMETER float lightingNearDistance;
   CLOUD_PARAMETER float padding4;
 };
 

@@ -28,6 +28,25 @@ void depths(uint index : SV_DispatchThreadID)
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
+void cascadeDepths(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  CloudLightingCache cache = { Sampler3D<float>(Sun), Sampler3D<float>(Sun) };
+  const uint cascade = uint(Directions[index].w);
+  const float3 origin = Origins[index].xyz;
+  const float3 endpoint = origin + Directions[index].xyz * Origins[index].w;
+  float depth;
+  const bool found = cloudCachedLightDepth(Clouds, cache, 0, origin, endpoint, depth, cascade);
+  const bool contained = cloudLightCascadeContains(Clouds, 0, cascade, origin, endpoint);
+  Results[index] = float4(depth, found ? 1.0f : 0.0f, cloudLightingFarWeight(Clouds, origin),
+    contained ? 1.0f : 0.0f);
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
 void grids(uint index : SV_DispatchThreadID)
 {
   if (index >= Count)

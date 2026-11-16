@@ -47,7 +47,7 @@ def main():
         bindings = {'Origins': device.create_buffer(data=origins, usage=spy.BufferUsage.shader_resource),
             'Directions': device.create_buffer(data=directions, usage=spy.BufferUsage.shader_resource),
             'Results': output, 'Count': len(origins), 'Clouds': args}
-        if name in ('depths', 'energyParts'):
+        if name in ('depths', 'cascadeDepths', 'energyParts'):
             bindings.update(Sun=sun.descriptor_handle_combined)
         programs[name].dispatch(thread_count=[len(origins), 1, 1], vars=bindings)
         return output.to_numpy().view(np.float32).reshape(-1, 4)
@@ -78,13 +78,42 @@ def main():
         depth_reports.append({'solarElevationDegrees': angle, 'maximumAbsoluteTauError': float(error),
                               'reverseLocalTau': float(reverse[0, 0])})
     report['prefixDepths'] = depth_reports
+    # Wide cascades occupy only half the physical U/V extent. Poison padding
+    # so a coordinate error cannot silently read an apparently empty shadow.
+    cascade_args = args | {'maxDistance': 96000.0, 'lightingNearDistance': 24000.0}
+    cascade_args['lights'] = [{'directionToLight': [0, 0, 1], 'irradiance': [1, 1, 1]},
+                             {'directionToLight': [0, 0, -1], 'irradiance': [0, 0, 0]}]
+    packed = np.full((N + N // 2, N // 2, N), np.nan, np.float32)
+    packed[:N] = np.linspace(108000 * SIGMA, 0, N, dtype=np.float32)[:, None, None]
+    packed[N:, :N // 4, :N // 2] = np.linspace(252000 * SIGMA, 0, N // 2,
+                                             dtype=np.float32)[:, None, None]
+    packed_sun = texture(packed, spy.Format.r32_float)
+    distances = (0, 17999, 18000, 21000, 23999, 24000, 24001, 95999, 96000, 96001)
+    origins = [[x, 1200, 0, 1024] for cascade in (0, 1) for x in distances]
+    directions = [[0, 0, 1, cascade] for cascade in (0, 1) for x in distances]
+    origins += [[0, 1200, 90000, 1024], [0, 1200, 160000, 1024]]
+    directions += [[0, 0, 1, 0], [0, 0, 1, 1]]
+    packed_depths = run('cascadeDepths', origins, directions, cascade_args, packed_sun)
+    expected_found = np.array([x <= radius for radius in (24000, 96000) for x in distances] + [False, False])
+    assert np.isfinite(packed_depths).all(), 'packed cascade sampling touched undefined padding'
+    np.testing.assert_array_equal(packed_depths[:, 1], expected_found)
+    np.testing.assert_array_equal(packed_depths[:, 3], expected_found)
+    np.testing.assert_allclose(packed_depths[:, 0], expected_found * (1024 * SIGMA), atol=0.002)
+    horizontal_distance = np.max(np.abs(np.array(origins)[:, (0, 2)]), axis=1)
+    transition = np.clip((horizontal_distance - 18000) / 6000, 0, 1)
+    np.testing.assert_allclose(packed_depths[:, 2], transition**2 * (3 - 2 * transition), atol=1e-6)
+    report['packedCascadeCases'] = len(origins)
+    report['packedCascadeMaximumTauError'] = float(np.max(np.abs(
+        packed_depths[:, 0] - expected_found * (1024 * SIGMA))))
+
     grid_inputs = [[start, end, spacing, angle] for start, end in ((0, 24000), (800, 24000), (20000, 24000),
                    (800, 1000), (0, 96000)) for spacing in (1, 8, 16, 128) for angle in (0, 0.0013)]
-    grids = run('grids', grid_inputs, [[160, 0, 0, 0]] * len(grid_inputs), args)
-    assert np.all(grids[:, 0] <= 160) and np.all(grids[:, 0] >= 1)
-    assert np.all(grids[:, 2] == 0), grids[grids[:, 2] != 0]
-    np.testing.assert_allclose(grids[:, 1], np.array(grid_inputs)[:, 1], atol=0.01)
-    report['gridCases'] = len(grids)
+    for budget in (96, 160, 256, 384):
+        grids = run('grids', grid_inputs, [[budget, 0, 0, 0]] * len(grid_inputs), args)
+        assert np.all(grids[:, 0] <= budget) and np.all(grids[:, 0] >= 1)
+        assert np.all(grids[:, 2] == 0), grids[grids[:, 2] != 0]
+        np.testing.assert_allclose(grids[:, 1], np.array(grid_inputs)[:, 1], atol=0.01)
+    report['gridCases'] = 4 * len(grids)
     report['maximumCloudCells'] = int(grids[:, 0].max())
 
     # A point in the middle of two shadow columns sees one local blocker and

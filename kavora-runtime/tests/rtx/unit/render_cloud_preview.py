@@ -490,6 +490,8 @@ def main():
         steps=args.steps, lightSteps=args.light_steps, lights=[light, dark])
     if 'groundAlbedo' not in (shaders / 'rtx/pass/cloud_args.h').read_text():
         clouds.pop('groundAlbedo', None)
+    if 'lightingNearDistance' not in (shaders / 'rtx/pass/cloud_args.h').read_text():
+        clouds.pop('lightingNearDistance', None)
     if 'angularRadius' not in (shaders / 'rtx/pass/cloud_args.h').read_text():
         for source in clouds['lights']:
             source.pop('angularRadius', None)

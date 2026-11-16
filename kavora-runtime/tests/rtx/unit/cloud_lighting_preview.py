@@ -18,6 +18,8 @@ def build_lighting_cache(device, clouds, textures, shaders, lighting_enabled=Tru
                       constant('CLOUD_LIGHTING_MAX_QUALITY'))
     resolution = int(quality) * constant('CLOUD_LIGHTING_RESOLUTION_PER_STEP')
     light_height = resolution // constant('CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR')
+    near_distance = clouds.get('lightingNearDistance', 0.0)
+    packed_depth = resolution + (resolution // 2 if 0 < near_distance < clouds['maxDistance'] else 0)
     sampler = device.create_sampler(min_filter=spy.TextureFilteringMode.linear,
                                     mag_filter=spy.TextureFilteringMode.linear,
                                     address_u=spy.TextureAddressingMode.clamp_to_edge,
@@ -37,7 +39,7 @@ def build_lighting_cache(device, clouds, textures, shaders, lighting_enabled=Tru
         active = enabled and (max(light['irradiance']) > 0
                               or (light.get('hasRadianceProfile', 0)
                                   and np.max(np.array(light['radianceProfile'])[:, :3]) > 0))
-        width, height, depth = ((resolution, light_height, resolution)
+        width, height, depth = ((resolution, light_height, packed_depth)
                                 if active else (1, 1, 1))
         texture = device.create_texture(type=spy.TextureType.texture_3d,
                                         format=spy.Format.r32_float,

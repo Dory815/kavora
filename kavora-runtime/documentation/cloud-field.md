@@ -287,11 +287,25 @@ Each active celestial light has a light-aligned R32F prefix volume. A thread
 integrates one entire light column and writes cumulative optical depth at its
 nodes. The grid encloses the current view's low shell and surface-shadow origins,
 with the configured light range beyond them. Its extent follows the light
-orientation, while its allocation depends only on quality. R32F retains the
+orientation, while its allocation depends on quality and whether the far
+cascade is needed. R32F retains the
 precision needed to subtract finite intervals from long, opaque prefixes.
 Cells wholly outside the low shell are skipped conservatively. Within occupied
 cells, bounded two-point Gaussian quadrature resolves density along the ray;
 its footprint does not gather an entire transverse cache cell of off-ray cloud.
+
+Up to 24 kilometres of low-cloud visibility, one grid serves each light. Longer
+view ranges retain this full-resolution near field and add a second grid at
+half the resolution on every axis. The near grid still includes the complete
+60-kilometre light path; increasing view distance therefore does not coarsen
+nearby self-shadowing. The two logical grids share one 3D image, stacked in
+depth. Half-resolution columns occupy only their valid U/V region. Queries
+stay between each grid's own endpoint texel centres and cannot filter across
+the packed boundary. Between 18 and 24 kilometres from the camera anchor, a
+smooth weight blends transmitted energy. A near-field query participates only
+when its complete finite interval fits within the near grid. The 24-kilometre
+near radius is explicitly converted from metres by the host, independent of
+the artistic shape scale.
 
 A lookup subtracts the two endpoints separately in each of four neighbouring
 light columns, then interpolates **transmittance** between those columns.
@@ -456,24 +470,33 @@ cannot reduce that repeated shader work. The shared prefixes remove this long
 per-sample loop from camera and PSR paths alike.
 
 Let `N = 16 * clamp(lightSteps, 4, 16)`. Each directional image contains
-`N * (N / 2) * N` R32F values. The owner reuses allocations while quality is
-unchanged and releases inactive light images. One active light costs 32 MiB at
-Ultra; two cost 64 MiB, before driver overhead. The two-light totals for High,
-Medium and Low are 27, 8 and 1 MiB. This is new storage in exchange for sharing
-long-path work across all viewing and visibility rays.
+`N * (N / 2) * N` R32F values at view ranges up to 24 kilometres. With the far
+cascade, physical depth becomes `N + N / 2`; only the valid half-resolution
+columns of the extra region are generated. The owner reuses matching allocations
+and releases inactive light images. One active light costs 32 / 48 MiB at Ultra
+(single / two cascades); two lights cost 64 / 96 MiB, before driver overhead.
+The corresponding two-light totals for High, Medium and Low are 27 / 40.5,
+8 / 12 and 1 / 1.5 MiB. This is new storage in exchange for sharing long-path
+work across all viewing and visibility rays.
 
 Prefix construction has a finite budget independent of output resolution.
 Each directional grid has `N * (N / 2) * (N - 1)` segments, each with at most
 `max(1, lightSteps / 2)` Gaussian pairs before shell skipping. At Ultra this is
-at most 133,693,440 density queries per active grid, shared by the whole frame.
-This is a worst-case bound: off-shell segments skip density and empty weather
+at most 133,693,440 density queries for the near grid of each active light. The
+half-resolution far grid adds at most 16,646,144 queries, making 150,339,584
+per active light when both grids are needed, a 12.45% increase. This work is
+shared by the whole frame. These are worst-case bounds: off-shell segments skip density and empty weather
 can skip the base/detail lookups. Cache generation must be included when
 comparing performance, rather than timing only the subsequent ray dispatch.
 
 At an occupied low-cloud view sample, an in-domain celestial beam uses at most
 `max(2, lightSteps)` local density queries, or 16 at Ultra. The finite-side
-solve may add 16 in the reverse direction. Each cached interval reads eight
-prefix samples and interpolates transmitted energy. A visibility or unsplit
+solve may add 16 in the reverse direction. The 18–24 kilometre transition
+region can evaluate both cascades, doubling these bounded local beam queries.
+The radial column is still shared. Each cached interval uses at most sixteen
+integer texel loads (four U/V columns, two endpoints, two depth nodes) and
+interpolates transmitted energy. Explicit depth interpolation avoids touching
+uninitialized packed padding even through a hardware filter's zero-weight tap. A visibility or unsplit
 query needs one interval; a beam split between local and external blockers
 needs up to three intervals, including the independent complete beam. The
 local radial column retains `max(2, lightSteps)` density samples, or 16 at

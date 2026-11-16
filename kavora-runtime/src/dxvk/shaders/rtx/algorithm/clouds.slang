@@ -378,17 +378,17 @@ CloudOpticalDepth cloudLowLightFallback(CloudArgs args, float3 origin, float3 di
   return { depth.x, depth.y, depth.x + depth.y };
 }
 
-CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float3 cacheDirection,
+CloudOpticalDepth cloudLowLightCascadeDepth(CloudArgs args, float3 origin, float3 direction, float3 cacheDirection,
   float2 interval, float localRange, float opticalDepthLimit, Sampler2D<float4> weather,
-  Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight)
+  Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight, uint cascade)
 {
   if (cacheLight < 0)
   {
     return cloudLowLightFallback(args, origin, direction, interval, localRange, opticalDepthLimit,
       weather, base, detail);
   }
-  const CloudLightGrid grid = cloudLightGrid(args, uint(cacheLight));
-  const float3 cacheCell = grid.cellSize(cloudLightingResolution(args));
+  const CloudLightGrid grid = cloudLightGrid(args, uint(cacheLight), cascade);
+  const float3 cacheCell = grid.cellSize(cloudLightingCascadeResolution(args, cascade));
   // A coarse table must not replace near-cloud detail within its own footprint,
   // including the wider transverse cells at the default 96 km viewing range.
   const float correctionRange = max(0.25f * args.shapeScale, max(cacheCell.x, max(cacheCell.y, cacheCell.z)));
@@ -396,7 +396,7 @@ CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float
   const float split = clamp(localRange, correctionEnd, interval.y);
   CloudOpticalDepth depth = {};
   bool cached = cloudCachedLightDepth(args, cache, uint(cacheLight), origin + cacheDirection * correctionEnd,
-    origin + cacheDirection * interval.y, depth.total);
+    origin + cacheDirection * interval.y, depth.total, cascade);
   if (split <= correctionEnd)
   {
     depth.external = depth.total;
@@ -408,9 +408,9 @@ CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float
   else
   {
     cached = cached && cloudCachedLightDepth(args, cache, uint(cacheLight), origin + cacheDirection * correctionEnd,
-      origin + cacheDirection * split, depth.local)
+      origin + cacheDirection * split, depth.local, cascade)
       && cloudCachedLightDepth(args, cache, uint(cacheLight), origin + cacheDirection * split,
-        origin + cacheDirection * interval.y, depth.external);
+        origin + cacheDirection * interval.y, depth.external, cascade);
   }
   if (!cached)
   {
@@ -426,6 +426,45 @@ CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float
     depth.total += fine.x + fine.y;
   }
   return depth;
+}
+
+float cloudBlendOpticalDepth(float nearDepth, float farDepth, float weight)
+{
+  const float minimum = min(nearDepth, farDepth);
+  return max(0.0f, minimum - log(lerp(exp(minimum - nearDepth), exp(minimum - farDepth), weight)));
+}
+
+CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float3 direction, float3 cacheDirection,
+  float2 interval, float localRange, float opticalDepthLimit, Sampler2D<float4> weather,
+  Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight)
+{
+  if (!cloudLightingHasFarCascade(args) || cacheLight < 0)
+  {
+    return cloudLowLightCascadeDepth(args, origin, direction, cacheDirection, interval, localRange,
+      opticalDepthLimit, weather, base, detail, cache, cacheLight, 0);
+  }
+  float weight = cloudLightingFarWeight(args, origin);
+  if (!cloudLightCascadeContains(args, uint(cacheLight), 0, origin + cacheDirection * interval.x,
+      origin + cacheDirection * interval.y))
+  {
+    weight = 1;
+  }
+  if (weight >= 1)
+  {
+    return cloudLowLightCascadeDepth(args, origin, direction, cacheDirection, interval, localRange,
+      opticalDepthLimit, weather, base, detail, cache, cacheLight, 1);
+  }
+  const CloudOpticalDepth nearDepth = cloudLowLightCascadeDepth(args, origin, direction, cacheDirection,
+    interval, localRange, opticalDepthLimit, weather, base, detail, cache, cacheLight, 0);
+  if (weight <= 0)
+  {
+    return nearDepth;
+  }
+  const CloudOpticalDepth farDepth = cloudLowLightCascadeDepth(args, origin, direction, cacheDirection,
+    interval, localRange, opticalDepthLimit, weather, base, detail, cache, cacheLight, 1);
+  return { cloudBlendOpticalDepth(nearDepth.local, farDepth.local, weight),
+    cloudBlendOpticalDepth(nearDepth.external, farDepth.external, weight),
+    cloudBlendOpticalDepth(nearDepth.total, farDepth.total, weight) };
 }
 
 float cloudHighLightCellDepth(CloudArgs args, float3 origin, float3 direction,

@@ -695,6 +695,7 @@ namespace dxvk {
     clouds.highMaxDistance = CloudOptions::highMaxDistanceMeters() * cloudWorldScale;
     // Preserve the celestial light path when the camera's cloud range is shortened.
     clouds.lightMaxDistance = 60000.0f * cloudWorldScale;
+    clouds.lightingNearDistance = 24000.0f * cloudWorldScale;
     // Water droplets have negligible absorption in the visible spectrum.
     clouds.albedo = 1.0f;
     clouds.steps = CloudOptions::steps();
@@ -823,7 +824,9 @@ namespace dxvk {
     }
     const uint32_t resolution = CLOUD_LIGHTING_RESOLUTION_PER_STEP
       * std::clamp(clouds.lightSteps, uint32_t(CLOUD_LIGHTING_MIN_QUALITY), uint32_t(CLOUD_LIGHTING_MAX_QUALITY));
-    const VkExtent3D lightExtent { resolution, resolution / CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR, resolution };
+    const bool farCascade = clouds.lightingNearDistance > 0 && clouds.maxDistance > clouds.lightingNearDistance;
+    const uint32_t depth = resolution + (farCascade ? resolution / 2 : 0);
+    const VkExtent3D lightExtent { resolution, resolution / CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR, depth };
     Rc<DxvkContext> resourceContext = ctx;
     ctx->bindCommonRayTracingResources();
     ctx->bindResourceView(BINDING_CLOUD_SUN_DEPTH_INPUT, nullptr, nullptr);

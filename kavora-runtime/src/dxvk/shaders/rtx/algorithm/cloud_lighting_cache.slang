@@ -22,6 +22,18 @@ public uint cloudLightingResolution(CloudArgs args)
 }
 
 [ForceInline]
+public bool cloudLightingHasFarCascade(CloudArgs args)
+{
+  return args.lightingNearDistance > 0 && args.maxDistance > args.lightingNearDistance;
+}
+
+[ForceInline]
+public uint cloudLightingCascadeResolution(CloudArgs args, uint cascade)
+{
+  return cloudLightingResolution(args) >> cascade;
+}
+
+[ForceInline]
 float3 cloudSecondHorizontalAxis(CloudArgs args)
 {
   return args.up.z > 0.5f ? float3(0, 1, 0) : float3(0, 0, 1);
@@ -59,7 +71,7 @@ public struct CloudLightGrid
   }
 };
 
-public CloudLightGrid cloudLightGrid(CloudArgs args, uint light)
+public CloudLightGrid cloudLightGrid(CloudArgs args, uint light, uint cascade = 0)
 {
   CloudLightGrid grid = {};
   const float3 direction = args.lights[light].directionToLight;
@@ -69,7 +81,8 @@ public CloudLightGrid cloudLightGrid(CloudArgs args, uint light)
     ? normalize(perpendicular) : float3(1, 0, 0);
   grid.vertical = cross(grid.direction, grid.horizontal);
 
-  const float radius = cloudLightingRadius(args);
+  const float radius = cascade == 0 && cloudLightingHasFarCascade(args)
+    ? args.lightingNearDistance : cloudLightingRadius(args);
   // Include surface shadow rays as well as the visible shell. Curvature is
   // bounded by the corners of the horizontal box, not by a flat cloud plane.
   const float lower = min(0.0f, args.baseHeight) - radius * radius / args.planetRadius;
@@ -95,37 +108,40 @@ public CloudLightGrid cloudLightGrid(CloudArgs args, uint light)
 }
 
 [ForceInline]
-float3 cloudLightTextureCoordinate(CloudArgs args, float3 coordinate)
+float cloudLightPrefixSample(Sampler3D<float> prefix, int2 column, float coordinate, uint resolution, uint offset)
 {
-  const float resolution = float(cloudLightingResolution(args));
-  // U/V samples are cell centers. Depth stores cumulative values at nodes,
-  // including both endpoints, so its normalized coordinate needs a half texel.
-  return float3(coordinate.xy, (saturate(coordinate.z) * (resolution - 1.0f) + 0.5f) / resolution);
+  const float node = saturate(coordinate) * float(resolution - 1);
+  const uint lower = uint(node);
+  const uint upper = min(lower + 1, resolution - 1);
+  // Integer loads cannot touch undefined padding or an adjacent cascade,
+  // including zero-weight texels that a hardware linear filter may access.
+  const float a = prefix.Load(int4(column, int(offset + lower), 0));
+  const float b = prefix.Load(int4(column, int(offset + upper), 0));
+  return lerp(a, b, frac(node));
 }
 
 public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint light,
-  float3 begin, float3 end, out float depth)
+  float3 begin, float3 end, out float depth, uint cascade = 0)
 {
   depth = 0;
   if (all(begin == end))
   {
     return true;
   }
-  const CloudLightGrid grid = cloudLightGrid(args, light);
+  const CloudLightGrid grid = cloudLightGrid(args, light, cascade);
   const float3 from = grid.coordinates(begin);
   const float3 to = grid.coordinates(end);
   if (any(from.xy < 0) || any(from.xy > 1) || any(to.xy < 0) || any(to.xy > 1)
-    || min(from.z, to.z) < 0)
+    || min(from.z, to.z) < 0 || max(from.z, to.z) > 1)
   {
     return false;
   }
-  const uint resolution = cloudLightingResolution(args);
+  const uint resolution = cloudLightingCascadeResolution(args, cascade);
+  const uint depthOffset = cascade == 0 ? 0 : cloudLightingResolution(args);
   const float2 size = float2(resolution, resolution / CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR);
   const float2 pixel = from.xy * size - 0.5f;
   const int2 lower = int2(floor(pixel));
   const float2 fraction = frac(pixel);
-  const float fromDepth = cloudLightTextureCoordinate(args, from).z;
-  const float toDepth = cloudLightTextureCoordinate(args, to).z;
   float4 opticalDepth = 0;
   const float4 weights = float4((1.0f - fraction.x) * (1.0f - fraction.y),
     fraction.x * (1.0f - fraction.y), (1.0f - fraction.x) * fraction.y, fraction.x * fraction.y);
@@ -134,18 +150,18 @@ public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint
   for (uint tap = 0; tap < 4; tap++)
   {
     const int2 offset = int2(tap & 1u, tap >> 1u);
-    const float2 uv = (float2(clamp(lower + offset, int2(0), int2(size) - 1)) + 0.5f) / size;
+    const int2 column = clamp(lower + offset, int2(0), int2(size) - 1);
     float a;
     float b;
     if (light == 0)
     {
-      a = from.z >= 1 ? 0 : cache.sun.SampleLevel(float3(uv, fromDepth), 0);
-      b = to.z >= 1 ? 0 : cache.sun.SampleLevel(float3(uv, toDepth), 0);
+      a = from.z >= 1 ? 0 : cloudLightPrefixSample(cache.sun, column, from.z, resolution, depthOffset);
+      b = to.z >= 1 ? 0 : cloudLightPrefixSample(cache.sun, column, to.z, resolution, depthOffset);
     }
     else
     {
-      a = from.z >= 1 ? 0 : cache.moon.SampleLevel(float3(uv, fromDepth), 0);
-      b = to.z >= 1 ? 0 : cache.moon.SampleLevel(float3(uv, toDepth), 0);
+      a = from.z >= 1 ? 0 : cloudLightPrefixSample(cache.moon, column, from.z, resolution, depthOffset);
+      b = to.z >= 1 ? 0 : cloudLightPrefixSample(cache.moon, column, to.z, resolution, depthOffset);
     }
     opticalDepth[tap] = max(0.0f, from.z < to.z ? a - b : b - a);
     if (weights[tap] > 0)
@@ -159,6 +175,25 @@ public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint
   const float transmission = dot(weights, exp(minimum - opticalDepth));
   depth = max(0.0f, minimum - log(max(transmission, 1e-30f)));
   return true;
+}
+
+public bool cloudLightCascadeContains(CloudArgs args, uint light, uint cascade, float3 begin, float3 end)
+{
+  const CloudLightGrid grid = cloudLightGrid(args, light, cascade);
+  const float3 from = grid.coordinates(begin);
+  const float3 to = grid.coordinates(end);
+  return all(from >= 0) && all(from <= 1) && all(to >= 0) && all(to <= 1);
+}
+
+public float cloudLightingFarWeight(CloudArgs args, float3 position)
+{
+  if (!cloudLightingHasFarCascade(args))
+  {
+    return 0;
+  }
+  const float3 offset = position - args.groundReference;
+  const float distance = max(abs(offset.x), abs(dot(offset, cloudSecondHorizontalAxis(args))));
+  return smoothstep(0.75f * args.lightingNearDistance, args.lightingNearDistance, distance);
 }
 
 bool cloudLightHasEnergy(CloudLight light)
@@ -206,16 +241,17 @@ float cloudCacheExtinction(CloudArgs args, CloudDensityArgs density, float3 posi
   return args.extinction * cloudDensity(density, position, weather, base, detail, footprint, 0, heightFootprint);
 }
 
-public void buildCloudLightPrefix(CloudArgs args, CloudDensityArgs density, uint2 column, uint light,
+void buildCloudLightCascade(CloudArgs args, CloudDensityArgs density, uint2 column, uint light, uint cascade,
   Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail, RWTexture3D<float> output)
 {
-  const uint resolution = cloudLightingResolution(args);
+  const uint resolution = cloudLightingCascadeResolution(args, cascade);
+  const uint offset = cascade == 0 ? 0 : cloudLightingResolution(args);
   const uint2 extent = uint2(resolution, resolution / CLOUD_LIGHTING_LIGHT_HEIGHT_DIVISOR);
   if (any(column >= extent))
   {
     return;
   }
-  const CloudLightGrid grid = cloudLightGrid(args, light);
+  const CloudLightGrid grid = cloudLightGrid(args, light, cascade);
   const float2 horizontal = (float2(column) + 0.5f) / float2(extent);
   const float span = grid.extent.z / float(resolution - 1);
   // The prefix grid controls storage, not the shadow quadrature spacing.
@@ -227,7 +263,7 @@ public void buildCloudLightPrefix(CloudArgs args, CloudDensityArgs density, uint
   const float support = 0.5f * subspan;
   const float footprint = min(support, args.shapeScale / 128.0f);
   float depth = 0;
-  output[uint3(column, resolution - 1)] = 0;
+  output[uint3(column, offset + resolution - 1)] = 0;
   for (uint node = resolution - 1; node > 0; node--)
   {
     const float lower = float(node - 1);
@@ -256,6 +292,16 @@ public void buildCloudLightPrefix(CloudArgs args, CloudDensityArgs density, uint
         depth += support * (extinctionA + extinctionB);
       }
     }
-    output[uint3(column, node - 1)] = depth;
+    output[uint3(column, offset + node - 1)] = depth;
+  }
+}
+
+public void buildCloudLightPrefix(CloudArgs args, CloudDensityArgs density, uint2 column, uint light,
+  Sampler2D<float4> weather, Sampler3D<float4> base, Sampler3D<float4> detail, RWTexture3D<float> output)
+{
+  buildCloudLightCascade(args, density, column, light, 0, weather, base, detail, output);
+  if (cloudLightingHasFarCascade(args))
+  {
+    buildCloudLightCascade(args, density, column, light, 1, weather, base, detail, output);
   }
 }
