@@ -698,7 +698,7 @@ def check_horizon_cloud_openings(probe, textures):
     origin_z = 1240.0 + 8192.0 * np.sin(origin_azimuth)
     origins = np.repeat(np.column_stack((origin_x, np.full_like(origin_x, 139.0), origin_z)),
                         len(ray_azimuth), axis=0)
-    rays = np.column_stack((origins, np.full(len(origins), 2000.0)))
+    rays = np.column_stack((origins, np.full(len(origins), 1700.0)))
 
     cases = (
         ("broken", cloud_parameters(coverage=0.45, weather=0.0, thunder=0.0)),
