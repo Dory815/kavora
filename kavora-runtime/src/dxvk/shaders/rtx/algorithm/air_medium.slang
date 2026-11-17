@@ -166,7 +166,7 @@ float3 airTransmittanceToLight(AirArgs args, AirTables tables, float height, flo
   // The CPU regression test bounds this branch for radii up to 0.01 rad and
   // light cosines >= 0.2 against the existing four-point rule.
   const float lowerBoundary = airLowerBoundaryCosine(args, height);
-  if (angularRadius <= 0.01f && cosine >= 0.2f && cosine - extent > lowerBoundary)
+  if (angularRadius <= 0.01f && cosine >= 0.3f && cosine - extent > lowerBoundary)
   {
     return airTransmittanceToSpace(args, tables, height, cosine);
   }
