@@ -120,15 +120,14 @@ float cloudLightPrefixSample(Sampler3D<float> prefix, int2 column, float coordin
   return lerp(a, b, frac(node));
 }
 
-public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint light,
-  float3 begin, float3 end, out float depth, uint cascade = 0)
+public bool cloudCachedLightDepthInGrid(CloudArgs args, CloudLightingCache cache, uint light,
+  CloudLightGrid grid, float3 begin, float3 end, out float depth, uint cascade)
 {
   depth = 0;
   if (all(begin == end))
   {
     return true;
   }
-  const CloudLightGrid grid = cloudLightGrid(args, light, cascade);
   const float3 from = grid.coordinates(begin);
   const float3 to = grid.coordinates(end);
   if (any(from.xy < 0) || any(from.xy > 1) || any(to.xy < 0) || any(to.xy > 1)
@@ -175,6 +174,13 @@ public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint
   const float transmission = dot(weights, exp(minimum - opticalDepth));
   depth = max(0.0f, minimum - log(max(transmission, 1e-30f)));
   return true;
+}
+
+public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint light,
+  float3 begin, float3 end, out float depth, uint cascade = 0)
+{
+  return cloudCachedLightDepthInGrid(args, cache, light, cloudLightGrid(args, light, cascade),
+    begin, end, depth, cascade);
 }
 
 public bool cloudLightCascadeContains(CloudArgs args, uint light, uint cascade, float3 begin, float3 end)
