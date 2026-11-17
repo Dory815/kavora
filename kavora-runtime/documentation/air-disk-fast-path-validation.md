@@ -82,3 +82,9 @@ The SlangPy/Vulkan contract test could not be executed in this container
 because SlangPy and a Vulkan device/ICD are unavailable. The source-level
 contract has been added for the repository's supported shader-test
 environment; native validation remains pending.
+
+The near-cascade grid is also shared between cascade containment and the
+subsequent near-cache query. When a far cascade is blended, each cascade grid
+is constructed once and passed through the depth query. The contract shader
+compares both the reused prefix result and containment decision against the
+original wrappers.
