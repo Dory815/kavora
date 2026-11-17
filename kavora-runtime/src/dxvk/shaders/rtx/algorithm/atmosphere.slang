@@ -229,6 +229,11 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
   }
   const float3 origin = ray.origin;
   const float3 direction = ray.direction;
+  AirRayPhase airPhase = {};
+  if (ray.hasAir)
+  {
+    airPhase = createAirRayPhase(args.air, direction);
+  }
   const float originDepth = ray.fogProjection.originDepth;
   const float directionDepth = ray.fogProjection.directionDepth;
   const float nearPlane = ray.fogProjection.nearPlane;
@@ -324,7 +329,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
       if (airActive && !airSampleValid)
       {
         const float3 airPosition = origin + direction * airGrid.sampleAt(airCell);
-        airMedium = sampleAirMedium(args.air, airTables, airPosition, direction);
+        airMedium = sampleAirMedium(args.air, airTables, airPosition, direction, airPhase);
         airSampleValid = true;
       }
       source += airMedium.source;
