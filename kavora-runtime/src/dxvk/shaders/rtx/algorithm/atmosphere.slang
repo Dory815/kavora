@@ -135,6 +135,8 @@ public struct AtmosphereRay
   public AtmosphereIntervals intervals;
   public float4 projectedPhase;
   public float3 mediumExtinction;
+  public AirRayPhase airPhase;
+  public CloudRayPhase cloudPhase;
   public bool hasFog;
   public bool hasCloud;
   public bool hasAir;
@@ -211,6 +213,8 @@ public AtmosphereRay createAtmosphereRay<Fog : IAtmosphereFog>(VolumeArgs args,
   ray.intervals.starts[6] = air.x;
   ray.intervals.ends[6] = air.y;
   ray.hasAir = air.y > air.x;
+  ray.airPhase = ray.hasAir ? createAirRayPhase(args.air, direction) : AirRayPhase{};
+  ray.cloudPhase = ray.hasCloud ? createCloudRayPhase(args.clouds, direction) : CloudRayPhase{};
   ray.projectedPhase = projectFogPhase(args.volumetricFogAnisotropy, direction);
   return ray;
 }
@@ -229,16 +233,8 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
   }
   const float3 origin = ray.origin;
   const float3 direction = ray.direction;
-  AirRayPhase airPhase = {};
-  if (ray.hasAir)
-  {
-    airPhase = createAirRayPhase(args.air, direction);
-  }
-  CloudRayPhase cloudPhase = {};
-  if (ray.hasCloud)
-  {
-    cloudPhase = createCloudRayPhase(args.clouds, direction);
-  }
+  const AirRayPhase airPhase = ray.airPhase;
+  const CloudRayPhase cloudPhase = ray.cloudPhase;
   const float originDepth = ray.fogProjection.originDepth;
   const float directionDepth = ray.fogProjection.directionDepth;
   const float nearPlane = ray.fogProjection.nearPlane;
