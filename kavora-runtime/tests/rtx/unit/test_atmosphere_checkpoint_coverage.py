@@ -25,6 +25,12 @@ def cloud_checkpointing_enabled(froxel_distance, clouds_enabled, low_active,
                                    high_active, low_distance, high_distance) > froxel_distance
 
 
+def reserved_checkpoint_capacity(froxel_distance, clouds_enabled,
+                                 configured_low_distance, configured_high_distance):
+    configured_distance = max(configured_low_distance, configured_high_distance)
+    return CHECKPOINT_CAPACITY if clouds_enabled and configured_distance > froxel_distance else FROXEL_CAPACITY
+
+
 def checkpoint_distance(index, froxel_distance, cloud_distance, exponent):
     if index == CHECKPOINT_CAPACITY:
         return cloud_distance
@@ -61,6 +67,12 @@ class AtmosphereCheckpointCoverageTests(unittest.TestCase):
     def test_cloud_range_inside_froxel_keeps_legacy_mapping(self):
         self.assertFalse(cloud_checkpointing_enabled(24_000, True, True, True, 16_000, 20_000))
         self.assertFalse(cloud_checkpointing_enabled(24_000, False, True, True, 96_000, 80_000))
+
+    def test_reserved_capacity_is_stable_across_weather_transitions(self):
+        capacity = reserved_checkpoint_capacity(24_000, True, 96_000, 80_000)
+        self.assertEqual(capacity, CHECKPOINT_CAPACITY)
+        for low_active, high_active in ((False, False), (True, False), (False, True), (True, True)):
+            self.assertEqual(capacity, reserved_checkpoint_capacity(24_000, True, 96_000, 80_000))
 
     def test_checkpoint_selection_never_passes_endpoint(self):
         for index in range(1_001):
