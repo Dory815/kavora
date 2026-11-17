@@ -108,10 +108,13 @@ froxel range, the old six-checkpoint mapping and allocation are preserved.
 Preintegrated-fog mode is unchanged.
 
 The extra checkpoint increases the prefix buffer by one checkpoint plane
-(`columns * 7 uints`) only while the cloud range is extended. At 1920x1080
-with the standard two-pixel column stride this is about 13.9 MiB. This is a
-deliberate memory/performance tradeoff; it does not increase the per-pixel
-primary atmosphere record.
+(`columns * 7 uints`) when clouds are enabled and the configured cloud range
+exceeds the froxel range. At 1920x1080 with the standard two-pixel column
+stride this is about 13.9 MiB. The slot is reserved based on configured range,
+not current coverage/weather, so rain and cloud-cover transitions do not
+reallocate PathStorage. The shader only writes/uses the far checkpoint when an
+active cloud family is present. This is a deliberate memory/performance
+tradeoff; it does not increase the per-pixel primary atmosphere record.
 
 The CPU checkpoint contract verifies that all six near checkpoint positions
 remain identical, endpoint selection never chooses a checkpoint beyond the
