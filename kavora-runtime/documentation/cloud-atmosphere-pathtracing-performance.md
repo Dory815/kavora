@@ -35,8 +35,10 @@ phase used by `cloudIncidentRadiance` depends on the view-ray direction and
 light direction, not the cloud-cell position. It is now computed once per
 atmosphere ray, and once per sky-map pixel ray in cloud-sky generation, rather
 than once for every cloud cell. The existing single-sample entry point remains
-as a compatibility wrapper. A shader contract compares the hoisted phase
-against the original expression for 128 deterministic ray directions.
+as a compatibility wrapper. Lights with no irradiance and no radiance-profile
+energy are skipped during phase setup. A shader contract compares the hoisted
+phase against the original expression for 128 deterministic ray directions,
+including inactive-light handling.
 
 ### Cloud directional-cache grid reuse
 
