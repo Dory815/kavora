@@ -15,7 +15,7 @@ class SkyAtmosphereTest {
         assertTransmission(2, .0283, .02192077371, .002607136988, .00001276154089);
         // The four-node solar-disk quadrature is least accurate when only a
         // thin crescent of the disk is above the curved horizon.
-        assertTransmission(2, -.2, .008, .01058789191, .001046243605, .000003236950032);
+        assertTransmissionWithTolerance(2, -.2, .008, .01058789191, .001046243605, .000003236950032);
         assertTransmission(10000, -2, .2691382974, .04939423044, .0007482489361);
     }
 
@@ -84,10 +84,10 @@ class SkyAtmosphereTest {
     }
 
     private static void assertTransmission(float height, double elevation, double... expected) {
-        assertTransmission(height, elevation, .005, expected);
+        assertTransmissionWithTolerance(height, elevation, .005, expected);
     }
 
-    private static void assertTransmission(float height, double elevation, double relativeTolerance,
+    private static void assertTransmissionWithTolerance(float height, double elevation, double relativeTolerance,
             double... expected) {
         float[] actual = SkyAtmosphere.transmittanceToLight(height,
                 (float) Math.sin(Math.toRadians(elevation)), SUN_RADIUS);
