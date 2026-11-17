@@ -183,12 +183,16 @@ public bool cloudCachedLightDepth(CloudArgs args, CloudLightingCache cache, uint
     begin, end, depth, cascade);
 }
 
-public bool cloudLightCascadeContains(CloudArgs args, uint light, uint cascade, float3 begin, float3 end)
+public bool cloudLightCascadeContainsInGrid(CloudLightGrid grid, float3 begin, float3 end)
 {
-  const CloudLightGrid grid = cloudLightGrid(args, light, cascade);
   const float3 from = grid.coordinates(begin);
   const float3 to = grid.coordinates(end);
   return all(from >= 0) && all(from <= 1) && all(to >= 0) && all(to <= 1);
+}
+
+public bool cloudLightCascadeContains(CloudArgs args, uint light, uint cascade, float3 begin, float3 end)
+{
+  return cloudLightCascadeContainsInGrid(cloudLightGrid(args, light, cascade), begin, end);
 }
 
 public float cloudLightingFarWeight(CloudArgs args, float3 position)
