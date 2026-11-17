@@ -43,6 +43,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
     return;
   }
   const float3 ambient = sampleCloudAmbientRadiance(args);
+  const CloudRayPhase cloudPhase = createCloudRayPhase(args, direction);
   float3 radiance = 0;
   float transmittance = 1;
   float distanceMoment = 0;
@@ -74,7 +75,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
       {
         const float opacity = accumulateCloudSkyStep(extinction, next - previous, args.albedo,
           cloudIncidentRadiance(args, position, direction, ambient, CloudWeatherSampler, CloudBaseSampler,
-            CloudDetailSampler, sceneCloudLightingCache()), radiance, transmittance);
+            CloudDetailSampler, sceneCloudLightingCache(), cloudPhase), radiance, transmittance);
         distanceMoment += opacity * distance;
       }
       if (transmittance < kOpaqueCloudTransmittance)
