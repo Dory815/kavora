@@ -27,10 +27,10 @@ covers six altitudes (0–40 km), 81 light cosines, and solar/lunar angular-radi
 fixtures (0.00465 and 0.009 rad). It also asserts that horizon-adjacent,
 partially visible, and larger-emitter cases do not enter the fast path.
 
-The measured maximum error in the 972 fast-path cases is:
+The measured maximum error in the 972 fast-path cases is, using a spherical atmosphere with independently normalized Rayleigh (8 km) and Mie (1.2 km) exponential profiles:
 
-- Maximum absolute transmittance error: `3.762353e-05`
-- Maximum relative transmittance error: `4.585272e-04` (0.0459%)
+- Maximum absolute transmittance error: `4.400922e-05`
+- Maximum relative transmittance error: `6.982272e-05` (0.0070%)
 
 The numerical test is a model-based CPU bound, not a GPU shader execution or
 full Minecraft image acceptance test. A CPU-rendered transmittance A/B preview
