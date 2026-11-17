@@ -740,9 +740,26 @@ namespace dxvk {
     ctx->setFramePassStage(RtxFramePassStage::GBufferPrimaryRays);
     ctx->bindCommonRayTracingResources();
     const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+    const CloudArgs& clouds = volume.clouds;
+    const bool lowCloudsActive = clouds.enable != 0
+      && (clouds.coverage > 0.0f || clouds.weather > 0.0f || clouds.thunder > 0.0f);
+    const bool highCloudsActive = clouds.enable != 0 && clouds.highCoverage > 0.0f;
+    float cloudCheckpointDistance = volume.froxelMaxDistance;
+    if (lowCloudsActive) {
+      cloudCheckpointDistance = std::max(cloudCheckpointDistance, clouds.maxDistance);
+    }
+    if (highCloudsActive) {
+      cloudCheckpointDistance = std::max(cloudCheckpointDistance, clouds.highMaxDistance);
+    }
+    const bool extendCloudCheckpoints = volume.fogIntegrationMode != 1
+      && cloudCheckpointDistance > volume.froxelMaxDistance;
+    const uint32_t checkpointCapacity = volume.fogIntegrationMode == 1
+      ? GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY
+      : (extendCloudCheckpoints ? GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY
+        : GBUFFER_ATMOSPHERE_FROXEL_CHECKPOINT_CAPACITY);
     ensurePathBuffers(rayDims, volume.enable || volume.clouds.enable || volume.air.enable,
       volume.fogIntegrationMode == 1 ? volume.fogIntegrationPixelStride : GBUFFER_ATMOSPHERE_COLUMN_STRIDE,
-      volume.fogIntegrationMode == 1 ? GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY : GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY);
+      checkpointCapacity);
     ctx->bindResourceBuffer(GBUFFER_BINDING_PATH_STORAGE,
       DxvkBufferSlice(m_pathStorage, 0, m_pathStorage->info().size));
     ScopedGpuProfileZone(ctx, "Primary Traversal");
