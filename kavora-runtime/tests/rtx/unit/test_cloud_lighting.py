@@ -47,7 +47,7 @@ def main():
         bindings = {'Origins': device.create_buffer(data=origins, usage=spy.BufferUsage.shader_resource),
             'Directions': device.create_buffer(data=directions, usage=spy.BufferUsage.shader_resource),
             'Results': output, 'Count': len(origins), 'Clouds': args}
-        if name in ('depths', 'cascadeDepths', 'energyParts'):
+        if name in ('depths', 'cascadeDepths', 'energyParts', 'reusedGrid'):
             bindings.update(Sun=sun.descriptor_handle_combined)
         programs[name].dispatch(thread_count=[len(origins), 1, 1], vars=bindings)
         return output.to_numpy().view(np.float32).reshape(-1, 4)
@@ -105,6 +105,16 @@ def main():
     report['packedCascadeCases'] = len(origins)
     report['packedCascadeMaximumTauError'] = float(np.max(np.abs(
         packed_depths[:, 0] - expected_found * (1024 * SIGMA))))
+
+    # The reused-grid path must be bit-identical to the compatibility wrapper.
+    reuse_origins = [[x, 1200, 0, 1024] for x in (0, 1000, 5000, 12000, 18000)]
+    reuse_directions = [[0, 0, 1, 0]] * len(reuse_origins)
+    reused = run('reusedGrid', reuse_origins, reuse_directions, cascade_args, packed_sun)
+    np.testing.assert_array_equal(reused[:, 0], 0)
+    np.testing.assert_array_equal(reused[:, 1], 1)
+    np.testing.assert_array_equal(reused[:, 2], 1)
+    report['reusedLightGridCases'] = len(reuse_origins)
+    report['reusedLightGridMaximumDepthDifference'] = float(np.max(reused[:, 0]))
 
     grid_inputs = [[start, end, spacing, angle] for start, end in ((0, 24000), (800, 24000), (20000, 24000),
                    (800, 1000), (0, 96000)) for spacing in (1, 8, 16, 128) for angle in (0, 0.0013)]
