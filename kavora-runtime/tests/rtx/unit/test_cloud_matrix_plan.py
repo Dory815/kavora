@@ -40,7 +40,8 @@ class MatrixPlanTests(unittest.TestCase):
                                    "--locations", "user", "--scenarios", "cloud_rich"))
             self.assertEqual(len(cases), 8)
             for old, new in zip(cases[:4], cases[4:]):
-                self.assertEqual(old["command"][old["command"].index("--repo") + 1], str(root))
+                reference = Path(old["command"][old["command"].index("--repo") + 1])
+                self.assertEqual(reference.resolve(), root.resolve())
                 for option in ("--origin", "--low-coverage", "--steps", "--light-steps",
                                "--layers", "--low-max-distance", "--high-max-distance", "--sun-elevation"):
                     self.assertEqual(old["command"][old["command"].index(option) + 1],
