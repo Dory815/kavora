@@ -72,6 +72,10 @@ class AtmosphereCheckpointCoverageTests(unittest.TestCase):
         capacity = reserved_checkpoint_capacity(24_000, True, 96_000, 80_000)
         self.assertEqual(capacity, CHECKPOINT_CAPACITY)
         for low_active, high_active in ((False, False), (True, False), (False, True), (True, True)):
+            active = cloud_checkpointing_enabled(
+                24_000, True, low_active, high_active, 96_000, 80_000
+            )
+            self.assertEqual(active, low_active or high_active)
             self.assertEqual(capacity, reserved_checkpoint_capacity(24_000, True, 96_000, 80_000))
 
     def test_checkpoint_selection_never_passes_endpoint(self):
