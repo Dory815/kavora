@@ -54,7 +54,8 @@ between its direction and each directional light is invariant along the ray;
 the phase functions therefore do not depend on the sample position. The
 previous implementation evaluated both phase functions, including the Mie
 `pow(..., 1.5)`, again for every air cell. The new `AirRayPhase` value is
-local to one `integrateAtmosphereRange` invocation and does not alter shared
+stored in the transient `AtmosphereRay` and reused even when the same ray
+is integrated as multiple clipped ranges. It does not alter shared
 constant-buffer layouts or persistent state. The original four-argument
 `sampleAirMedium` entry point remains as a compatibility wrapper.
 
