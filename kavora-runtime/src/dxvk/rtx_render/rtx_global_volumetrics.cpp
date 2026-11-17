@@ -830,7 +830,19 @@ namespace dxvk {
     // not render frames, so consecutive frames often share identical inputs.
     // A byte-exact comparison is conservative: any changed input still
     // rebuilds the cache and preserves the same lighting result for that state.
-    if (m_cloudLightingArgsValid
+    const auto lightHasEnergy = [](const CloudLight& light) {
+      bool active = light.irradiance.x > 0 || light.irradiance.y > 0 || light.irradiance.z > 0;
+      if (light.hasRadianceProfile) {
+        for (const auto& sample : light.radianceProfile) {
+          active |= sample.x > 0 || sample.y > 0 || sample.z > 0;
+        }
+      }
+      return active;
+    };
+    const bool cacheResourcesReady =
+      (!lightHasEnergy(clouds.lights[0]) || m_cloudLightOpticalDepth[0].isValid())
+      && (!lightHasEnergy(clouds.lights[1]) || m_cloudLightOpticalDepth[1].isValid());
+    if (m_cloudLightingArgsValid && cacheResourcesReady
       && std::memcmp(&clouds, &m_previousCloudLightingArgs, sizeof(CloudArgs)) == 0) {
       return;
     }
