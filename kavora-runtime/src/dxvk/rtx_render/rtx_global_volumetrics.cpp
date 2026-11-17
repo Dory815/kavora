@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include <glm/gtc/packing.hpp>
+#include <cstring>
 
 #include "rtx_global_volumetrics.h"
 #include "rtx/pass/cloud_noise.h"
@@ -820,6 +821,17 @@ namespace dxvk {
     if (!clouds.enable || clouds.extinction <= 0 || clouds.thickness <= 0) {
       m_cloudLightOpticalDepth[0].reset();
       m_cloudLightOpticalDepth[1].reset();
+      m_cloudLightingArgsValid = false;
+      return;
+    }
+
+    // Cloud optical depth is deterministic for unchanged CloudArgs and
+    // generated density textures. World time advances on simulation ticks,
+    // not render frames, so consecutive frames often share identical inputs.
+    // A byte-exact comparison is conservative: any changed input still
+    // rebuilds the cache and preserves the same lighting result for that state.
+    if (m_cloudLightingArgsValid
+      && std::memcmp(&clouds, &m_previousCloudLightingArgs, sizeof(CloudArgs)) == 0) {
       return;
     }
     const uint32_t resolution = CLOUD_LIGHTING_RESOLUTION_PER_STEP
@@ -855,6 +867,8 @@ namespace dxvk {
         lightIndex == 0 ? GenerateCloudSunShader::getShader() : GenerateCloudMoonShader::getShader());
       ctx->dispatch((lightExtent.width + 7) / 8, (lightExtent.height + 7) / 8, 1);
     }
+    m_previousCloudLightingArgs = clouds;
+    m_cloudLightingArgsValid = true;
   }
 
   void RtxGlobalVolumetrics::dispatchCloudSky(RtxContext* ctx, const VolumeArgs& volume) {
