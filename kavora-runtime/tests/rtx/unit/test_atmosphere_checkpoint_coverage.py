@@ -72,7 +72,8 @@ class AtmosphereCheckpointCoverageTests(unittest.TestCase):
                      for i in range(CAPACITY + 1)]
         self.assertEqual(distances, sorted(distances))
         gaps = [b - a for a, b in zip(distances, distances[1:])]
-        self.assertLessEqual(max(gaps), maximum / CAPACITY + 1e-6)
+        expected_largest_gap = maximum * (1.0 - (1.0 - 1.0 / CAPACITY) ** exponent)
+        self.assertAlmostEqual(max(gaps), expected_largest_gap)
         self.assertAlmostEqual(distances[-1], maximum)
 
 
