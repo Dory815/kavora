@@ -127,6 +127,16 @@ def main():
     report['gridCases'] = 4 * len(grids)
     report['maximumCloudCells'] = int(grids[:, 0].max())
 
+    # Phase terms depend only on the view ray and light directions, so the
+    # hoisted helper must exactly match the former per-cell expression.
+    rng = np.random.default_rng(20261117)
+    phase_directions = rng.normal(size=(128, 3)).astype(np.float32)
+    phase_directions /= np.linalg.norm(phase_directions, axis=1, keepdims=True)
+    phase_directions = np.column_stack((phase_directions, np.zeros(128, np.float32)))
+    phase_results = run('rayPhases', np.zeros((128, 4), np.float32), phase_directions, args)
+    np.testing.assert_array_equal(phase_results[:, :2], 0)
+    report['hoistedRayPhaseCases'] = len(phase_results)
+
     # A point in the middle of two shadow columns sees one local blocker and
     # one remote blocker. Filter transmitted energy before taking its logarithm;
     # independently filtered optical-depth parts cannot be added afterward.
