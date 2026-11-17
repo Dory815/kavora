@@ -740,7 +740,7 @@ namespace dxvk {
     ctx->setFramePassStage(RtxFramePassStage::GBufferPrimaryRays);
     ctx->bindCommonRayTracingResources();
     const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
-    const CloudArgs& clouds = volume.clouds;
+    const auto& clouds = volume.clouds;
     const bool lowCloudsActive = clouds.enable != 0
       && (clouds.coverage > 0.0f || clouds.weather > 0.0f || clouds.thunder > 0.0f);
     const bool highCloudsActive = clouds.enable != 0 && clouds.highCoverage > 0.0f;
