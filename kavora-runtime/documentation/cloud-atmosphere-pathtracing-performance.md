@@ -30,6 +30,14 @@ four-argument `sampleAirMedium` entry point remains available as a wrapper.
 This is an exact algebraic hoist; it does not change the phase functions,
 extinction profile, LUTs, or quadrature.
 
+The same invariant applies to cloud scattering. The mixed Henyey-Greenstein
+phase used by `cloudIncidentRadiance` depends on the view-ray direction and
+light direction, not the cloud-cell position. It is now computed once per
+atmosphere ray, and once per sky-map pixel ray in cloud-sky generation, rather
+than once for every cloud cell. The existing single-sample entry point remains
+as a compatibility wrapper. A shader contract compares the hoisted phase
+against the original expression for 128 deterministic ray directions.
+
 ### Cloud directional-cache grid reuse
 
 The cloud directional optical-depth query already constructs a light-space
