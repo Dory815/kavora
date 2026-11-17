@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <random>
+#include <vector>
 
 #include "rtx/utility/volume_lut.h"
 
@@ -61,6 +63,32 @@ int main() {
         }
       }
     }
+  }
+  std::mt19937 random(20261117);
+  std::uniform_real_distribution<float> uniform(0.0f, 1.0f);
+  for (unsigned scenario = 0; scenario < 4096; ++scenario) {
+    VolumeLutIntervals intervals = {};
+    const float reach = std::pow(10.0f, -2.0f + 8.0f * uniform(random));
+    for (unsigned medium = 0; medium < 7; ++medium) {
+      intervals.starts[medium] = reach * uniform(random);
+      intervals.ends[medium] = intervals.starts[medium] + reach * uniform(random);
+    }
+    VolumeLutGrid grid = createVolumeLutGrid(intervals, 1.0f);
+    std::vector<float> knots{0.0f};
+    float previous = 0.0f;
+    for (unsigned node = 1; node <= 64; ++node) {
+      const float next = grid.next(intervals, previous, 64);
+      require(next >= previous && next <= grid.end, "merged grid has invalid node");
+      require(next > previous || next == grid.end, "merged grid stalled");
+      knots.push_back(next);
+      previous = next;
+    }
+    require(previous == grid.end, "merged grid did not cover full atmosphere within budget");
+    for (unsigned medium = 0; medium < 7; ++medium) {
+      require(std::find(knots.begin(), knots.end(), intervals.starts[medium]) != knots.end(), "missing interval entry");
+      require(std::find(knots.begin(), knots.end(), intervals.ends[medium]) != knots.end(), "missing interval exit");
+    }
+    ++cases;
   }
   std::cout << "PASS " << cases << " shared C++/Slang LUT scalar cases; max weight error " << maximumError << '\n';
 }

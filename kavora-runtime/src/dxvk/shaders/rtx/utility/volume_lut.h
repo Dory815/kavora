@@ -11,11 +11,13 @@ namespace dxvk {
 #define LUT_LOG std::log
 #define LUT_MIN std::min
 #define LUT_MAX std::max
+#define LUT_UINT unsigned
 #else
 #define LUT_EXP exp
 #define LUT_LOG log
 #define LUT_MIN min
 #define LUT_MAX max
+#define LUT_UINT uint
 #endif
 
 // Returns 1 - exp(-depth) without cancellation near zero.
@@ -76,10 +78,69 @@ inline float volumeLutRadiance(float from, float to, float fromDepth, float toDe
   return from + (to - from) * volumeLutWeight(LUT_MAX(toDepth - fromDepth, 0.0f), fraction);
 }
 
+struct VolumeLutIntervals {
+  float starts[7];
+  float ends[7];
+};
+
+// Knots are budgeted inside each medium, including exact entry and exit planes.
+// Capacity must be at least 32. Slots match AtmosphereIntervals.
+struct VolumeLutGrid {
+  float end;
+  float scale;
+  LUT_UINT nextNode[7];
+
+  float next(VolumeLutIntervals intervals, float previous, LUT_UINT capacity) {
+    const LUT_UINT budget = capacity - 8u;
+    const LUT_UINT small = budget / 10u;
+    const LUT_UINT low = budget / 2u;
+    const LUT_UINT air = budget - low - 3u * small;
+    const LUT_UINT lowCount = LUT_UINT(intervals.ends[1] > intervals.starts[1])
+      + LUT_UINT(intervals.ends[2] > intervals.starts[2]);
+    const LUT_UINT highCount = LUT_UINT(intervals.ends[3] > intervals.starts[3])
+      + LUT_UINT(intervals.ends[4] > intervals.starts[4]);
+    float nextDistance = end;
+    for (LUT_UINT interval = 0; interval < 7; ++interval) {
+      const float begin = intervals.starts[interval];
+      const float finish = intervals.ends[interval];
+      if (finish <= begin || finish <= previous) {
+        continue;
+      }
+      const LUT_UINT cells = interval == 6 ? air
+        : (interval == 1 || interval == 2 ? low / LUT_MAX(lowCount, 1u)
+        : (interval == 3 || interval == 4 ? small / LUT_MAX(highCount, 1u) : small));
+      for (; nextNode[interval] <= cells; ++nextNode[interval]) {
+        const LUT_UINT index = nextNode[interval];
+        const float fraction = float(index) / float(cells);
+        const float span = finish - begin;
+        const float offset = interval == 0 || interval == 5
+          ? volumeLutDistance(fraction, span, scale)
+          : span * (interval == 3 || interval == 4 ? fraction : fraction * fraction);
+        const float distance = index == cells ? finish : begin + offset;
+        if (distance > previous) {
+          nextDistance = LUT_MIN(nextDistance, distance);
+          break;
+        }
+      }
+    }
+    return LUT_MAX(previous, nextDistance);
+  }
+};
+
+inline VolumeLutGrid createVolumeLutGrid(VolumeLutIntervals intervals, float scale) {
+  VolumeLutGrid grid = {};
+  for (LUT_UINT interval = 0; interval < 7; ++interval) {
+    grid.end = LUT_MAX(grid.end, intervals.ends[interval]);
+  }
+  grid.scale = LUT_MAX(scale, 1e-4f);
+  return grid;
+}
+
 #undef LUT_EXP
 #undef LUT_LOG
 #undef LUT_MIN
 #undef LUT_MAX
+#undef LUT_UINT
 #ifdef __cplusplus
 }
 #endif
