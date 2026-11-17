@@ -303,10 +303,12 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
   }
   const float2 height = (heightAboveBase - column.familyBase) / column.familyThickness;
   const float2 profileFootprint = heightFootprint / column.familyThickness;
+  // Give both cloud families a more gradual condensation edge. The wider
+  // lower fade softens dense cloud bases without flattening their upper billows.
   const float cumulusProfile = column.familyCoverage.x > 0
-    ? cloudHeightProfile(height.x, 0.10f, lerp(0.30f, 0.70f, column.type), profileFootprint.x) : 0;
+    ? cloudHeightProfile(height.x, 0.25f, lerp(0.30f, 0.70f, column.type), profileFootprint.x) : 0;
   const float deckProfile = column.familyCoverage.y > 0
-    ? cloudHeightProfile(height.y, 0.16f, 0.70f, profileFootprint.y) : 0;
+    ? cloudHeightProfile(height.y, 0.28f, 0.70f, profileFootprint.y) : 0;
   if (cumulusProfile <= 0 && deckProfile <= 0)
   {
     return 0;
