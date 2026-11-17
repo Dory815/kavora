@@ -128,3 +128,24 @@ void reusedGrid(uint index : SV_DispatchThreadID)
     referenceFound ? 1.0f : 0.0f, reusedFound ? 1.0f : 0.0f,
     referenceContains == reusedContains ? 1.0f : 0.0f);
 }
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void rayPhases(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  const float3 direction = normalize(Directions[index].xyz);
+  const CloudRayPhase phase = createCloudRayPhase(Clouds, direction);
+  float2 expected = 0;
+  [unroll]
+  for (uint light = 0; light < 2; light++)
+  {
+    const float cosine = dot(direction, Clouds.lights[light].directionToLight);
+    expected[light] = 0.85f * cloudPhase(cosine, Clouds.anisotropy)
+      + 0.15f * cloudPhase(cosine, -0.25f);
+  }
+  Results[index] = float4(abs(phase.phase - expected), 0, 0);
+}
