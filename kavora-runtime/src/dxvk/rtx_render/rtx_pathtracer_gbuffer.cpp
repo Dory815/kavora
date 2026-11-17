@@ -742,18 +742,11 @@ namespace dxvk {
     ctx->bindCommonRayTracingResources();
     const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
     const auto& clouds = volume.clouds;
-    const bool lowCloudsActive = clouds.enable != 0
-      && (clouds.coverage > 0.0f || clouds.weather > 0.0f || clouds.thunder > 0.0f);
-    const bool highCloudsActive = clouds.enable != 0 && clouds.highCoverage > 0.0f;
-    float cloudCheckpointDistance = volume.froxelMaxDistance;
-    if (lowCloudsActive) {
-      cloudCheckpointDistance = std::max(cloudCheckpointDistance, clouds.maxDistance);
-    }
-    if (highCloudsActive) {
-      cloudCheckpointDistance = std::max(cloudCheckpointDistance, clouds.highMaxDistance);
-    }
+    // Reserve the far slot for the configured cloud range, not current weather.
+    // This prevents a rain/coverage transition from reallocating PathStorage.
+    const float configuredCloudDistance = std::max(clouds.maxDistance, clouds.highMaxDistance);
     const bool extendCloudCheckpoints = volume.fogIntegrationMode != 1
-      && cloudCheckpointDistance > volume.froxelMaxDistance;
+      && clouds.enable != 0 && configuredCloudDistance > volume.froxelMaxDistance;
     const uint32_t checkpointCapacity = volume.fogIntegrationMode == 1
       ? GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY
       : (extendCloudCheckpoints ? GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY
