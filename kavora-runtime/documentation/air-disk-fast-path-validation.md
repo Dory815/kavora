@@ -62,3 +62,23 @@ This is an exact algebraic hoist: it changes neither the phase-function
 approximation nor the air integration grid. It removes repeated per-cell phase
 math; it does not reduce the number of air cells or the transmittance/scattering
 LUT samples.
+
+## Exact cloud light-grid reuse
+
+The cloud light-cache query now has an internal `cloudCachedLightDepthInGrid`
+entry point. `cloudLowLightCascadeDepth` already constructs the light-space
+grid to determine its cell footprint; it now passes that same grid to the
+prefix lookup instead of reconstructing the light basis, normalization and
+bounds for each optical-depth interval. The original public helper remains
+and constructs a grid for standalone callers.
+
+A regression entry point, `reusedGrid`, compares the reused-grid lookup with
+the compatibility wrapper on the same input. The corresponding
+`test_cloud_lighting.py` case checks exact equality of the result and both
+validity flags. This optimization changes no sampling, interpolation, cache
+domain, or optical-depth arithmetic.
+
+The SlangPy/Vulkan contract test could not be executed in this container
+because SlangPy and a Vulkan device/ICD are unavailable. The source-level
+contract has been added for the repository's supported shader-test
+environment; native validation remains pending.
