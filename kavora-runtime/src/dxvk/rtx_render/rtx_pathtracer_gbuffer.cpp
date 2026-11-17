@@ -1135,6 +1135,25 @@ namespace dxvk {
 
 
     const auto& volume = args.volumeArgs;
+    // A full-screen dispatch of world-space cloud integration can exceed the
+    // GPU watchdog. Bound the rays in each launch while keeping their samples.
+    constexpr uint32_t kAtmospherePixelsPerDispatch = GBUFFER_PSR_QUEUE_ROW_WIDTH;
+    constexpr uint32_t kAtmosphereGroupHeight = 8;
+    const bool worldSpaceClouds = volume.clouds.enable && volume.clouds.transportMode == 0;
+    const uint32_t bandHeight = worldSpaceClouds
+      ? std::max(1u, kAtmospherePixelsPerDispatch / rayDims.width / kAtmosphereGroupHeight) * kAtmosphereGroupHeight
+      : rayDims.height;
+    auto dispatchBands = [&](auto&& dispatchBand) {
+      for (uint32_t y = 0; y < rayDims.height; y += bandHeight) {
+        pushArgs.dispatchOffsetY = y;
+        ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
+        dispatchBand(VkExtent3D { rayDims.width, std::min(bandHeight, rayDims.height - y), rayDims.depth });
+        if (bandHeight < rayDims.height) {
+          // A dispatch boundary alone can leave all the work in one WDDM submission.
+          ctx->flushCommandList();
+        }
+      }
+    };
     const uint32_t atmosphereStride = volume.fogIntegrationMode == 1
       ? volume.fogIntegrationPixelStride : GBUFFER_ATMOSPHERE_COLUMN_STRIDE;
     ensurePathBuffers(rayDims, raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable || volume.air.enable),
@@ -1143,7 +1162,7 @@ namespace dxvk {
     ctx->bindResourceBuffer(GBUFFER_BINDING_PATH_STORAGE, DxvkBufferSlice(m_pathStorage, 0, m_pathStorage->info().size));
     if (raytraceMode != RaytraceMode::TraceRay && (volume.enable || volume.clouds.enable || volume.air.enable)) {
       // Primary consumes the atmospheric transfers and motion guides before PSR reuses the storage.
-      ScopedGpuProfileZone(ctx, "Primary Atmosphere");
+      ScopedGpuCommandStreamZone(ctx, "Primary Atmosphere");
       {
         ScopedGpuProfileZone(ctx, "Column Prefix");
         const VkExtent3D columnExtent = { rayDims.width / atmosphereStride + 1,
@@ -1153,10 +1172,12 @@ namespace dxvk {
         ctx->dispatch(groups.width, groups.height, groups.depth);
       }
       {
-        ScopedGpuProfileZone(ctx, "Dense Endpoint");
-        const auto groups = util::computeBlockCount(rayDims, VkExtent3D { 8, 8, 1 });
+        ScopedGpuCommandStreamZone(ctx, "Dense Endpoint");
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getGbufferPrimaryAtmosphereComputeShader());
-        ctx->dispatch(groups.width, groups.height, groups.depth);
+        dispatchBands([&](VkExtent3D extent) {
+          const auto groups = util::computeBlockCount(extent, VkExtent3D { 8, kAtmosphereGroupHeight, 1 });
+          ctx->dispatch(groups.width, groups.height, groups.depth);
+        });
       }
     }
 
@@ -1195,7 +1216,7 @@ namespace dxvk {
     dispatchPSRPrepare();
 
     {
-      ScopedGpuProfileZone(ctx, "PSR");
+      ScopedGpuCommandStreamZone(ctx, "PSR");
       ctx->setFramePassStage(RtxFramePassStage::PSR);
       const VkDeviceSize pixels = VkDeviceSize(rayDims.width) * rayDims.height;
       const VkDeviceSize queueBytes = (pixels + GBUFFER_PSR_QUEUE_HEADER_WORDS) * sizeof(uint32_t);
@@ -1213,35 +1234,37 @@ namespace dxvk {
       }
 
       // Transmission starts with the radiance and random stream left by the complete reflection path.
+      // Each band's continuations keep the same pixel keys and stay within its work bound.
+      const uint32_t maxBounces = std::max(args.psrrMaxBounces, args.pstrMaxBounces);
       for (uint32_t lobe = 0; lobe < 2; ++lobe) {
         pushArgs.psrTransmission = lobe;
-        ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-        uint32_t input = 0;
-        ctx->clearBuffer(m_psrQueues[input], 0, GBUFFER_PSR_QUEUE_HEADER_WORDS * sizeof(uint32_t), 0);
-        ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_OUTPUT, DxvkBufferSlice(m_psrQueues[input], 0, queueBytes));
-        ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_INPUT, DxvkBufferSlice(m_psrQueues[1 - input], 0, queueBytes));
-        {
-          ScopedGpuProfileZone(ctx, "First Bounce");
-          ctx->bindRaytracingPipelineShaders(initialPipeline);
-          ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
-        }
-        // Render-target redirection uses the reflection limit in either lobe.
-        const uint32_t maxBounces = std::max(args.psrrMaxBounces, args.pstrMaxBounces);
-        for (uint32_t bounce = 1; bounce <= maxBounces; ++bounce) {
-          ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_INPUT, DxvkBufferSlice(m_psrQueues[input], 0, queueBytes));
-          ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_OUTPUT, DxvkBufferSlice(m_psrQueues[1 - input], 0, queueBytes));
+        dispatchBands([&](VkExtent3D extent) {
+          uint32_t input = 0;
+          ctx->clearBuffer(m_psrQueues[input], 0, GBUFFER_PSR_QUEUE_HEADER_WORDS * sizeof(uint32_t), 0);
+          ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_OUTPUT, DxvkBufferSlice(m_psrQueues[input], 0, queueBytes));
+          ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_INPUT, DxvkBufferSlice(m_psrQueues[1 - input], 0, queueBytes));
           {
-            ScopedGpuProfileZone(ctx, "Schedule");
-            ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, argsShader);
-            ctx->dispatch(1, 1, 1);
+            ScopedGpuProfileZone(ctx, "First Bounce");
+            ctx->bindRaytracingPipelineShaders(initialPipeline);
+            ctx->traceRays(extent.width, extent.height, extent.depth);
           }
-          {
-            ScopedGpuProfileZone(ctx, "Shade");
-            ctx->bindRaytracingPipelineShaders(shadePipeline);
-            ctx->traceRaysIndirect(m_psrQueues[input], sizeof(uint32_t));
+          // Render-target redirection uses the reflection limit in either lobe.
+          for (uint32_t bounce = 1; bounce <= maxBounces; ++bounce) {
+            ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_INPUT, DxvkBufferSlice(m_psrQueues[input], 0, queueBytes));
+            ctx->bindResourceBuffer(GBUFFER_BINDING_PSR_QUEUE_OUTPUT, DxvkBufferSlice(m_psrQueues[1 - input], 0, queueBytes));
+            {
+              ScopedGpuProfileZone(ctx, "Schedule");
+              ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, argsShader);
+              ctx->dispatch(1, 1, 1);
+            }
+            {
+              ScopedGpuProfileZone(ctx, "Shade");
+              ctx->bindRaytracingPipelineShaders(shadePipeline);
+              ctx->traceRaysIndirect(m_psrQueues[input], sizeof(uint32_t));
+            }
+            input = 1 - input;
           }
-          input = 1 - input;
-        }
+        });
       }
     }
   }

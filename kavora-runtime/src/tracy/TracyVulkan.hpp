@@ -442,6 +442,11 @@ public:
         Profiler::QueueSerialFinish();
     }
 
+    tracy_force_inline void SetEndCommandBuffer( VkCommandBuffer cmdbuf )
+    {
+        if( m_active ) m_cmdbuf = cmdbuf;
+    }
+
     tracy_force_inline ~VkCtxScope()
     {
         if( !m_active ) return;

@@ -29,6 +29,20 @@
         TracyVkZone((ctx)->getDevice()->queues().graphics.tracyCtx, (ctx)->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name); \
         __ScopedAnnotation __scopedAnnotation(ctx, name)
 
+#ifdef TRACY_ENABLE
+  #define TracyVkCommandStreamZone(ctx, name) \
+        static const tracy::SourceLocationData __gpuStreamLocation { name, __FUNCTION__, __FILE__, __LINE__, 0 }; \
+        __ScopedGpuCommandStreamZone __gpuStreamZone(ctx, &__gpuStreamLocation)
+#else
+  #define TracyVkCommandStreamZone(ctx, name)
+#endif
+
+// Use when recording can submit and replace the current command list.
+#define ScopedGpuCommandStreamZone(ctx, name) \
+        ScopedCpuProfileZoneN(name); \
+        TracyVkCommandStreamZone(ctx, name); \
+        __ScopedAnnotation __scopedAnnotation(ctx, name)
+
 #define ScopedGpuProfileZoneQ(device, cmdbuf, queue, name) \
         ScopedCpuProfileZoneN(name); \
         TracyVkZone((device)->queues().queue.tracyCtx, cmdbuf, name); \
@@ -71,6 +85,18 @@ namespace dxvk {
 
   class DxvkContext;
   class DxvkDevice;
+
+  #ifdef TRACY_ENABLE
+  class __ScopedGpuCommandStreamZone {
+  public:
+    __ScopedGpuCommandStreamZone(DxvkContext* ctx, const tracy::SourceLocationData* location);
+    ~__ScopedGpuCommandStreamZone();
+
+  private:
+    DxvkContext* m_ctx;
+    tracy::VkCtxScope m_scope;
+  };
+  #endif
 
   /**
    * A helper class to add annotation/profiler ranges as renderOps into cmd buffer.

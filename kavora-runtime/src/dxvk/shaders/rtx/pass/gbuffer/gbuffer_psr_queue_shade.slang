@@ -102,8 +102,8 @@ RayHitInfo traceQueuedPSRState(GeometryPSRResolverState state)
 [shader("raygeneration")]
 void main()
 {
-  const uint2 invocation = DispatchRaysIndex().xy;
 #ifdef PSR_QUEUE_INITIAL
+  const uint2 invocation = DispatchRaysIndex().xy + uint2(0, push.dispatchOffsetY);
   if (any(invocation >= cb.camera.resolution)) return;
   const uint pixelIndex = psrPixelIndex(invocation);
   resolverPixel = uint3(invocation, 0);
@@ -128,6 +128,7 @@ void main()
   const uint seed = transmission && initial.geometryFlags.performPSRR
     ? PathStorage[seedOffset] : createRNG(invocation, cb.frameIdx, 555).seed;
 #else
+  const uint2 invocation = DispatchRaysIndex().xy;
   const uint index = gbufferQueueIndex(invocation);
   if (index >= PSRQueueInput[0]) return;
   const uint pixelIndex = PSRQueueInput[GBUFFER_PSR_QUEUE_HEADER_WORDS + index];

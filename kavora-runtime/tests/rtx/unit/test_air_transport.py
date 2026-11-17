@@ -115,6 +115,15 @@ class Probe:
 
 def main():
     probe = Probe()
+    intervals = np.array([[13292.854, 51125.395], [4645.4365, 30093.865], [0, 51125.395]], np.float32)
+    inputs = np.pad(intervals, ((0, 0), (0, 2)))
+    boundaries = probe.run("airGridEndpoints", parameters(), inputs, np.zeros_like(inputs))[:, 0]
+    np.testing.assert_array_equal(boundaries[:, 0], intervals[:, 0])
+    assert np.all(boundaries[:, 1] < intervals[:, 1])
+    np.testing.assert_array_equal(boundaries[:, 2], intervals[:, 1])
+    np.testing.assert_array_equal(boundaries[:, 3], intervals[:, 1])
+    print("PASS exact terminal air-grid endpoints, including subtraction roundoff")
+
     origins, directions = [], []
     for height in (-11999, -500, 0, 76, 800, 50000, 99999, 100000, 100001, 200000):
         for angle in (-90, -30, -4, -.1, 0, .1, 4, 30, 90):

@@ -43,6 +43,16 @@ void intervals(uint index : SV_DispatchThreadID)
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
+void airGridEndpoints(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count) return;
+  const AirRayGrid grid = { Origins[index].xy };
+  const uint last = kAirViewSteps + uint(Origins[index].z);
+  Results[index] = float4(grid.boundary(0), grid.boundary(last - 1), grid.boundary(last), grid.boundary(last + 1));
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
 void integrate(uint index : SV_DispatchThreadID)
 {
   if (index >= Count) return;

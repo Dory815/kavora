@@ -31,6 +31,17 @@ TRACY_OBJECT_MEMORY_PROFILING
 
 namespace dxvk {
 
+  #ifdef TRACY_ENABLE
+  __ScopedGpuCommandStreamZone::__ScopedGpuCommandStreamZone(DxvkContext* ctx, const tracy::SourceLocationData* location)
+  : m_ctx(ctx), m_scope(ctx->getDevice()->queues().graphics.tracyCtx, location,
+      ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), true) {
+  }
+
+  __ScopedGpuCommandStreamZone::~__ScopedGpuCommandStreamZone() {
+    m_scope.SetEndCommandBuffer(m_ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer));
+  }
+  #endif
+
   __ScopedAnnotation::__ScopedAnnotation(Rc<DxvkContext> ctx, const char* name) : m_ctx(ctx) {
     VkDebugUtilsLabelEXT info = {
       VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, nullptr, name, { 1.0f, 0.0f, 0.0f, 1.0f } // Red color

@@ -18,6 +18,8 @@ layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
 Sampler3D<float2> VolumeFilteredRadianceCoCg;
 layout(binding = GBUFFER_BINDING_SKYPROBE)
 SamplerCube<float3> SkyProbe;
+layout(push_constant)
+ConstantBuffer<GbufferPushConstants> push;
 
 #include "rtx/pass/gbuffer/primary_intersection.slangh"
 #include "rtx/pass/gbuffer/primary_atmosphere.slangh"
@@ -29,8 +31,9 @@ SamplerCube<float3> SkyProbe;
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
-void main(uint2 pixel : SV_DispatchThreadID)
+void main(uint2 invocation : SV_DispatchThreadID)
 {
+  const uint2 pixel = invocation + uint2(0, push.dispatchOffsetY);
   if (any(pixel >= cb.camera.resolution))
   {
     return;

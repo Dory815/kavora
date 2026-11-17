@@ -85,7 +85,13 @@ public struct AirRayGrid
 
   public float boundary(uint index)
   {
-    const float fraction = min(float(index) / float(kAirViewSteps), 1.0f);
+    // The terminal cell must end exactly at the interval exit. Reconstructing
+    // it as start + (exit - start) can round down and strand the merged grid.
+    if (index >= kAirViewSteps)
+    {
+      return interval.y;
+    }
+    const float fraction = float(index) / float(kAirViewSteps);
     return interval.x + (interval.y - interval.x) * fraction * fraction;
   }
 

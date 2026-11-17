@@ -176,4 +176,5 @@ struct GbufferPushConstants
   uint skipSERReorder;
   uint psrTransmission;
   uint writeFgForegroundGuide;
+  uint dispatchOffsetY;
 };
