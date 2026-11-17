@@ -612,9 +612,12 @@ public CloudRayPhase createCloudRayPhase(CloudArgs args, float3 direction)
   [unroll]
   for (uint light = 0; light < 2; light++)
   {
-    const float cosine = dot(direction, args.lights[light].directionToLight);
-    result.phase[light] = 0.85f * cloudPhase(cosine, args.anisotropy)
-      + 0.15f * cloudPhase(cosine, -0.25f);
+    if (cloudLightHasEnergy(args.lights[light]))
+    {
+      const float cosine = dot(direction, args.lights[light].directionToLight);
+      result.phase[light] = 0.85f * cloudPhase(cosine, args.anisotropy)
+        + 0.15f * cloudPhase(cosine, -0.25f);
+    }
   }
   return result;
 }
