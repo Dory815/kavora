@@ -12,12 +12,14 @@ namespace dxvk {
 #define LUT_MIN std::min
 #define LUT_MAX std::max
 #define LUT_UINT unsigned
+#define LUT_MUTATING
 #else
 #define LUT_EXP exp
 #define LUT_LOG log
 #define LUT_MIN min
 #define LUT_MAX max
 #define LUT_UINT uint
+#define LUT_MUTATING [mutating]
 #endif
 
 // Returns 1 - exp(-depth) without cancellation near zero.
@@ -90,6 +92,7 @@ struct VolumeLutGrid {
   float scale;
   LUT_UINT nextNode[7];
 
+  LUT_MUTATING
   float next(VolumeLutIntervals intervals, float previous, LUT_UINT capacity) {
     const LUT_UINT budget = capacity - 8u;
     const LUT_UINT small = budget / 10u;
@@ -141,6 +144,7 @@ inline VolumeLutGrid createVolumeLutGrid(VolumeLutIntervals intervals, float sca
 #undef LUT_MIN
 #undef LUT_MAX
 #undef LUT_UINT
+#undef LUT_MUTATING
 #ifdef __cplusplus
 }
 #endif
