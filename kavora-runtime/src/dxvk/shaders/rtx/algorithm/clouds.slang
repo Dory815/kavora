@@ -380,14 +380,14 @@ CloudOpticalDepth cloudLowLightFallback(CloudArgs args, float3 origin, float3 di
 
 CloudOpticalDepth cloudLowLightCascadeDepth(CloudArgs args, float3 origin, float3 direction, float3 cacheDirection,
   float2 interval, float localRange, float opticalDepthLimit, Sampler2D<float4> weather,
-  Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight, uint cascade)
+  Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight,
+  uint cascade, CloudLightGrid grid)
 {
   if (cacheLight < 0)
   {
     return cloudLowLightFallback(args, origin, direction, interval, localRange, opticalDepthLimit,
       weather, base, detail);
   }
-  const CloudLightGrid grid = cloudLightGrid(args, uint(cacheLight), cascade);
   const float3 cacheCell = grid.cellSize(cloudLightingCascadeResolution(args, cascade));
   // A coarse table must not replace near-cloud detail within its own footprint,
   // including the wider transverse cells at the default 96 km viewing range.
@@ -438,30 +438,42 @@ CloudOpticalDepth cloudLowLightOpticalDepth(CloudArgs args, float3 origin, float
   float2 interval, float localRange, float opticalDepthLimit, Sampler2D<float4> weather,
   Sampler3D<float4> base, Sampler3D<float4> detail, CloudLightingCache cache, int cacheLight)
 {
-  if (!cloudLightingHasFarCascade(args) || cacheLight < 0)
+  if (cacheLight < 0)
   {
     return cloudLowLightCascadeDepth(args, origin, direction, cacheDirection, interval, localRange,
-      opticalDepthLimit, weather, base, detail, cache, cacheLight, 0);
+      opticalDepthLimit, weather, base, detail, cache, cacheLight, 0, {});
   }
+
+  // The near grid is needed for cascade containment and for near-cache sampling.
+  // Share it instead of rebuilding the same light basis in both operations.
+  const CloudLightGrid nearGrid = cloudLightGrid(args, uint(cacheLight), 0);
+  if (!cloudLightingHasFarCascade(args))
+  {
+    return cloudLowLightCascadeDepth(args, origin, direction, cacheDirection, interval, localRange,
+      opticalDepthLimit, weather, base, detail, cache, cacheLight, 0, nearGrid);
+  }
+
   float weight = cloudLightingFarWeight(args, origin);
-  if (!cloudLightCascadeContains(args, uint(cacheLight), 0, origin + cacheDirection * interval.x,
+  if (!cloudLightCascadeContainsInGrid(nearGrid, origin + cacheDirection * interval.x,
       origin + cacheDirection * interval.y))
   {
     weight = 1;
   }
   if (weight >= 1)
   {
+    const CloudLightGrid farGrid = cloudLightGrid(args, uint(cacheLight), 1);
     return cloudLowLightCascadeDepth(args, origin, direction, cacheDirection, interval, localRange,
-      opticalDepthLimit, weather, base, detail, cache, cacheLight, 1);
+      opticalDepthLimit, weather, base, detail, cache, cacheLight, 1, farGrid);
   }
   const CloudOpticalDepth nearDepth = cloudLowLightCascadeDepth(args, origin, direction, cacheDirection,
-    interval, localRange, opticalDepthLimit, weather, base, detail, cache, cacheLight, 0);
+    interval, localRange, opticalDepthLimit, weather, base, detail, cache, cacheLight, 0, nearGrid);
   if (weight <= 0)
   {
     return nearDepth;
   }
+  const CloudLightGrid farGrid = cloudLightGrid(args, uint(cacheLight), 1);
   const CloudOpticalDepth farDepth = cloudLowLightCascadeDepth(args, origin, direction, cacheDirection,
-    interval, localRange, opticalDepthLimit, weather, base, detail, cache, cacheLight, 1);
+    interval, localRange, opticalDepthLimit, weather, base, detail, cache, cacheLight, 1, farGrid);
   return { cloudBlendOpticalDepth(nearDepth.local, farDepth.local, weight),
     cloudBlendOpticalDepth(nearDepth.external, farDepth.external, weight),
     cloudBlendOpticalDepth(nearDepth.total, farDepth.total, weight) };
