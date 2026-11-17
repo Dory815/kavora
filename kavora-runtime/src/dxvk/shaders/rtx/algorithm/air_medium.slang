@@ -204,7 +204,33 @@ public float3 airExtinction(AirArgs args, float3 position)
   return (rayleigh + mie) * args.worldToKilometers;
 }
 
-public AirMedium sampleAirMedium(AirArgs args, AirTables tables, float3 position, float3 direction)
+// Scattering phase depends on the view-ray direction and light directions,
+// not on the sample position. Compute it once per atmosphere ray instead of
+// repeating two phase evaluations (including the Mie pow) at every air cell.
+public struct AirRayPhase
+{
+  public float2 rayleigh;
+  public float2 mie;
+};
+
+public AirRayPhase createAirRayPhase(AirArgs args, float3 direction)
+{
+  AirRayPhase phase = {};
+  const float g = args.mieAnisotropy;
+  [unroll]
+  for (uint index = 0; index < 2; index++)
+  {
+    const float cosine = dot(direction, args.lights[index].directionToLight);
+    const float cosineSquared = cosine * cosine;
+    phase.rayleigh[index] = 3.0f / (16.0f * kAirPi) * (1.0f + cosineSquared);
+    phase.mie[index] = 3.0f / (8.0f * kAirPi) * (1.0f - g * g) * (1.0f + cosineSquared)
+      / ((2.0f + g * g) * pow(1.0f + g * g - 2.0f * g * cosine, 1.5f));
+  }
+  return phase;
+}
+
+public AirMedium sampleAirMedium(AirArgs args, AirTables tables, float3 position, float3 direction,
+  AirRayPhase phase)
 {
   const float3 coordinates = airCoordinates(args, position);
   const float height = airAltitude(args, coordinates);
@@ -221,19 +247,21 @@ public AirMedium sampleAirMedium(AirArgs args, AirTables tables, float3 position
     const AirLight light = args.lights[index];
     if (any(light.irradiance > 0))
     {
-      const float cosine = dot(direction, light.directionToLight);
       const float mu = dot(up, light.directionToLight);
-      const float g = args.mieAnisotropy;
-      const float rayleighPhase = 3.0f / (16.0f * kAirPi) * (1.0f + cosine * cosine);
-      const float miePhase = 3.0f / (8.0f * kAirPi) * (1.0f - g * g) * (1.0f + cosine * cosine)
-        / ((2.0f + g * g) * pow(1.0f + g * g - 2.0f * g * cosine, 1.5f));
-      medium.source += light.irradiance * ((rayleigh * rayleighPhase + mie * args.mieAlbedo * miePhase)
+      medium.source += light.irradiance * ((rayleigh * phase.rayleigh[index]
+        + mie * args.mieAlbedo * phase.mie[index])
         * airTransmittanceToLight(args, tables, height, mu, light.angularRadius)
         + (rayleigh + mie * args.mieAlbedo) * airMultipleScattering(args, tables, height, mu));
     }
   }
   medium.source *= args.worldToKilometers;
   return medium;
+}
+
+// Compatibility entry point for callers that only have a single sample.
+public AirMedium sampleAirMedium(AirArgs args, AirTables tables, float3 position, float3 direction)
+{
+  return sampleAirMedium(args, tables, position, direction, createAirRayPhase(args, direction));
 }
 
 // Uses the same absolute cells as radiance integration, including clipped prefixes.
