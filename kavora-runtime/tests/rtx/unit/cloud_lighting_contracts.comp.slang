@@ -149,9 +149,21 @@ void rayPhases(uint index : SV_DispatchThreadID)
   [unroll]
   for (uint light = 0; light < 2; light++)
   {
-    const float cosine = dot(direction, Clouds.lights[light].directionToLight);
-    expected[light] = 0.85f * testCloudPhase(cosine, Clouds.anisotropy)
-      + 0.15f * testCloudPhase(cosine, -0.25f);
+    bool active = any(Clouds.lights[light].irradiance > 0);
+    if (Clouds.lights[light].hasRadianceProfile != 0)
+    {
+      [unroll]
+      for (uint sample = 0; sample < 4; sample++)
+      {
+        active = active || any(Clouds.lights[light].radianceProfile[sample].rgb > 0);
+      }
+    }
+    if (active)
+    {
+      const float cosine = dot(direction, Clouds.lights[light].directionToLight);
+      expected[light] = 0.85f * testCloudPhase(cosine, Clouds.anisotropy)
+        + 0.15f * testCloudPhase(cosine, -0.25f);
+    }
   }
   Results[index] = float4(abs(phase.phase - expected), 0, 0);
 }
