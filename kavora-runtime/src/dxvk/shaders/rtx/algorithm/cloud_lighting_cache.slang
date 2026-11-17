@@ -206,7 +206,7 @@ public float cloudLightingFarWeight(CloudArgs args, float3 position)
   return smoothstep(0.75f * args.lightingNearDistance, args.lightingNearDistance, distance);
 }
 
-bool cloudLightHasEnergy(CloudLight light)
+public bool cloudLightHasEnergy(CloudLight light)
 {
   if (any(light.irradiance > 0))
   {
