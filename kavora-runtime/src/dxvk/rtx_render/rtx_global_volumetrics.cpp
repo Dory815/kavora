@@ -825,11 +825,16 @@ namespace dxvk {
       return;
     }
 
-    // Cloud optical depth is deterministic for unchanged CloudArgs and
+    // Cloud optical depth is deterministic for unchanged lighting inputs and
     // generated density textures. World time advances on simulation ticks,
     // not render frames, so consecutive frames often share identical inputs.
-    // A byte-exact comparison is conservative: any changed input still
-    // rebuilds the cache and preserves the same lighting result for that state.
+    // Wind reprojection delta and view pixel footprint affect the camera-ray
+    // history, not this directional prefix cache; exclude them from its key.
+    CloudArgs lightingKey = clouds;
+    lightingKey.previousWindDelta = Vector3(0.f);
+    lightingKey.viewAngularFootprint = 0.f;
+    // A byte-exact comparison is conservative for the remaining inputs: any
+    // changed density, light direction, or cache extent still triggers a rebuild.
     const auto lightHasEnergy = [](const CloudLight& light) {
       bool active = light.irradiance.x > 0 || light.irradiance.y > 0 || light.irradiance.z > 0;
       if (light.hasRadianceProfile) {
@@ -843,7 +848,7 @@ namespace dxvk {
       (!lightHasEnergy(clouds.lights[0]) || m_cloudLightOpticalDepth[0].isValid())
       && (!lightHasEnergy(clouds.lights[1]) || m_cloudLightOpticalDepth[1].isValid());
     if (m_cloudLightingArgsValid && cacheResourcesReady
-      && std::memcmp(&clouds, &m_previousCloudLightingArgs, sizeof(CloudArgs)) == 0) {
+      && std::memcmp(&lightingKey, &m_previousCloudLightingArgs, sizeof(CloudArgs)) == 0) {
       return;
     }
     const uint32_t resolution = CLOUD_LIGHTING_RESOLUTION_PER_STEP
@@ -879,7 +884,7 @@ namespace dxvk {
         lightIndex == 0 ? GenerateCloudSunShader::getShader() : GenerateCloudMoonShader::getShader());
       ctx->dispatch((lightExtent.width + 7) / 8, (lightExtent.height + 7) / 8, 1);
     }
-    m_previousCloudLightingArgs = clouds;
+    m_previousCloudLightingArgs = lightingKey;
     m_cloudLightingArgsValid = true;
   }
 
