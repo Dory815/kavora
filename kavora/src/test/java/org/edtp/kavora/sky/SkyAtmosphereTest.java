@@ -11,17 +11,17 @@ class SkyAtmosphereTest {
 
     @Test void diskTransmissionMatchesIndependentAdaptiveQuadrature() {
         // Adaptive path quadrature and 128-point disk integration, without a lookup table.
-        assertTransmission(2, 60, .9232817435, .8615203843, .7899133811);
-        assertTransmission(2, .0283, .02382084428, .003037627883, .0002331019023);
-        assertTransmission(2, -.2, .01158950262, .001235271841, .00007591475354);
-        assertTransmission(10000, -2, .2876203310, .05576554142, .007317668287);
+        assertTransmission(2, 60, .9207109610, .8570936435, .7156180758);
+        assertTransmission(2, .0283, .02193846213, .002611557152, .00001282401320);
+        assertTransmission(2, -.2, .01060610963, .001049436764, .000003261511108);
+        assertTransmission(10000, -2, .2691253128, .04941269280, .0007506036597);
     }
 
     @Test void overheadTransmissionMatchesAnalyticExponentialDensity() {
         float[] transmission = SkyAtmosphere.transmittanceToLight(2, 1, SUN_RADIUS);
         double rayleighColumn = 8 * (Math.exp(-.002 / 8) - Math.exp(-100.0 / 8));
         double mieColumn = 1.2 * (Math.exp(-.002 / 1.2) - Math.exp(-100.0 / 1.2));
-        double[] coefficients = {.0055, .0130, .0224};
+        double[] coefficients = {.005802, .013558, .0331};
         for (int channel = 0; channel < 3; channel++) {
             assertEquals(Math.exp(-coefficients[channel] * rayleighColumn - .021 * mieColumn),
                     transmission[channel], .0001);
