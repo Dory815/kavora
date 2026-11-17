@@ -120,11 +120,6 @@ void storeAtmosphereEndpoint(uint2 pixel, RayHitInfo hit)
   {
     checkpoint = GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY;
   }
-  else if (atmosphereCloudCheckpointingEnabled()
-      && distance >= cb.volumeArgs.froxelMaxDistance)
-  {
-    checkpoint = GBUFFER_ATMOSPHERE_FROXEL_CHECKPOINT_CAPACITY;
-  }
   else
   {
     const FogRayProjection projection = createFogRayProjection(cb.volumeArgs, ray.origin, ray.direction, 0);
