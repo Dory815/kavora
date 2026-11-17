@@ -395,7 +395,7 @@ CloudOpticalDepth cloudLowLightCascadeDepth(CloudArgs args, float3 origin, float
   const float correctionEnd = clamp(correctionRange, interval.x, interval.y);
   const float split = clamp(localRange, correctionEnd, interval.y);
   CloudOpticalDepth depth = {};
-  bool cached = cloudCachedLightDepthInGrid(args, cache, uint(cacheLight), grid, args, cache, uint(cacheLight), origin + cacheDirection * correctionEnd,
+  bool cached = cloudCachedLightDepthInGrid(args, cache, uint(cacheLight), grid, origin + cacheDirection * correctionEnd,
     origin + cacheDirection * interval.y, depth.total, cascade);
   if (split <= correctionEnd)
   {
@@ -407,9 +407,9 @@ CloudOpticalDepth cloudLowLightCascadeDepth(CloudArgs args, float3 origin, float
   }
   else
   {
-    cached = cached && cloudCachedLightDepthInGrid(args, cache, uint(cacheLight), grid, args, cache, uint(cacheLight), origin + cacheDirection * correctionEnd,
+    cached = cached && cloudCachedLightDepthInGrid(args, cache, uint(cacheLight), grid, origin + cacheDirection * correctionEnd,
       origin + cacheDirection * split, depth.local, cascade)
-      && cloudCachedLightDepthInGrid(args, cache, uint(cacheLight), grid, args, cache, uint(cacheLight), origin + cacheDirection * split,
+      && cloudCachedLightDepthInGrid(args, cache, uint(cacheLight), grid, origin + cacheDirection * split,
         origin + cacheDirection * interval.y, depth.external, cascade);
   }
   if (!cached)
