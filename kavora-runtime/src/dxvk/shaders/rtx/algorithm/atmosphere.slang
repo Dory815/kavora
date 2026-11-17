@@ -234,6 +234,11 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
   {
     airPhase = createAirRayPhase(args.air, direction);
   }
+  CloudRayPhase cloudPhase = {};
+  if (ray.hasCloud)
+  {
+    cloudPhase = createCloudRayPhase(args.clouds, direction);
+  }
   const float originDepth = ray.fogProjection.originDepth;
   const float directionDepth = ray.fogProjection.directionDepth;
   const float nearPlane = ray.fogProjection.nearPlane;
@@ -344,7 +349,7 @@ public AtmosphereSegment integrateAtmosphereRange<Fog : IAtmosphereFog>(VolumeAr
           cloudHeightFootprint(args.clouds, cloudPosition, direction, cloudGrid.spanAt(cloudCell),
             args.clouds.viewAngularFootprint * cloudSample, cloudLayer));
         cloudSource = cloudSigma > 0 ? cloudSigma * args.clouds.albedo
-          * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail, cloudLighting) : 0;
+          * cloudIncidentRadiance(args.clouds, cloudPosition, direction, cloudAmbient, weather, base, detail, cloudLighting, cloudPhase) : 0;
         cloudSampleValid = true;
       }
       const float3 extinction = fogMedium.extinction + cloudSigma + airMedium.extinction + ray.mediumExtinction;
