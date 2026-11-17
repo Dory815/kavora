@@ -28,9 +28,9 @@ def transmittance(height, mu):
     for i in range(N + 1):
         s = i * step
         altitude = math.sqrt(radius * radius + s * s + 2.0 * radius * mu * s) - R
-        density = math.exp(-altitude / 8.0) + 0.12 * math.exp(-altitude / 1.2)
+        density = math.exp(-altitude / 8.0) / 8.0 + 0.12 * math.exp(-altitude / 1.2) / 1.2
         total += density * (1 if i in (0, N) else 4 if i & 1 else 2)
-    return math.exp(-total * step / (3.0 * 8.0))
+    return math.exp(-total * step / 3.0)
 
 
 def disk_four_point(height, mu, alpha):
@@ -57,6 +57,19 @@ def fast_path_applies(height, mu, alpha):
     return alpha <= 0.01 and mu >= 0.3 and mu - extent > lower
 
 
+def phase_terms(direction, light_directions, anisotropy):
+    rayleigh = []
+    mie = []
+    g = anisotropy
+    for light in light_directions:
+        cosine = sum(a * b for a, b in zip(direction, light))
+        cosine_squared = cosine * cosine
+        rayleigh.append(3.0 / (16.0 * math.pi) * (1.0 + cosine_squared))
+        mie.append(3.0 / (8.0 * math.pi) * (1.0 - g * g) * (1.0 + cosine_squared)
+                   / ((2.0 + g * g) * (1.0 + g * g - 2.0 * g * cosine) ** 1.5))
+    return tuple(rayleigh), tuple(mie)
+
+
 class AirDiskApproximationTests(unittest.TestCase):
     def test_fast_path_error_is_bounded_for_celestial_disks(self):
         maximum_absolute = 0.0
@@ -76,8 +89,8 @@ class AirDiskApproximationTests(unittest.TestCase):
                     maximum_relative = max(maximum_relative, relative)
                     tested += 1
         self.assertGreater(tested, 500)
-        self.assertLess(maximum_absolute, 4e-5)
-        self.assertLess(maximum_relative, 5e-4)
+        self.assertLess(maximum_absolute, 5e-5)
+        self.assertLess(maximum_relative, 1e-4)
         print(f"CPU spherical-atmosphere disk check: {tested} cases; "
               f"max abs={maximum_absolute:.7g}, max rel={maximum_relative:.7g}")
 
@@ -90,6 +103,13 @@ class AirDiskApproximationTests(unittest.TestCase):
     def test_large_emitters_keep_four_point_rule(self):
         for alpha in (0.0101, 0.02, 0.1):
             self.assertFalse(fast_path_applies(5.0, 0.8, alpha))
+
+    def test_ray_phase_is_invariant_across_sample_positions(self):
+        direction = (0.31, -0.42, 0.851)
+        lights = ((0.1, 0.2, 0.97), (-0.4, 0.8, 0.44))
+        hoisted = phase_terms(direction, lights, 0.76)
+        for _position in ((0, 0, 0), (0, 8, 0), (1200, 30, -800), (-40000, 20, 70000)):
+            self.assertEqual(phase_terms(direction, lights, 0.76), hoisted)
 
 
 if __name__ == "__main__":
