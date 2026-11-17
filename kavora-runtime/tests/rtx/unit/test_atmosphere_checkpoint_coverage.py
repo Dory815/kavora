@@ -18,6 +18,12 @@ def checkpoint_max_distance(froxel_distance, clouds_enabled, low_active,
     return max(distance, 1e-3)
 
 
+def cloud_checkpointing_enabled(froxel_distance, clouds_enabled, low_active,
+                                 high_active, low_distance, high_distance):
+    return checkpoint_max_distance(froxel_distance, clouds_enabled, low_active,
+                                   high_active, low_distance, high_distance) > froxel_distance
+
+
 def checkpoint_distance(index, maximum, exponent):
     return (index / CAPACITY) ** exponent * maximum
 
@@ -46,6 +52,10 @@ class AtmosphereCheckpointCoverageTests(unittest.TestCase):
             checkpoint_max_distance(24_000, False, True, True, 96_000, 80_000),
             24_000,
         )
+
+    def test_cloud_range_inside_froxel_keeps_legacy_mapping(self):
+        self.assertFalse(cloud_checkpointing_enabled(24_000, True, True, True, 16_000, 20_000))
+        self.assertFalse(cloud_checkpointing_enabled(24_000, False, True, True, 96_000, 80_000))
 
     def test_checkpoint_selection_never_passes_endpoint(self):
         maximum = 96_000
