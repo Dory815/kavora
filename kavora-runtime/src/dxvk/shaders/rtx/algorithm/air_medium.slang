@@ -157,6 +157,20 @@ float3 airTransmittanceToLight(AirArgs args, AirTables tables, float height, flo
   {
     return 0;
   }
+
+  // Away from the horizon, the finite solar/lunar disk is a very small angular
+  // perturbation of the central ray. A single LUT lookup is then a much cheaper
+  // and well-conditioned estimate than four-point disk quadrature. Keep the
+  // full quadrature for grazing rays, partially occulted disks, and non-celestial
+  // emitters: those are precisely where angular variation matters most.
+  // The CPU regression test bounds this branch for radii up to 0.01 rad and
+  // light cosines >= 0.2 against the existing four-point rule.
+  const float lowerBoundary = airLowerBoundaryCosine(args, height);
+  if (angularRadius <= 0.01f && cosine >= 0.2f && cosine - extent > lowerBoundary)
+  {
+    return airTransmittanceToSpace(args, tables, height, cosine);
+  }
+
   const float4 nodes = float4(-0.861136312f, -0.339981044f, 0.339981044f, 0.861136312f);
   const float4 weights = float4(0.347854845f, 0.652145155f, 0.652145155f, 0.347854845f);
   const float centre = 0.5f * (1.0f + first);
