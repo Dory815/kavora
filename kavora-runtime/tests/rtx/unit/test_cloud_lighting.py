@@ -113,6 +113,7 @@ def main():
     np.testing.assert_array_equal(reused[:, 0], 0)
     np.testing.assert_array_equal(reused[:, 1], 1)
     np.testing.assert_array_equal(reused[:, 2], 1)
+    np.testing.assert_array_equal(reused[:, 3], 1)
     report['reusedLightGridCases'] = len(reuse_origins)
     report['reusedLightGridMaximumDepthDifference'] = float(np.max(reused[:, 0]))
 
