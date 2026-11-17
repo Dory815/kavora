@@ -599,6 +599,26 @@ float cloudPhase(float cosine, float g)
   return (1.0f - g * g) / (4.0f * 3.14159265359f * denominator * sqrt(denominator));
 }
 
+// Cloud phase is invariant along a straight view ray. Compute it once per ray
+// and reuse it for each cloud cell's incident-radiance evaluation.
+public struct CloudRayPhase
+{
+  public float2 phase;
+};
+
+public CloudRayPhase createCloudRayPhase(CloudArgs args, float3 direction)
+{
+  CloudRayPhase result = {};
+  [unroll]
+  for (uint light = 0; light < 2; light++)
+  {
+    const float cosine = dot(direction, args.lights[light].directionToLight);
+    result.phase[light] = 0.85f * cloudPhase(cosine, args.anisotropy)
+      + 0.15f * cloudPhase(cosine, -0.25f);
+  }
+  return result;
+}
+
 [ForceInline]
 public float3 cloudLightIrradiance(CloudLight light, float altitude)
 {
@@ -705,7 +725,7 @@ CloudLocalDepth cloudLocalOpticalDepth(CloudArgs args, float3 position, Sampler2
 
 public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 direction, float3 ambientRadiance,
   Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler,
-  CloudLightingCache cache)
+  CloudLightingCache cache, CloudRayPhase rayPhase)
 {
   float3 source = 0.0f;
   const CloudLocalDepth localDepth = cloudLocalOpticalDepth(args, position, weatherSampler, baseSampler, detailSampler);
@@ -732,9 +752,7 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
     const CloudOpticalDepth directionalDepth = cloudLightOpticalDepth(args, position, light.directionToLight, kFloatMax,
       weatherSampler, baseSampler, detailSampler, cache, localRange, localBeamDepth - log(kOpaqueCloudTransmittance), int(lightIndex));
     const float opticalDepth = directionalDepth.total;
-    const float cosine = dot(direction, light.directionToLight);
-    const float phase = 0.85f * cloudPhase(cosine, args.anisotropy) + 0.15f * cloudPhase(cosine, -0.25f);
-    const float singleScattering = phase * exp(-opticalDepth);
+    const float singleScattering = rayPhase.phase[lightIndex] * exp(-opticalDepth);
     float multipleScattering = cloudDiffuseBeamRadiance(beamDepth, abs(lightCosine));
     float externalTransmission = 1;
     if (lightCosine != 0)
@@ -768,4 +786,13 @@ public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 dire
   const float3 lowerRadiance = cloudGroundBoundaryRadiance(upperRadiance, groundBeamIrradianceOverPi,
     totalVerticalDepth, meanCosine, args.groundAlbedo);
   return source + cloudDiffuseBoundaryRadiance(upperRadiance, lowerRadiance, verticalDepth, meanCosine);
+}
+
+// Compatibility entry point for a single cloud sample.
+public float3 cloudIncidentRadiance(CloudArgs args, float3 position, float3 direction, float3 ambientRadiance,
+  Sampler2D<float4> weatherSampler, Sampler3D<float4> baseSampler, Sampler3D<float4> detailSampler,
+  CloudLightingCache cache)
+{
+  return cloudIncidentRadiance(args, position, direction, ambientRadiance, weatherSampler, baseSampler,
+    detailSampler, cache, createCloudRayPhase(args, direction));
 }
