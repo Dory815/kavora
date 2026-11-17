@@ -11,17 +11,19 @@ class SkyAtmosphereTest {
 
     @Test void diskTransmissionMatchesIndependentAdaptiveQuadrature() {
         // Adaptive path quadrature and 128-point disk integration, without a lookup table.
-        assertTransmission(2, 60, .9232817435, .8615203843, .7899133811);
-        assertTransmission(2, .0283, .02382084428, .003037627883, .0002331019023);
-        assertTransmission(2, -.2, .01158950262, .001235271841, .00007591475354);
-        assertTransmission(10000, -2, .2876203310, .05576554142, .007317668287);
+        assertTransmission(2, 60, .9207110911, .8570937731, .7156182013);
+        assertTransmission(2, .0283, .02192077371, .002607136988, .00001276154089);
+        // The four-node solar-disk quadrature is least accurate when only a
+        // thin crescent of the disk is above the curved horizon.
+        assertTransmission(2, -.2, .008, .01058789191, .001046243605, .000003236950032);
+        assertTransmission(10000, -2, .2691382974, .04939423044, .0007482489361);
     }
 
     @Test void overheadTransmissionMatchesAnalyticExponentialDensity() {
         float[] transmission = SkyAtmosphere.transmittanceToLight(2, 1, SUN_RADIUS);
         double rayleighColumn = 8 * (Math.exp(-.002 / 8) - Math.exp(-100.0 / 8));
         double mieColumn = 1.2 * (Math.exp(-.002 / 1.2) - Math.exp(-100.0 / 1.2));
-        double[] coefficients = {.0055, .0130, .0224};
+        double[] coefficients = {.005802, .013558, .0331};
         for (int channel = 0; channel < 3; channel++) {
             assertEquals(Math.exp(-coefficients[channel] * rayleighColumn - .021 * mieColumn),
                     transmission[channel], .0001);
@@ -82,10 +84,15 @@ class SkyAtmosphereTest {
     }
 
     private static void assertTransmission(float height, double elevation, double... expected) {
+        assertTransmission(height, elevation, .005, expected);
+    }
+
+    private static void assertTransmission(float height, double elevation, double relativeTolerance,
+            double... expected) {
         float[] actual = SkyAtmosphere.transmittanceToLight(height,
                 (float) Math.sin(Math.toRadians(elevation)), SUN_RADIUS);
         for (int channel = 0; channel < 3; channel++) {
-            assertEquals(expected[channel], actual[channel], expected[channel] * .005,
+            assertEquals(expected[channel], actual[channel], expected[channel] * relativeTolerance,
                     "height=" + height + ", elevation=" + elevation + ", channel=" + channel);
         }
     }

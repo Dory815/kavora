@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import slangpy as spy
 
 
 def moment_cases():
@@ -22,7 +21,9 @@ def moment_cases():
 
 
 def moment_reference(samples):
-    # Match the representable input variance and documented zero-width cutoff.
+    # Match the raw API's two precise float32 operations. Slang emits
+    # NoContraction on the square and subtraction; GLSL.std.450 Fma alone
+    # does not guarantee a single rounding on every Vulkan implementation.
     shape = samples[:, 0]
     variance = np.maximum(samples[:, 1] - shape * shape, 0).astype(np.float64)
     width = np.sqrt(3.0 * variance)
@@ -42,10 +43,13 @@ def moment_reference(samples):
     return result
 
 
-def check_moments(run):
+def check_moments(run, dump=None):
     samples = moment_cases()
     actual = run(samples)
     expected = moment_reference(samples)
+    if dump:
+        dump.mkdir(parents=True, exist_ok=True)
+        np.savez(dump / "cloud-density-moments.npz", inputs=samples, actual=actual, reference=expected)
     assert actual.shape == expected.shape and np.isfinite(actual).all()
     assert np.all((actual >= 0) & (actual <= 1))
     np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=3e-5,
@@ -64,24 +68,26 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dump", type=Path)
     args = parser.parse_args()
-    # The reference models individually rounded float32 operations. Other
-    # density/transport tests retain the production-default compiler mode.
-    options = {**OPTIONS, "floating_point_mode": spy.SlangFloatingPointMode.precise}
-    device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=options)
-    kernel = device.create_compute_kernel(device.load_program("cloud_density_moments.comp.slang", ["main"]))
+    import slangpy as spy
 
-    def run(samples):
-        output = device.create_buffer(element_count=len(samples), struct_size=8,
-                                      usage=spy.BufferUsage.unordered_access)
-        kernel.dispatch(thread_count=[len(samples), 1, 1], vars={
-            "Inputs": device.create_buffer(data=samples, usage=spy.BufferUsage.shader_resource),
-            "Results": output, "Count": len(samples)})
-        return output.to_numpy().view(np.float32).reshape(-1, 2)
+    reports = {}
+    for name, changes in (("default", {}),
+                          ("precise", {"floating_point_mode": spy.SlangFloatingPointMode.precise})):
+        options = {**OPTIONS, **changes}
+        device = spy.Device(type=spy.DeviceType.vulkan, compiler_options=options)
+        kernel = device.create_compute_kernel(device.load_program("cloud_density_moments.comp.slang", ["main"]))
 
-    report = check_moments(run)
+        def run(samples):
+            output = device.create_buffer(element_count=len(samples), struct_size=8,
+                                          usage=spy.BufferUsage.unordered_access)
+            kernel.dispatch(thread_count=[len(samples), 1, 1], vars={
+                "Inputs": device.create_buffer(data=samples, usage=spy.BufferUsage.shader_resource),
+                "Results": output, "Count": len(samples)})
+            return output.to_numpy().view(np.float32).reshape(-1, 2)
+
+        reports[name] = check_moments(run, args.dump / name if args.dump else None)
     if args.dump:
-        args.dump.mkdir(parents=True, exist_ok=True)
-        (args.dump / "cloud-density-moments.json").write_text(json.dumps(report, indent=2))
+        (args.dump / "cloud-density-moments.json").write_text(json.dumps(reports, indent=2))
 
 
 if __name__ == "__main__":

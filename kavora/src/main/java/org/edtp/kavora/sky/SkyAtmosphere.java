@@ -13,9 +13,12 @@ public final class SkyAtmosphere {
     static final double ATMOSPHERE_HEIGHT = 100.0 + LOWER_DEPTH;
     static final double RAYLEIGH_HEIGHT = 8.0;
     static final double MIE_HEIGHT = 1.2;
-    static final double RAYLEIGH_R = 0.0055;
-    static final double RAYLEIGH_G = 0.0130;
-    static final double RAYLEIGH_B = 0.0224;
+    // Hillaire's Earth-atmosphere RGB reference coefficients, converted from
+    // 1/km (5.802, 13.558, 33.1) x 10^-3. The stronger blue extinction is
+    // essential to the physically expected long-path warm shift at low sun.
+    static final double RAYLEIGH_R = 0.005802;
+    static final double RAYLEIGH_G = 0.013558;
+    static final double RAYLEIGH_B = 0.0331;
     static final double MIE_EXTINCTION = 0.021;
     static final double MIE_ALBEDO = 0.9;
     private static final int LIGHT_STEPS = 64;

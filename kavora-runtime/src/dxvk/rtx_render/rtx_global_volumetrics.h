@@ -376,6 +376,8 @@ namespace dxvk {
     Resources::Resource m_cloudAmbient;
     Resources::Resource m_cloudSky;
     Resources::Resource m_cloudSkyDistanceMoment;
+    CloudArgs m_previousCloudLightingArgs{};
+    bool m_cloudLightingArgsValid = false;
     Vector3 m_previousCloudWindOffset = Vector3(0.f);
     uint32_t m_previousCloudFrame = 0;
     bool m_cloudHistoryValid = false;
