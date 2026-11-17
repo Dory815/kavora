@@ -36,8 +36,27 @@ float atmosphereCheckpointDepth(uint checkpoint)
     + pow(w, cb.volumeArgs.froxelDepthSliceDistributionExponent) * cb.volumeArgs.froxelMaxDistance;
 }
 
+// Standard mode also transports clouds beyond the froxel fog range. Place its
+// sparse checkpoints over the complete cloud view distance so the full-resolution
+// endpoint pass does not have to ray-integrate the entire distant cloud tail.
+float atmosphereCheckpointMaxDistance()
+{
+  float distance = cb.volumeArgs.froxelMaxDistance;
+  if (cb.volumeArgs.clouds.enable != 0)
+  {
+    distance = max(distance, cloudMaxViewDistance(cb.volumeArgs.clouds));
+  }
+  return max(distance, 1e-3f);
+}
+
 float atmosphereCheckpointDistance(FogRayProjection projection, uint checkpoint)
 {
+  if (cb.volumeArgs.fogIntegrationMode != 1)
+  {
+    const float fraction = float(checkpoint) / float(GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY);
+    return pow(fraction, cb.volumeArgs.froxelDepthSliceDistributionExponent)
+      * atmosphereCheckpointMaxDistance();
+  }
   return max(0.0f, (atmosphereCheckpointDepth(checkpoint) - projection.originDepth) / projection.directionDepth);
 }
 
@@ -69,26 +88,27 @@ void storeAtmosphereEndpoint(uint2 pixel, RayHitInfo hit)
 {
   const Ray ray = primaryAtmosphereRay(pixel);
   const float distance = primaryAtmosphereDistance(ray, hit);
-  const FogRayProjection projection = createFogRayProjection(cb.volumeArgs, ray.origin, ray.direction, 0);
-  const float depth = min(projection.originDepth + projection.directionDepth * distance,
-    projection.nearPlane + cb.volumeArgs.froxelMaxDistance);
-  const float w = pow(saturate((depth - projection.nearPlane) / cb.volumeArgs.froxelMaxDistance),
-    1.0f / cb.volumeArgs.froxelDepthSliceDistributionExponent);
-  const uint stride = atmosphereCheckpointStride();
   uint checkpoint;
   if (cb.volumeArgs.fogIntegrationMode == 1)
   {
+    const FogRayProjection projection = createFogRayProjection(cb.volumeArgs, ray.origin, ray.direction, 0);
+    const float depth = min(projection.originDepth + projection.directionDepth * distance,
+      projection.nearPlane + cb.volumeArgs.froxelMaxDistance);
+    const float w = pow(saturate((depth - projection.nearPlane) / cb.volumeArgs.froxelMaxDistance),
+      1.0f / cb.volumeArgs.froxelDepthSliceDistributionExponent);
     const uint count = min(cb.volumeArgs.froxelDepthSlices, GBUFFER_ATMOSPHERE_PREINTEGRATED_CAPACITY);
     checkpoint = min(count - 1, uint(floor(w * float(count))));
+    if (checkpoint > 0 && atmosphereCheckpointDistance(projection, checkpoint) > distance)
+    {
+      checkpoint--;
+    }
   }
   else
   {
-    checkpoint = min(uint(cb.volumeArgs.froxelDepthSlices) / stride,
-      uint(floor(w * float(cb.volumeArgs.froxelDepthSlices) / float(stride))));
-  }
-  if (checkpoint > 0 && atmosphereCheckpointDistance(projection, checkpoint) > distance)
-  {
-    checkpoint--;
+    const float w = pow(saturate(distance / atmosphereCheckpointMaxDistance()),
+      1.0f / cb.volumeArgs.froxelDepthSliceDistributionExponent);
+    checkpoint = min(GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY,
+      uint(floor(w * float(GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY))));
   }
   const uint offset = primaryAtmosphereBase(pixel.y * cb.camera.resolution.x + pixel.x);
   PathStorage[offset] = asuint(distance);
