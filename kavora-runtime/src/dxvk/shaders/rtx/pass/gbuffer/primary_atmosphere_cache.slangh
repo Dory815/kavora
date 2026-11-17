@@ -115,6 +115,16 @@ void storeAtmosphereEndpoint(uint2 pixel, RayHitInfo hit)
       checkpoint--;
     }
   }
+  else if (atmosphereCloudCheckpointingEnabled()
+      && distance >= atmosphereCheckpointMaxDistance())
+  {
+    checkpoint = GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY;
+  }
+  else if (atmosphereCloudCheckpointingEnabled()
+      && distance >= cb.volumeArgs.froxelMaxDistance)
+  {
+    checkpoint = GBUFFER_ATMOSPHERE_FROXEL_CHECKPOINT_CAPACITY;
+  }
   else
   {
     const FogRayProjection projection = createFogRayProjection(cb.volumeArgs, ray.origin, ray.direction, 0);
@@ -125,10 +135,6 @@ void storeAtmosphereEndpoint(uint2 pixel, RayHitInfo hit)
     const uint stride = atmosphereCheckpointStride();
     checkpoint = min(uint(cb.volumeArgs.froxelDepthSlices) / stride,
       uint(floor(w * float(cb.volumeArgs.froxelDepthSlices) / float(stride))));
-    if (atmosphereCloudCheckpointingEnabled() && distance >= atmosphereCheckpointMaxDistance())
-    {
-      checkpoint = GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY;
-    }
     if (checkpoint > 0 && atmosphereCheckpointDistance(projection, checkpoint) > distance)
     {
       checkpoint--;
