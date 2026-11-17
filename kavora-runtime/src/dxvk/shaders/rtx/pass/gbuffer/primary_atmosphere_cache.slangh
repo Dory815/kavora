@@ -117,6 +117,12 @@ void storeAtmosphereEndpoint(uint2 pixel, RayHitInfo hit)
       1.0f / cb.volumeArgs.froxelDepthSliceDistributionExponent);
     checkpoint = min(GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY,
       uint(floor(w * float(GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY))));
+    const float checkpointDistance = pow(float(checkpoint) / float(GBUFFER_ATMOSPHERE_CHECKPOINT_CAPACITY),
+      cb.volumeArgs.froxelDepthSliceDistributionExponent) * atmosphereCheckpointMaxDistance();
+    if (checkpoint > 0 && checkpointDistance > distance)
+    {
+      checkpoint--;
+    }
   }
   const uint offset = primaryAtmosphereBase(pixel.y * cb.camera.resolution.x + pixel.x);
   PathStorage[offset] = asuint(distance);
