@@ -220,11 +220,14 @@ public AirRayPhase createAirRayPhase(AirArgs args, float3 direction)
   [unroll]
   for (uint index = 0; index < 2; index++)
   {
-    const float cosine = dot(direction, args.lights[index].directionToLight);
-    const float cosineSquared = cosine * cosine;
-    phase.rayleigh[index] = 3.0f / (16.0f * kAirPi) * (1.0f + cosineSquared);
-    phase.mie[index] = 3.0f / (8.0f * kAirPi) * (1.0f - g * g) * (1.0f + cosineSquared)
-      / ((2.0f + g * g) * pow(1.0f + g * g - 2.0f * g * cosine, 1.5f));
+    if (any(args.lights[index].irradiance > 0))
+    {
+      const float cosine = dot(direction, args.lights[index].directionToLight);
+      const float cosineSquared = cosine * cosine;
+      phase.rayleigh[index] = 3.0f / (16.0f * kAirPi) * (1.0f + cosineSquared);
+      phase.mie[index] = 3.0f / (8.0f * kAirPi) * (1.0f - g * g) * (1.0f + cosineSquared)
+        / ((2.0f + g * g) * pow(1.0f + g * g - 2.0f * g * cosine, 1.5f));
+    }
   }
   return phase;
 }
