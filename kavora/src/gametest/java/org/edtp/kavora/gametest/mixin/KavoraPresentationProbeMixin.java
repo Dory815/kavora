@@ -6,6 +6,7 @@ package org.edtp.kavora.gametest.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import org.edtp.kavora.KavoraMod;
 import org.edtp.kavora.gametest.KavoraFrameProbe;
 import org.edtp.kavora.render.KavoraFramePresentation;
 import org.edtp.kavora.sdk.SubmitInfo;
@@ -30,6 +31,9 @@ public abstract class KavoraPresentationProbeMixin {
         try {
             original.call(frame);
             KavoraFrameProbe.presents++;
+            if (frame != null && KavoraMod.renderer != null && KavoraMod.renderer.isSceneReady()) {
+                KavoraFrameProbe.raytracedPresents++;
+            }
         } catch (RuntimeException | Error failure) {
             KavoraFrameProbe.failures++;
             throw failure;

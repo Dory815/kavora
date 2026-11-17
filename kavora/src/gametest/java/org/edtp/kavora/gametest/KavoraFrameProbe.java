@@ -8,6 +8,7 @@ package org.edtp.kavora.gametest;
 public final class KavoraFrameProbe {
     public static long submits;
     public static long presents;
+    public static long raytracedPresents;
     public static volatile long failures;
     public static long playerTextureBuilds;
     public static java.util.function.LongConsumer frameAction;

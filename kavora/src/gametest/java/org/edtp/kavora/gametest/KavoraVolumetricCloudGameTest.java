@@ -5,15 +5,24 @@
 package org.edtp.kavora.gametest;
 
 import org.edtp.kavora.KavoraMod;
+import org.edtp.kavora.KavoraPreparationScreen;
 import org.edtp.kavora.UnfocusedFramerateLimit;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import javax.imageio.ImageIO;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.CloudStatus;
+import net.minecraft.client.gui.screens.GenericMessageScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.gamerules.GameRules;
@@ -24,6 +33,15 @@ public final class KavoraVolumetricCloudGameTest implements FabricClientGameTest
     public void runTest(ClientGameTestContext context) {
         if (!Boolean.getBoolean("kavora.gametest.cloudsOnly")) return;
         context.getInput().resizeWindow(1920, 1080);
+        String profileStartFile = System.getProperty("kavora.gametest.cloudProfileStartFile");
+        if (profileStartFile != null) {
+            profileOceanClouds(context, Path.of(profileStartFile));
+            return;
+        }
+        if (Boolean.getBoolean("kavora.gametest.sunsetRecovery")) {
+            verifySunsetRecovery(context);
+            return;
+        }
         CloudStatus originalClouds = context.computeOnClient(client -> client.options.cloudStatus().get());
         boolean hidden = context.computeOnClient(client -> client.gui.hud.isHidden());
         int distance = context.computeOnClient(client -> client.options.renderDistance().get());
@@ -196,6 +214,203 @@ public final class KavoraVolumetricCloudGameTest implements FabricClientGameTest
                 if (client.gui.hud.isHidden() != hidden) client.gui.hud.toggle();
             });
         }
+    }
+
+    private static void verifySunsetRecovery(ClientGameTestContext context) {
+        context.waitFor(client -> KavoraMod.renderer != null && KavoraMod.renderer.isInitialized(), 2400);
+        context.runOnClient(client -> {
+            client.options.renderDistance().set(12);
+            client.options.pauseOnLostFocus = false;
+            UnfocusedFramerateLimit.set(UnfocusedFramerateLimit.UNLIMITED);
+            var api = KavoraMod.renderer.getRemixApi();
+            api.setConfigVariable("rtx.graphicsPreset", "4");
+            api.setConfigVariable("rtx.dlssPreset", "2");
+        });
+        context.waitFor(client -> KavoraMod.renderer.getRemixApi()
+                .getConfigVariableResolved("rtx.graphicsPreset").equals("4"), 100);
+        context.runOnClient(client -> {
+            var api = KavoraMod.renderer.getRemixApi();
+            api.setConfigVariable("rtx.upscalerType", "1");
+            api.setConfigVariable("rtx.qualityDLSS", "5");
+            api.setConfigVariable("rtx.enableRayReconstruction", "true");
+            api.setConfigVariable("rtx.dlfg.enable", "false");
+            api.setConfigVariable("rtx.display.hdrMode", "0");
+            api.setConfigVariable("rtx.gbuffer.logDispatch", "true");
+            api.setConfigVariable("rtx.clouds.transportMode", "0");
+            api.setConfigVariable("rtx.clouds.windSpeed", "0");
+            KavoraMod.renderer.getCloudRenderer().setProceduralClouds(true);
+            client.options.cloudStatus().set(CloudStatus.FANCY);
+        });
+        boolean captureComparison = Boolean.getBoolean("kavora.gametest.captureCloudComparison");
+        if (captureComparison) {
+            RuntimeOptionScope.apply(context, Map.of(
+                    "rtx.clouds.maxDistanceMeters", "24000", "rtx.clouds.highMaxDistanceMeters", "24000",
+                    "rtx.clouds.coverage", "0.52"));
+        }
+        String[] fixtures = System.getProperty("kavora.gametest.sunsetFixtures", "sunset-flat,sunset-ocean").split(",");
+        for (String fixture : fixtures) {
+            MinecraftServer server = openCloudFixture(context, fixture, captureComparison);
+            try {
+                context.runOnClient(client -> {
+                    client.gui.setScreen(null);
+                    if (!client.gui.hud.isHidden()) client.gui.hud.toggle();
+                });
+                var pose = CompletableFuture.runAsync(() -> {
+                    server.getGameRules().set(GameRules.ADVANCE_TIME, false, server);
+                    KavoraSceneFixtures.commands(server, "weather clear");
+                    positionOceanCamera(server);
+                }, server);
+                context.waitFor(client -> pose.isDone(), 200);
+                pose.join();
+                waitForOceanCamera(context);
+                setCloudsEnabled(context, true);
+                System.out.println("Sunset fixture ready: " + fixture + " (1920x1080 DLAA, Ultra, no FG)");
+                if (captureComparison && fixture.equals("sunset-ocean")) {
+                    captureOceanClouds(context, server, 6000, "cloud-ocean-noon");
+                    captureOceanClouds(context, server, 12750, "cloud-ocean-sunset-1845");
+                    continue;
+                }
+                int ticks = fixture.equals("sunset-ocean") ? 12250 : 12750;
+                setFixtureTime(context, server, ticks);
+                long first = context.computeOnClient(client -> KavoraFrameProbe.raytracedPresents);
+                for (int count = 24; count <= 96; count += 24) {
+                    long target = first + count;
+                    context.waitFor(client -> KavoraFrameProbe.raytracedPresents >= target
+                            && KavoraMod.renderer.isSceneReady(), 2400);
+                    System.out.println("Sunset stability: " + fixture + " time=" + ticks + " " + count + " ray-traced presentations");
+                }
+            } finally {
+                closeCloudFixture(context, server);
+            }
+        }
+    }
+
+    private static MinecraftServer openCloudFixture(ClientGameTestContext context, String fixture, boolean allowColdCompile) {
+        context.runOnClient(client -> client.createWorldOpenFlows().openWorld(fixture, () -> {
+            throw new AssertionError("World open cancelled: " + fixture);
+        }));
+        context.waitFor(client -> {
+            if (client.level == null || client.player == null || client.getSingleplayerServer() == null) {
+                return false;
+            }
+            // Only the fixture bypasses the interactive timeout during cold pipeline compilation.
+            if (allowColdCompile && client.gui.screen() instanceof KavoraPreparationScreen) {
+                client.gui.setScreen(null);
+            }
+            return KavoraMod.renderer.isSceneReady();
+        }, allowColdCompile ? 12000 : 2400);
+        return context.computeOnClient(client -> client.getSingleplayerServer());
+    }
+
+    private static void closeCloudFixture(ClientGameTestContext context, MinecraftServer server) {
+        context.runOnClient(client -> {
+            var saving = Component.translatable("menu.savingLevel");
+            client.level.disconnect(saving);
+            client.disconnect(new GenericMessageScreen(saving), false);
+        });
+        context.waitFor(client -> !server.getRunningThread().isAlive(), 1200);
+        context.setScreen(TitleScreen::new);
+    }
+
+    private static void positionOceanCamera(MinecraftServer server) {
+        var player = server.getPlayerList().getPlayers().getFirst();
+        player.setGameMode(GameType.CREATIVE);
+        player.getAbilities().flying = true;
+        player.onUpdateAbilities();
+        KavoraWorldGameTest.require(player.teleportTo(server.overworld(), .5, 75, .5, Set.of(), 90, 0, true),
+                "Cloud fixture camera teleport failed");
+    }
+
+    private static void waitForOceanCamera(ClientGameTestContext context) {
+        context.waitFor(client -> client.player.position().distanceToSqr(.5, 75, .5) < .01
+                && Math.abs(Mth.wrapDegrees(client.player.getYRot() - 90)) < .1
+                && Math.abs(client.player.getXRot()) < .1, 200);
+    }
+
+    private static void setFixtureTime(ClientGameTestContext context, MinecraftServer server, int ticks) {
+        var clock = CompletableFuture.runAsync(() -> server.clockManager().setTotalTicks(server.registryAccess()
+                .get(net.minecraft.world.clock.WorldClocks.OVERWORLD).orElseThrow(), ticks), server);
+        context.waitFor(client -> clock.isDone() && client.level.getOverworldClockTime() == ticks, 200);
+        clock.join();
+    }
+
+    private static void waitForOceanTerrain(ClientGameTestContext context, int minimumColumns) {
+        context.waitFor(client -> {
+            var chunks = KavoraMod.renderer.getChunkManager();
+            var terrain = chunks.getTerrainDiagnostics();
+            return terrain.columnsWithGeometry() >= minimumColumns && terrain.columnsMissingGeometry() == 0
+                    && terrain.pendingBuilds() == 0 && terrain.readyMeshes() == 0 && terrain.captureQueue() == 0;
+        }, 2400);
+    }
+
+    private static void waitForRaytracedPresents(ClientGameTestContext context, int frames) {
+        long target = context.computeOnClient(client -> KavoraFrameProbe.raytracedPresents) + frames;
+        context.waitFor(client -> KavoraFrameProbe.raytracedPresents >= target && KavoraMod.renderer.isSceneReady(), 2400);
+    }
+
+    private static void captureOceanClouds(ClientGameTestContext context, MinecraftServer server, int ticks, String label) {
+        setFixtureTime(context, server, ticks);
+        waitForOceanTerrain(context, 502);
+        context.waitFor(client -> {
+            var chunks = KavoraMod.renderer.getChunkManager();
+            for (int z = -4; z <= 4; z++) {
+                if (!chunks.hasTerrainGeometry(-8, z)) return false;
+            }
+            return true;
+        }, 2400);
+        waitForRaytracedPresents(context, 24);
+        Path screenshot = KavoraWorldGameTest.captureCompletedFrame(context, label);
+        KavoraWorldGameTest.requireVisibleWorld(screenshot);
+        System.out.println("Cloud ocean screenshot: tick=" + ticks + " " + screenshot);
+    }
+
+    private static void profileOceanClouds(ClientGameTestContext context, Path startFile) {
+        context.waitFor(client -> KavoraMod.renderer != null && KavoraMod.renderer.isInitialized(), 2400);
+        MinecraftServer server = openCloudFixture(context, "sunset-ocean", true);
+        try {
+            // The copied screenshot fixture left simulation time paused. Restore the ordinary game rules.
+            var pose = CompletableFuture.runAsync(() -> {
+                server.getGameRules().set(GameRules.ADVANCE_TIME, true, server);
+                server.getGameRules().set(GameRules.ADVANCE_WEATHER, true, server);
+                positionOceanCamera(server);
+            }, server);
+            context.waitFor(client -> pose.isDone(), 200);
+            pose.join();
+            waitForOceanCamera(context);
+            waitForRaytracedPresents(context, 12);
+            waitForOceanTerrain(context, 1);
+            System.out.println("KAVORA_PROFILE_READY");
+            context.waitFor(client -> Files.isRegularFile(startFile), 2400);
+            context.runOnClient(client -> {
+                var api = KavoraMod.renderer.getRemixApi();
+                for (String key : List.of("rtx.graphicsPreset", "rtx.upscalerType", "rtx.qualityDLSS",
+                        "rtx.enableRayReconstruction", "rtx.dlfg.enable", "rtx.clouds.sceneEnabled",
+                        "rtx.clouds.transportMode", "rtx.clouds.windSpeed", "rtx.clouds.coverage",
+                        "rtx.clouds.maxDistanceMeters", "rtx.clouds.highMaxDistanceMeters")) {
+                    System.out.println("KAVORA_PROFILE_OPTION " + key + "=" + api.getConfigVariableResolved(key));
+                }
+                var diagnostics = KavoraMod.renderer.getChunkManager().getTerrainDiagnostics();
+                System.out.println("KAVORA_PROFILE_TERRAIN " + diagnostics);
+            });
+            long begin = markCloudProfile(context, "BEGIN");
+            waitForRaytracedPresents(context, 24);
+            long end = markCloudProfile(context, "END");
+            KavoraWorldGameTest.require(end > begin, "Cloud profiling requires advancing simulation time");
+        } finally {
+            closeCloudFixture(context, server);
+        }
+    }
+
+    private static long markCloudProfile(ClientGameTestContext context, String phase) {
+        return context.computeOnClient(client -> {
+            long clock = client.level.getOverworldClockTime();
+            var api = KavoraMod.renderer.getRemixApi();
+            System.out.println("KAVORA_PROFILE_" + phase + " " + clock + " " + System.currentTimeMillis()
+                    + " cloudsTime=" + api.getConfigVariableResolved("rtx.clouds.worldTimeSeconds")
+                    + " rain=" + api.getConfigVariableResolved("rtx.clouds.weather")
+                    + " thunder=" + api.getConfigVariableResolved("rtx.clouds.thunder"));
+            return clock;
+        });
     }
 
     private static void checkCameraTranslation(ClientGameTestContext context, TestSingleplayerContext world, double height) {
