@@ -45,3 +45,20 @@ inside the disk integral drop from four to one (75% fewer lookups for that
 subroutine). The number of affected samples depends on sun elevation, emitter
 configuration, and the actual distribution of air integration samples. This
 does not imply a 75% reduction in total atmosphere cost or frame time.
+
+## Exact per-ray phase hoisting
+
+The atmosphere integrator also computes the Rayleigh and Mie phase terms once
+per ray and reuses them for all air cells. For a straight ray, the dot product
+between its direction and each directional light is invariant along the ray;
+the phase functions therefore do not depend on the sample position. The
+previous implementation evaluated both phase functions, including the Mie
+`pow(..., 1.5)`, again for every air cell. The new `AirRayPhase` value is
+local to one `integrateAtmosphereRange` invocation and does not alter shared
+constant-buffer layouts or persistent state. The original four-argument
+`sampleAirMedium` entry point remains as a compatibility wrapper.
+
+This is an exact algebraic hoist: it changes neither the phase-function
+approximation nor the air integration grid. It removes repeated per-cell phase
+math; it does not reduce the number of air cells or the transmittance/scattering
+LUT samples.
