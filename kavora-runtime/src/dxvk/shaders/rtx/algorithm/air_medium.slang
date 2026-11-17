@@ -151,12 +151,6 @@ public float3 airTransmittanceToSpace(AirArgs args, AirTables tables, float heig
 float3 airTransmittanceToLight(AirArgs args, AirTables tables, float height, float cosine, float angularRadius)
 {
   const float extent = sin(angularRadius) * sqrt(max(0.0f, 1.0f - cosine * cosine));
-  const float first = clamp((airLowerBoundaryCosine(args, height) - cosine) / max(extent, 1e-6f), -1.0f, 1.0f);
-  const float visible = (acos(first) - first * sqrt(max(0.0f, 1.0f - first * first))) / kAirPi;
-  if (visible <= 0)
-  {
-    return 0;
-  }
 
   // Away from the horizon, the finite solar/lunar disk is a very small angular
   // perturbation of the central ray. A single LUT lookup is then a much cheaper
@@ -164,13 +158,19 @@ float3 airTransmittanceToLight(AirArgs args, AirTables tables, float height, flo
   // full quadrature for grazing rays, partially occulted disks, and non-celestial
   // emitters: those are precisely where angular variation matters most.
   // The CPU regression test bounds this branch for radii up to 0.01 rad and
-  // light cosines >= 0.2 against the existing four-point rule.
+  // light cosines >= 0.3 against the existing four-point rule.
   const float lowerBoundary = airLowerBoundaryCosine(args, height);
   if (angularRadius <= 0.01f && cosine >= 0.3f && cosine - extent > lowerBoundary)
   {
     return airTransmittanceToSpace(args, tables, height, cosine);
   }
 
+  const float first = clamp((lowerBoundary - cosine) / max(extent, 1e-6f), -1.0f, 1.0f);
+  const float visible = (acos(first) - first * sqrt(max(0.0f, 1.0f - first * first))) / kAirPi;
+  if (visible <= 0)
+  {
+    return 0;
+  }
   const float4 nodes = float4(-0.861136312f, -0.339981044f, 0.339981044f, 0.861136312f);
   const float4 weights = float4(0.347854845f, 0.652145155f, 0.652145155f, 0.347854845f);
   const float centre = 0.5f * (1.0f + first);
