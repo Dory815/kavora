@@ -377,6 +377,7 @@ public final class KavoraVolumetricCloudGameTest implements FabricClientGameTest
             context.waitFor(client -> pose.isDone(), 200);
             pose.join();
             waitForOceanCamera(context);
+            setCloudsEnabled(context, true);
             waitForRaytracedPresents(context, 12);
             waitForOceanTerrain(context, 1);
             System.out.println("KAVORA_PROFILE_READY");
