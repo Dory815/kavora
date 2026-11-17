@@ -89,3 +89,33 @@ work: `cloudLocalOpticalDepth` samples the 3D cloud field vertically, while
 `cloudLightOpticalDepth` evaluates directional shadow transport. Any
 replacement must preserve near-cloud correction, external blockers, finite
 light-source behavior, and the path-tracing radiance/transmittance contract.
+
+## Far-cloud checkpoint for the dense endpoint pass
+
+The Nsight report shows the standard-mode atmosphere prefix stops at
+`froxelMaxDistance`, while cloud rays can continue to the much larger cloud
+view distance. Sky pixels therefore receive only the near prefix and then
+integrate the entire distant cloud interval again in the full-resolution
+`Dense Endpoint` pass.
+
+Standard mode now reserves one additional checkpoint only when an active
+cloud layer extends beyond the froxel range. The original six froxel-aligned
+checkpoint distances are unchanged. The seventh checkpoint is placed at the
+maximum active low/high cloud view distance. Sky rays and surface rays beyond
+that distance can use the far prefix, leaving only the air-only tail for the
+full-resolution pass. When clouds are disabled, empty, or remain inside the
+froxel range, the old six-checkpoint mapping and allocation are preserved.
+Preintegrated-fog mode is unchanged.
+
+The extra checkpoint increases the prefix buffer by one checkpoint plane
+(`columns * 7 uints`) only while the cloud range is extended. At 1920x1080
+with the standard two-pixel column stride this is about 13.9 MiB. This is a
+deliberate memory/performance tradeoff; it does not increase the per-pixel
+primary atmosphere record.
+
+The CPU checkpoint contract verifies that all six near checkpoint positions
+remain identical, endpoint selection never chooses a checkpoint beyond the
+surface, and a sky ray at the cloud maximum has no remaining cloud-distance
+tail. This is a structural/work-distribution validation, not a measured GPU
+speedup. Native visual checks are still needed for the far-column interpolation
+and full-resolution transition.
