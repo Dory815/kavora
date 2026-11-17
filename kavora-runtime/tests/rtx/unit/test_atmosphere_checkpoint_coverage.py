@@ -76,6 +76,24 @@ class AtmosphereCheckpointCoverageTests(unittest.TestCase):
         self.assertEqual(begin, 96_000)
         self.assertEqual(96_000 - begin, 0)
 
+    def test_grazing_ray_near_checkpoint_stays_before_surface(self):
+        froxel_distance = 24_000
+        exponent = 4
+        for direction_depth in (0.05, 0.1, 0.25, 0.5, 1.0):
+            for ray_distance in (1_000, 8_000, 20_000, 40_000, 80_000, 95_000):
+                projected_depth = min(direction_depth * ray_distance, froxel_distance)
+                w = (projected_depth / froxel_distance) ** (1.0 / exponent)
+                checkpoint = min(FROXEL_CAPACITY, math.floor(w * FROXEL_CAPACITY))
+                checkpoint_ray_distance = checkpoint_distance(
+                    checkpoint, froxel_distance, 96_000, exponent
+                ) / direction_depth
+                if checkpoint > 0 and checkpoint_ray_distance > ray_distance:
+                    checkpoint -= 1
+                    checkpoint_ray_distance = checkpoint_distance(
+                        checkpoint, froxel_distance, 96_000, exponent
+                    ) / direction_depth
+                self.assertLessEqual(checkpoint_ray_distance, ray_distance + 1e-7)
+
     def test_near_checkpoint_positions_are_unchanged(self):
         old = [(i / FROXEL_CAPACITY) ** 4 * 24_000 for i in range(FROXEL_CAPACITY + 1)]
         new = [checkpoint_distance(i, 24_000, 96_000, 4)
