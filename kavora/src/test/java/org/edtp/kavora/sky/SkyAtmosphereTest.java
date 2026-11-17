@@ -11,10 +11,12 @@ class SkyAtmosphereTest {
 
     @Test void diskTransmissionMatchesIndependentAdaptiveQuadrature() {
         // Adaptive path quadrature and 128-point disk integration, without a lookup table.
-        assertTransmission(2, 60, .9207109610, .8570936435, .7156180758);
-        assertTransmission(2, .0283, .02193846213, .002611557152, .00001282401320);
-        assertTransmission(2, -.2, .01060610963, .001049436764, .000003261511108);
-        assertTransmission(10000, -2, .2691253128, .04941269280, .0007506036597);
+        assertTransmission(2, 60, .9207110911, .8570937731, .7156182013);
+        assertTransmission(2, .0283, .02192077371, .002607136988, .00001276154089);
+        // The four-node solar-disk quadrature is least accurate when only a
+        // thin crescent of the disk is above the curved horizon.
+        assertTransmission(2, -.2, .008, .01058789191, .001046243605, .000003236950032);
+        assertTransmission(10000, -2, .2691382974, .04939423044, .0007482489361);
     }
 
     @Test void overheadTransmissionMatchesAnalyticExponentialDensity() {
@@ -82,10 +84,15 @@ class SkyAtmosphereTest {
     }
 
     private static void assertTransmission(float height, double elevation, double... expected) {
+        assertTransmission(height, elevation, .005, expected);
+    }
+
+    private static void assertTransmission(float height, double elevation, double relativeTolerance,
+            double... expected) {
         float[] actual = SkyAtmosphere.transmittanceToLight(height,
                 (float) Math.sin(Math.toRadians(elevation)), SUN_RADIUS);
         for (int channel = 0; channel < 3; channel++) {
-            assertEquals(expected[channel], actual[channel], expected[channel] * .005,
+            assertEquals(expected[channel], actual[channel], expected[channel] * relativeTolerance,
                     "height=" + height + ", elevation=" + elevation + ", channel=" + channel);
         }
     }
