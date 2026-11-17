@@ -122,6 +122,9 @@ void reusedGrid(uint index : SV_DispatchThreadID)
     referenceDepth, cascade);
   const bool reusedFound = cloudCachedLightDepthInGrid(Clouds, cache, 0, grid, origin, endpoint,
     reusedDepth, cascade);
+  const bool referenceContains = cloudLightCascadeContains(Clouds, 0, cascade, origin, endpoint);
+  const bool reusedContains = cloudLightCascadeContainsInGrid(grid, origin, endpoint);
   Results[index] = float4(abs(referenceDepth - reusedDepth),
-    referenceFound ? 1.0f : 0.0f, reusedFound ? 1.0f : 0.0f, 0);
+    referenceFound ? 1.0f : 0.0f, reusedFound ? 1.0f : 0.0f,
+    referenceContains == reusedContains ? 1.0f : 0.0f);
 }
