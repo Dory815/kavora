@@ -213,8 +213,16 @@ public AtmosphereRay createAtmosphereRay<Fog : IAtmosphereFog>(VolumeArgs args,
   ray.intervals.starts[6] = air.x;
   ray.intervals.ends[6] = air.y;
   ray.hasAir = air.y > air.x;
-  ray.airPhase = ray.hasAir ? createAirRayPhase(args.air, direction) : AirRayPhase{};
-  ray.cloudPhase = ray.hasCloud ? createCloudRayPhase(args.clouds, direction) : CloudRayPhase{};
+  ray.airPhase = {};
+  ray.cloudPhase = {};
+  if (ray.hasAir)
+  {
+    ray.airPhase = createAirRayPhase(args.air, direction);
+  }
+  if (ray.hasCloud)
+  {
+    ray.cloudPhase = createCloudRayPhase(args.clouds, direction);
+  }
   ray.projectedPhase = projectFogPhase(args.volumetricFogAnisotropy, direction);
   return ray;
 }
