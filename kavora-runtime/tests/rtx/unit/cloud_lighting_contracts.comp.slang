@@ -102,3 +102,26 @@ void energyParts(uint index : SV_DispatchThreadID)
   const bool c = cloudCachedLightDepth(Clouds, cache, 0, origin, endpoint, total);
   Results[index] = float4(local, external, total, (a && b && c) ? 1.0f : 0.0f);
 }
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void reusedGrid(uint index : SV_DispatchThreadID)
+{
+  if (index >= Count)
+  {
+    return;
+  }
+  CloudLightingCache cache = { Sampler3D<float>(Sun), Sampler3D<float>(Sun) };
+  const uint cascade = uint(Directions[index].w);
+  const float3 origin = Origins[index].xyz;
+  const float3 endpoint = origin + Directions[index].xyz * Origins[index].w;
+  const CloudLightGrid grid = cloudLightGrid(Clouds, 0, cascade);
+  float referenceDepth;
+  float reusedDepth;
+  const bool referenceFound = cloudCachedLightDepth(Clouds, cache, 0, origin, endpoint,
+    referenceDepth, cascade);
+  const bool reusedFound = cloudCachedLightDepthInGrid(Clouds, cache, 0, grid, origin, endpoint,
+    reusedDepth, cascade);
+  Results[index] = float4(abs(referenceDepth - reusedDepth),
+    referenceFound ? 1.0f : 0.0f, reusedFound ? 1.0f : 0.0f, 0);
+}
