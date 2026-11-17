@@ -49,6 +49,21 @@ float cloudNoiseLod(float footprint, float period, float resolution)
   return max(0.0f, log2(max(footprint * resolution / period, 1.0f)));
 }
 
+// Interpolate mip levels in float32 so half-format sampler rounding cannot
+// turn a continuous footprint change into a large raw-moment variance jump.
+[ForceInline]
+float4 cloudVolumeSample(Sampler3D<float4> volume, float3 uv, float lod, uint resolution)
+{
+  const float level = min(floor(lod), log2(float(resolution)));
+  const float fraction = saturate(lod - level);
+  const float4 a = volume.SampleLevel(uv, level);
+  if (fraction <= 0)
+  {
+    return a;
+  }
+  return lerp(a, volume.SampleLevel(uv, level + 1.0f), fraction);
+}
+
 // Return the mean and central variance of a clamped, uniform-distribution ramp.
 // Central moments retain constant fields without subtracting nearly equal squares.
 [ForceInline]
@@ -188,6 +203,14 @@ CloudWeatherSample cloudWeatherSample(Sampler2D<float4> weatherSampler, float2 u
   const float2 dc = c.rg - result.mean.rg;
   const float2 dd = d.rg - result.mean.rg;
   result.variance = 0.25f * (da * da + db * db + dc * dc + dd * dd);
+  if (lod < 1.0f)
+  {
+    const float4 center = weatherSampler.SampleLevel(uv, 0);
+    const float blend = smoothstep(0.0f, 1.0f, lod);
+    const float2 delta = result.mean.rg - center.rg;
+    result.variance = blend * (result.variance + (1.0f - blend) * delta * delta);
+    result.mean = lerp(center, result.mean, blend);
+  }
   return result;
 }
 
@@ -318,8 +341,9 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
     + column.shapePhase * float(kCloudBasePeriod);
   const float detailPeriod = float(kCloudBasePeriod) * 0.0625f;
   const float detailLod = cloudNoiseLod(footprint, args.shapeScale * detailPeriod, float(kCloudDetailResolution));
-  const float3 detail = detailSampler.SampleLevel(shapePosition / detailPeriod, detailLod).rgb;
-  const float3 warpedPosition = shapePosition + (detail - 0.5f) * (0.04f * float(kCloudBasePeriod));
+  const float3 detail = cloudVolumeSample(detailSampler, shapePosition / detailPeriod, detailLod, kCloudDetailResolution).rgb;
+  // Body coordinates are view-independent. Unresolved detail only filters erosion.
+  const float3 warpedPosition = shapePosition;
   const float billows = dot(detail, float3(0.625f, 0.25f, 0.125f));
   float density = 0;
   if (cumulusProfile > 0)
@@ -327,7 +351,7 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
     const float bodyPeriod = float(kCloudBasePeriod);
     const float3 bodyPosition = warpedPosition - float3(0, column.familyBase.x / args.shapeScale, 0);
     const float lod = cloudNoiseLod(footprint, args.shapeScale * bodyPeriod, float(kCloudBaseResolution));
-    const float4 body = baseSampler.SampleLevel(bodyPosition / bodyPeriod, lod);
+    const float4 body = cloudVolumeSample(baseSampler, bodyPosition / bodyPeriod, lod, kCloudBaseResolution);
     const float erosion = lerp(billows, 1.0f - billows, saturate(height.x * 4.0f)) * 0.10f;
     density = cloudFamilyDensity(body, cumulusProfile, column.familyCoverage.x,
       column.familyVariance.x, erosion, 0.10f);
@@ -338,7 +362,7 @@ public float cloudDensityInColumn(CloudDensityArgs args, float3 coordinates, Clo
     const float3 bodyPeriod = float(kCloudBasePeriod) * float3(4, 1, 4);
     const float3 bodyPosition = warpedPosition - float3(0, column.familyBase.y / args.shapeScale, 0);
     const float lod = cloudNoiseLod(footprint, args.shapeScale * float(kCloudBasePeriod), float(kCloudBaseResolution));
-    const float4 body = baseSampler.SampleLevel(bodyPosition / bodyPeriod, lod);
+    const float4 body = cloudVolumeSample(baseSampler, bodyPosition / bodyPeriod, lod, kCloudBaseResolution);
     const float erosion = lerp(billows, 1.0f - billows, saturate(height.y * 4.0f)) * 0.055f;
     density += cloudFamilyDensity(body, deckProfile, column.familyCoverage.y,
       column.familyVariance.y, erosion, 0.12f);
