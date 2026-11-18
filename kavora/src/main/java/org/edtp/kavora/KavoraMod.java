@@ -792,7 +792,7 @@ public class KavoraMod implements ClientModInitializer {
                     }))
                 // /kavora heldlights - put the local player's held lights out or relight
                 // them, as the Toggle Held Lights key does; /kavora heldlights underwater
-                // lets open flames keep burning under water.
+                // toggles whether open flames stay lit under water.
                 .then(ClientCommands.literal("heldlights")
                     .executes(context -> {
                         boolean off = HeldLightState.toggleLocalHeldLights();

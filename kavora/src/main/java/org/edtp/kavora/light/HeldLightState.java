@@ -17,18 +17,15 @@ import net.minecraft.world.item.ItemStack;
  * <p>Two switches. The local player's held lights can be put out and relit with
  * the "Toggle Held Lights" key. That is client state with no packet behind it, so
  * it speaks only for the player at this keyboard; lights in anyone else's hands
- * stay lit. An open flame also goes out while its holder is under water, and
- * that applies to every holder, since submersion is a synced entity state. Both
+ * stay lit. Players can opt to extinguish submerged open flames. That setting
+ * applies to every holder, since submersion is a synced entity state. Both
  * apply to a single decision here so the light, the flame and the smoke can never
  * disagree about whether a torch is burning.
- *
- * <p>Flames under water can be allowed, so the rule can be lifted for a player
- * who wants it or tested without diving out of the water.
  */
 public final class HeldLightState {
 
     private static boolean localHeldLightsOff = false;
-    private static boolean flamesAllowedUnderwater = false;
+    private static boolean flamesAllowedUnderwater = true;
 
     private HeldLightState() {}
 

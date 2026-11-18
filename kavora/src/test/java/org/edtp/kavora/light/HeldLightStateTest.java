@@ -22,6 +22,12 @@ class HeldLightStateTest {
     private static final boolean DRY = false;
 
     @Test
+    void submergedFlamesStayLitByDefault() {
+        assertTrue(HeldLightState.isLit(LOCAL, ON, FLAME, UNDER,
+                HeldLightState.areFlamesAllowedUnderwater()));
+    }
+
+    @Test
     void everythingBurnsByDefault() {
         assertTrue(HeldLightState.isLit(LOCAL, ON, FLAME, DRY, false));
         assertTrue(HeldLightState.isLit(LOCAL, ON, GLOW, DRY, false));

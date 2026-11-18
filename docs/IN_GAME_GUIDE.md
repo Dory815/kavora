@@ -24,7 +24,7 @@ renderer is not initialized, run `/kavora status` first.
 | `/kavora particles` | Toggle path-traced particles |
 | `/kavora sky` | Toggle the path-traced sky |
 | `/kavora heldlights` | Put out or relight all lights held by the local player, like Toggle Held Lights (default `G`) |
-| `/kavora heldlights underwater` | Toggle whether held open flames stay lit when the holder's eyes are under water; they go out by default |
+| `/kavora heldlights underwater` | Toggle whether held open flames stay lit when the holder's eyes are under water; they stay lit by default |
 
 The capture toggles are diagnostic. Turning one off tells you which part of the
 scene a problem belongs to, which is useful in a bug report.
